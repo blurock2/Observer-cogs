@@ -1,4 +1,4 @@
-# Discord Bot — Early Share
+# Discord Bot: Early Status share
 
 I’m new to this whole thing, so I’m sharing all the cogs and the main bot file here to see what happens. This repository is a work-in-progress snapshot of my Discord bot code, including the core `bot.py` and each feature cog.
 
