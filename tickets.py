@@ -19,7 +19,7 @@ NO_MENTIONS = discord.AllowedMentions.none()
 
 
 class TicketPanelView(discord.ui.View):
-    """Persistent Create Ticket button shown in configured panel channels."""
+    """Persistent Create Ticket button shown in panel channels."""
 
     def __init__(self, cog: "TicketCog"):
         super().__init__(timeout=None)
@@ -40,7 +40,7 @@ class TicketPanelView(discord.ui.View):
 
 
 class TicketCloseView(discord.ui.View):
-    """Persistent Close Ticket button sent inside every created ticket."""
+    """Persistent Close Ticket button inside every ticket."""
 
     def __init__(self, cog: "TicketCog"):
         super().__init__(timeout=None)
@@ -68,6 +68,7 @@ class TicketCog(commands.Cog):
     - tickets.enabled
     - tickets.panel_channel
     - tickets.support_role
+    - tickets.ping_support_role
     - tickets.blacklisted_role
     """
 
@@ -93,13 +94,29 @@ class TicketCog(commands.Cog):
         if self.close_view is not None:
             self.bot.remove_view(self.close_view)
 
-    # ============================================================ Dashboard config
+    # ============================================================ Dsashboard config
 
-    def _get(self, guild_id: int, key: str, default=None):
-        return self.store.get(guild_id, MODULE_KEY, key, default)
+    def _get(
+        self,
+        guild_id: int,
+        key: str,
+        default=None,
+    ):
+        return self.store.get(
+            guild_id,
+            MODULE_KEY,
+            key,
+            default,
+        )
 
     def _is_enabled(self, guild_id: int) -> bool:
-        return bool(self._get(guild_id, "enabled", default=True))
+        return bool(
+            self._get(
+                guild_id,
+                "enabled",
+                default=True,
+            )
+        )
 
     def _get_id(
         self,
@@ -109,20 +126,81 @@ class TicketCog(commands.Cog):
         value = self._get(guild_id, key)
 
         try:
-            return int(value) if value is not None else None
+            return (
+                int(value)
+                if value is not None
+                else None
+            )
         except (TypeError, ValueError):
             return None
 
-    def _panel_channel_id(self, guild_id: int) -> Optional[int]:
-        return self._get_id(guild_id, "panel_channel")
+    def _panel_channel_id(
+        self,
+        guild_id: int,
+    ) -> Optional[int]:
+        return self._get_id(
+            guild_id,
+            "panel_channel",
+        )
 
-    def _support_role_id(self, guild_id: int) -> Optional[int]:
-        return self._get_id(guild_id, "support_role")
+    def _support_role_id(
+        self,
+        guild_id: int,
+    ) -> Optional[int]:
+        return self._get_id(
+            guild_id,
+            "support_role",
+        )
 
-    def _blacklisted_role_id(self, guild_id: int) -> Optional[int]:
-        return self._get_id(guild_id, "blacklisted_role")
+    def _blacklisted_role_id(
+        self,
+        guild_id: int,
+    ) -> Optional[int]:
+        return self._get_id(
+            guild_id,
+            "blacklisted_role",
+        )
 
-    # ============================================================ Ticket helpers
+    def _should_ping_support_role(
+        self,
+        guild_id: int,
+    ) -> bool:
+        return bool(
+            self._get(
+                guild_id,
+                "ping_support_role",
+                default=False,
+            )
+        )
+
+    def _get_support_role_notification(
+        self,
+        guild: discord.Guild,
+        support_role: discord.Role,
+    ) -> tuple[str, discord.AllowedMentions]:
+        """
+        Return the optional support-role ping.
+
+        The support role is only mentioned when the setup toggle is
+        enabled. Otherwise, all mentions remain disabled.
+        """
+        if not self._should_ping_support_role(guild.id):
+            return "", NO_MENTIONS
+
+        if support_role.is_default():
+            return "", NO_MENTIONS
+
+        return (
+            support_role.mention,
+            discord.AllowedMentions(
+                users=False,
+                roles=True,
+                everyone=False,
+                replied_user=False,
+            ),
+        )
+
+    # ============================================================ Ticket helpers 
 
     @staticmethod
     def _ticket_name(user: discord.Member) -> str:
@@ -142,7 +220,9 @@ class TicketCog(commands.Cog):
         return None
 
     @staticmethod
-    def _is_ticket_channel(channel: discord.TextChannel) -> bool:
+    def _is_ticket_channel(
+        channel: discord.TextChannel,
+    ) -> bool:
         return (
             channel.name.startswith("ticket-")
             and channel.topic is not None
@@ -150,7 +230,9 @@ class TicketCog(commands.Cog):
         )
 
     @staticmethod
-    def _ticket_owner_id(channel: discord.TextChannel) -> Optional[int]:
+    def _ticket_owner_id(
+        channel: discord.TextChannel,
+    ) -> Optional[int]:
         if channel.topic is None:
             return None
 
@@ -160,11 +242,16 @@ class TicketCog(commands.Cog):
             return None
 
         try:
-            return int(channel.topic.split(prefix, 1)[1].strip().split()[0])
+            return int(
+                channel.topic.split(
+                    prefix,
+                    1,
+                )[1].strip().split()[0]
+            )
         except (ValueError, IndexError):
             return None
 
-    # ============================================================ Panel publishing
+    # ============================================================ Pannel spawn
 
     @app_commands.command(
         name="ticket_panel",
@@ -183,7 +270,10 @@ class TicketCog(commands.Cog):
 
         if not self._is_enabled(guild.id):
             await interaction.response.send_message(
-                "The ticket system is disabled. Enable it through `/setup` first.",
+                (
+                    "The ticket system is disabled. Enable it "
+                    "through `/setup` first."
+                ),
                 ephemeral=True,
             )
             return
@@ -207,9 +297,15 @@ class TicketCog(commands.Cog):
 
         panel_channel = guild.get_channel(panel_channel_id)
 
-        if not isinstance(panel_channel, discord.TextChannel):
+        if not isinstance(
+            panel_channel,
+            discord.TextChannel,
+        ):
             await interaction.response.send_message(
-                "The configured panel channel is invalid or is not a text channel.",
+                (
+                    "The configured panel channel is invalid "
+                    "or is not a text channel."
+                ),
                 ephemeral=True,
             )
             return
@@ -227,12 +323,17 @@ class TicketCog(commands.Cog):
             title="Support Tickets",
             description=(
                 "Need help?\n"
-                "Click the button below to open a private support ticket."
+                "Click the button below to open a private "
+                "support ticket."
             ),
             color=discord.Color.yellow(),
         )
+
         embed.set_footer(
-            text="Please do not open multiple tickets for the same issue."
+            text=(
+                "Please do not open multiple tickets "
+                "for the same issue."
+            )
         )
 
         try:
@@ -243,23 +344,32 @@ class TicketCog(commands.Cog):
             )
         except discord.Forbidden:
             await interaction.response.send_message(
-                f"I cannot send messages in {panel_channel.mention}.",
+                (
+                    f"I cannot send messages in "
+                    f"{panel_channel.mention}."
+                ),
                 ephemeral=True,
             )
             return
         except discord.HTTPException:
             await interaction.response.send_message(
-                "Discord rejected the ticket-panel message.",
+                (
+                    "Discord rejected the ticket-panel "
+                    "message."
+                ),
                 ephemeral=True,
             )
             return
 
         await interaction.response.send_message(
-            f"Ticket panel posted in {panel_channel.mention}.",
+            (
+                f"Ticket panel posted in "
+                f"{panel_channel.mention}."
+            ),
             ephemeral=True,
         )
 
-    # ============================================================ Create ticket
+    # ============================================================ Spawn a ticket
 
     async def create_ticket(
         self,
@@ -268,7 +378,10 @@ class TicketCog(commands.Cog):
         guild = interaction.guild
         user = interaction.user
 
-        if guild is None or not isinstance(user, discord.Member):
+        if (
+            guild is None
+            or not isinstance(user, discord.Member)
+        ):
             await interaction.response.send_message(
                 "Tickets can only be created inside a server.",
                 ephemeral=True,
@@ -284,47 +397,82 @@ class TicketCog(commands.Cog):
 
         panel_channel_id = self._panel_channel_id(guild.id)
         support_role_id = self._support_role_id(guild.id)
-        blacklisted_role_id = self._blacklisted_role_id(guild.id)
+        blacklisted_role_id = (
+            self._blacklisted_role_id(guild.id)
+        )
 
-        if panel_channel_id is None or support_role_id is None:
+        if (
+            panel_channel_id is None
+            or support_role_id is None
+        ):
             await interaction.response.send_message(
-                "The ticket system has not been configured correctly yet.",
+                (
+                    "The ticket system has not been "
+                    "configured correctly yet."
+                ),
                 ephemeral=True,
             )
             return
 
         if blacklisted_role_id is not None:
-            blacklisted_role = guild.get_role(blacklisted_role_id)
+            blacklisted_role = guild.get_role(
+                blacklisted_role_id
+            )
 
-            if blacklisted_role is not None and blacklisted_role in user.roles:
+            if (
+                blacklisted_role is not None
+                and blacklisted_role in user.roles
+            ):
                 await interaction.response.send_message(
-                    "You are not allowed to create support tickets.",
+                    (
+                        "You are not allowed to create "
+                        "support tickets."
+                    ),
                     ephemeral=True,
                 )
                 return
 
-        panel_channel = guild.get_channel(panel_channel_id)
-        support_role = guild.get_role(support_role_id)
+        panel_channel = guild.get_channel(
+            panel_channel_id
+        )
+        support_role = guild.get_role(
+            support_role_id
+        )
 
-        if not isinstance(panel_channel, discord.TextChannel):
+        if not isinstance(
+            panel_channel,
+            discord.TextChannel,
+        ):
             await interaction.response.send_message(
-                "The configured panel channel is invalid or no longer a text channel.",
+                (
+                    "The configured panel channel is invalid "
+                    "or no longer a text channel."
+                ),
                 ephemeral=True,
             )
             return
 
         if support_role is None:
             await interaction.response.send_message(
-                "The configured support role no longer exists.",
+                (
+                    "The configured support role no longer "
+                    "exists."
+                ),
                 ephemeral=True,
             )
             return
 
-        existing_ticket = self._get_existing_ticket(guild, user)
+        existing_ticket = self._get_existing_ticket(
+            guild,
+            user,
+        )
 
         if existing_ticket is not None:
             await interaction.response.send_message(
-                f"You already have an open ticket: {existing_ticket.mention}",
+                (
+                    f"You already have an open ticket: "
+                    f"{existing_ticket.mention}"
+                ),
                 ephemeral=True,
             )
             return
@@ -333,7 +481,10 @@ class TicketCog(commands.Cog):
 
         if bot_member is None:
             await interaction.response.send_message(
-                "I could not find my server member information.",
+                (
+                    "I could not find my server member "
+                    "information."
+                ),
                 ephemeral=True,
             )
             return
@@ -376,7 +527,9 @@ class TicketCog(commands.Cog):
                 category=panel_channel.category,
                 overwrites=overwrites,
                 topic=f"Ticket owner ID: {user.id}",
-                reason=f"Support ticket created by {user}",
+                reason=(
+                    f"Support ticket created by {user}"
+                ),
             )
 
             ticket_embed = discord.Embed(
@@ -388,46 +541,83 @@ class TicketCog(commands.Cog):
                 ),
                 color=discord.Color.yellow(),
             )
+
             ticket_embed.add_field(
                 name="Ticket owner",
                 value=user.mention,
                 inline=True,
             )
+
             ticket_embed.set_footer(
-                text="Use the button below to close this ticket."
+                text=(
+                    "Use the button below to close "
+                    "this ticket."
+                )
+            )
+
+            support_ping, support_mentions = (
+                self._get_support_role_notification(
+                    guild,
+                    support_role,
+                )
+            )
+
+            ticket_content = "\n".join(
+                value
+                for value in (
+                    support_ping,
+                    user.mention,
+                )
+                if value
+            )
+
+            allowed_mentions = discord.AllowedMentions(
+                users=True,
+                roles=support_mentions.roles,
+                everyone=False,
+                replied_user=False,
             )
 
             await ticket_channel.send(
-                content=user.mention,
+                content=ticket_content or None,
                 embed=ticket_embed,
                 view=TicketCloseView(self),
-                allowed_mentions=discord.AllowedMentions(
-                    users=True,
-                    roles=False,
-                    everyone=False,
-                ),
+                allowed_mentions=allowed_mentions,
             )
 
             await interaction.followup.send(
-                f"Your ticket has been created: {ticket_channel.mention}",
+                (
+                    f"Your ticket has been created: "
+                    f"{ticket_channel.mention}"
+                ),
                 ephemeral=True,
             )
 
         except discord.Forbidden:
             await interaction.followup.send(
-                "I cannot create ticket channels. Give me **Manage Channels** "
-                "and permission to manage channel overwrites.",
+                (
+                    "I cannot create ticket channels. Give me "
+                    "**Manage Channels** and permission to manage "
+                    "channel overwrites."
+                ),
                 ephemeral=True,
             )
+
         except discord.HTTPException as error:
-            print(f"[tickets] Error while creating ticket: {error}")
+            print(
+                f"[tickets] Error while creating ticket: "
+                f"{error}"
+            )
 
             await interaction.followup.send(
-                "Discord rejected the ticket creation request.",
+                (
+                    "Discord rejected the ticket creation "
+                    "request."
+                ),
                 ephemeral=True,
             )
 
-    # ============================================================ Close ticket
+    # ============================================================ Rage quit the ticket
 
     async def close_ticket(
         self,
@@ -437,7 +627,10 @@ class TicketCog(commands.Cog):
         channel = interaction.channel
         user = interaction.user
 
-        if guild is None or not isinstance(channel, discord.TextChannel):
+        if (
+            guild is None
+            or not isinstance(channel, discord.TextChannel)
+        ):
             await interaction.response.send_message(
                 "This is not a valid ticket channel.",
                 ephemeral=True,
@@ -446,19 +639,28 @@ class TicketCog(commands.Cog):
 
         if not self._is_ticket_channel(channel):
             await interaction.response.send_message(
-                "This button can only be used inside a ticket channel.",
+                (
+                    "This button can only be used inside "
+                    "a ticket channel."
+                ),
                 ephemeral=True,
             )
             return
 
         if not isinstance(user, discord.Member):
             await interaction.response.send_message(
-                "Could not verify your server member information.",
+                (
+                    "Could not verify your server member "
+                    "information."
+                ),
                 ephemeral=True,
             )
             return
 
-        support_role_id = self._support_role_id(guild.id)
+        support_role_id = self._support_role_id(
+            guild.id
+        )
+
         support_role = (
             guild.get_role(support_role_id)
             if support_role_id is not None
@@ -470,14 +672,26 @@ class TicketCog(commands.Cog):
             and support_role in user.roles
         )
 
-        is_server_admin = user.guild_permissions.manage_channels
-        ticket_owner_id = self._ticket_owner_id(channel)
+        is_server_admin = (
+            user.guild_permissions.manage_channels
+        )
+
+        ticket_owner_id = self._ticket_owner_id(
+            channel
+        )
+
         is_ticket_owner = ticket_owner_id == user.id
 
-        if not (is_support_staff or is_server_admin or is_ticket_owner):
+        if not (
+            is_support_staff
+            or is_server_admin
+            or is_ticket_owner
+        ):
             await interaction.response.send_message(
-                "Only the ticket owner, support staff, or an administrator "
-                "can close this ticket.",
+                (
+                    "Only the ticket owner, support staff, "
+                    "or an administrator can close this ticket."
+                ),
                 ephemeral=True,
             )
             return
@@ -491,20 +705,32 @@ class TicketCog(commands.Cog):
 
         try:
             await channel.delete(
-                reason=f"Ticket closed by {user} ({user.id})",
+                reason=(
+                    f"Ticket closed by {user} "
+                    f"({user.id})"
+                ),
             )
+
         except discord.NotFound:
             pass
+
         except discord.Forbidden:
             try:
                 await interaction.followup.send(
-                    "I do not have permission to delete this ticket channel.",
+                    (
+                        "I do not have permission to delete "
+                        "this ticket channel."
+                    ),
                     ephemeral=True,
                 )
             except discord.HTTPException:
                 pass
+
         except discord.HTTPException as error:
-            print(f"[tickets] Error while deleting ticket: {error}")
+            print(
+                f"[tickets] Error while deleting ticket: "
+                f"{error}"
+            )
 
     # ============================================================ Errors
 
@@ -513,19 +739,33 @@ class TicketCog(commands.Cog):
         interaction: discord.Interaction,
         error: app_commands.AppCommandError,
     ) -> None:
-        if isinstance(error, app_commands.MissingPermissions):
+        if isinstance(
+            error,
+            app_commands.MissingPermissions,
+        ):
             message = (
-                "You need **Manage Server** permission to post a ticket panel "
-                "(unless you are the bot owner)."
+                "You need **Manage Server** permission to "
+                "post a ticket panel (unless you are the "
+                "bot owner)."
             )
         else:
-            print(f"[tickets] {type(error).__name__}: {error}")
-            message = "An unexpected ticket-system error occurred."
+            print(
+                f"[tickets] {type(error).__name__}: {error}"
+            )
+            message = (
+                "An unexpected ticket-system error occurred."
+            )
 
         if interaction.response.is_done():
-            await interaction.followup.send(message, ephemeral=True)
+            await interaction.followup.send(
+                message,
+                ephemeral=True,
+            )
         else:
-            await interaction.response.send_message(message, ephemeral=True)
+            await interaction.response.send_message(
+                message,
+                ephemeral=True,
+            )
 
 
 async def setup(bot: commands.Bot) -> None:

@@ -57,7 +57,7 @@ class ModerationCog(commands.Cog):
         self.mod_stats = ModerationStatsStore(DB_PATH)
         self._legacy = _load_legacy_config()
 
-    # ============================================================ Configuration
+    # ============================================================ Confiiiiig
 
     def _legacy_guild_config(self, guild_id: int) -> dict:
         return self._legacy.get(str(guild_id), {})
@@ -67,7 +67,11 @@ class ModerationCog(commands.Cog):
         legacy = self._legacy_guild_config(guild_id)
 
         def pick(key: str, legacy_key: str):
-            value = self.store.get(guild_id, MODULE_KEY, key)
+            value = self.store.get(
+                guild_id,
+                MODULE_KEY,
+                key,
+            )
 
             if value is None:
                 value = legacy.get(legacy_key)
@@ -87,13 +91,63 @@ class ModerationCog(commands.Cog):
         return {
             "log_channel": pick("log_channel", "log_channel"),
             "mod_role": pick("mod_role", "mod_role"),
-            "head_mod_role": pick("head_mod_role", "head_mod_role"),
+            "head_mod_role": pick(
+                "head_mod_role",
+                "head_mod_role",
+            ),
+            "ping_mod_role": bool(
+                self.store.get(
+                    guild_id,
+                    MODULE_KEY,
+                    "ping_mod_role",
+                    default=False,
+                )
+            ),
             "embed_color": int(color),
         }
 
     async def _is_logging_enabled(self, guild: discord.Guild) -> bool:
         return bool(
-            self.store.get(guild.id, MODULE_KEY, "enabled", default=True)
+            self.store.get(
+                guild.id,
+                MODULE_KEY,
+                "enabled",
+                default=True,
+            )
+        )
+
+    async def _get_moderator_role_ping(
+        self,
+        guild: discord.Guild,
+    ) -> tuple[str, discord.AllowedMentions]:
+        """
+        Return the configured moderator-role mention when enabled.
+
+        The role is read from moderation.mod_role and the toggle is read
+        from moderation.ping_mod_role.
+        """
+        config = await self._get_guild_config(guild)
+
+        if not config.get("ping_mod_role", False):
+            return "", discord.AllowedMentions.none()
+
+        role_id = config.get("mod_role")
+
+        try:
+            role = guild.get_role(int(role_id))
+        except (TypeError, ValueError):
+            return "", discord.AllowedMentions.none()
+
+        if role is None or role.is_default():
+            return "", discord.AllowedMentions.none()
+
+        return (
+            role.mention,
+            discord.AllowedMentions(
+                roles=True,
+                users=False,
+                everyone=False,
+            ),
         )
 
     async def _check_mod_perms(
@@ -114,7 +168,10 @@ class ModerationCog(commands.Cog):
             except (TypeError, ValueError):
                 return False
 
-            return any(role.id == role_id for role in interaction.user.roles)
+            return any(
+                role.id == role_id
+                for role in interaction.user.roles
+            )
 
         return (
             has_role(config.get("mod_role"))
@@ -137,7 +194,9 @@ class ModerationCog(commands.Cog):
         config = await self._get_guild_config(interaction.guild)
 
         try:
-            head_mod_role_id = int(config.get("head_mod_role"))
+            head_mod_role_id = int(
+                config.get("head_mod_role")
+            )
         except (TypeError, ValueError):
             return False
 
@@ -145,6 +204,27 @@ class ModerationCog(commands.Cog):
             role.id == head_mod_role_id
             for role in interaction.user.roles
         )
+
+    async def _get_log_channel(
+        self,
+        guild: discord.Guild,
+    ) -> Optional[discord.TextChannel]:
+        if not await self._is_logging_enabled(guild):
+            return None
+
+        config = await self._get_guild_config(guild)
+
+        try:
+            log_channel_id = int(config.get("log_channel"))
+        except (TypeError, ValueError):
+            return None
+
+        channel = guild.get_channel(log_channel_id)
+
+        if not isinstance(channel, discord.TextChannel):
+            return None
+
+        return channel
 
     async def _send_mod_log(
         self,
@@ -155,36 +235,46 @@ class ModerationCog(commands.Cog):
         reason: Optional[str],
         undo_callback,
     ) -> None:
-        if not await self._is_logging_enabled(guild):
+        """
+        Send a normal moderation log.
+
+        Normal moderation logs never ping the moderator role. Only report
+        messages use the optional moderator-role notification.
+        """
+        channel = await self._get_log_channel(guild)
+
+        if channel is None:
             return
 
         config = await self._get_guild_config(guild)
 
-        try:
-            log_channel_id = int(config.get("log_channel"))
-        except (TypeError, ValueError):
-            return
-
-        channel = guild.get_channel(log_channel_id)
-
-        if not isinstance(channel, discord.TextChannel):
-            return
-
         embed = discord.Embed(
             title=f"{action} executed",
-            color=config.get("embed_color", DEFAULT_LOG_COLOR),
+            color=config.get(
+                "embed_color",
+                DEFAULT_LOG_COLOR,
+            ),
             timestamp=discord.utils.utcnow(),
         )
+
         embed.add_field(
             name="Moderator",
-            value=f"{moderator.mention} (`{moderator}`)",
+            value=(
+                f"{moderator.mention} "
+                f"(`{moderator}`)"
+            ),
             inline=False,
         )
+
         embed.add_field(
             name="Target",
-            value=f"{target.mention} (`{target}`)",
+            value=(
+                f"{target.mention} "
+                f"(`{target}`)"
+            ),
             inline=False,
         )
+
         embed.add_field(
             name="Reason",
             value=reason or "No reason provided",
@@ -192,17 +282,62 @@ class ModerationCog(commands.Cog):
         )
 
         view = discord.ui.View(timeout=None)
+
         undo_button = discord.ui.Button(
             label="Undo",
             style=discord.ButtonStyle.danger,
         )
+
         undo_button.callback = undo_callback
         view.add_item(undo_button)
 
         try:
-            await channel.send(embed=embed, view=view)
+            await channel.send(
+                embed=embed,
+                view=view,
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
         except (discord.Forbidden, discord.HTTPException):
             pass
+
+    async def send_report_log(
+        self,
+        guild: discord.Guild,
+        embed: discord.Embed,
+        channel: Optional[discord.TextChannel] = None,
+    ) -> bool:
+        """
+        Send a report embed and optionally ping the moderator role.
+
+        If `channel` is provided, the report is sent there. Otherwise the
+        configured moderation log channel is used.
+
+        Returns True when Discord accepts the message.
+        """
+        if not await self._is_logging_enabled(guild):
+            return False
+
+        if channel is None:
+            channel = await self._get_log_channel(guild)
+
+        if not isinstance(channel, discord.TextChannel):
+            return False
+
+        content, allowed_mentions = (
+            await self._get_moderator_role_ping(guild)
+        )
+
+        try:
+            await channel.send(
+                content=content or None,
+                embed=embed,
+                allowed_mentions=allowed_mentions,
+            )
+            return True
+        except (discord.Forbidden, discord.HTTPException):
+            return False
+
+    # ============================================================ Location checker
 
     async def _validate_target(
         self,
@@ -229,24 +364,32 @@ class ModerationCog(commands.Cog):
 
         if member.guild_permissions >= interaction.user.guild_permissions:
             await interaction.response.send_message(
-                f"You cannot {action} someone with equal or higher permissions.",
+                (
+                    f"You cannot {action} someone with equal or "
+                    "higher permissions."
+                ),
                 ephemeral=True,
             )
             return False
 
         bot_member = interaction.guild.me
 
-        if bot_member is not None and member.top_role >= bot_member.top_role:
+        if (
+            bot_member is not None
+            and member.top_role >= bot_member.top_role
+        ):
             await interaction.response.send_message(
-                "I cannot act on that member because their top role is "
-                "equal to or higher than my top role.",
+                (
+                    "I cannot act on that member because their top "
+                    "role is equal to or higher than my top role."
+                ),
                 ephemeral=True,
             )
             return False
 
         return True
 
-    # ============================================================ Purge
+    # ============================================================ The purge!!!!
 
     @app_commands.command(
         name="purge",
@@ -274,9 +417,15 @@ class ModerationCog(commands.Cog):
             )
             return
 
-        if not isinstance(interaction.channel, discord.TextChannel):
+        if not isinstance(
+            interaction.channel,
+            discord.TextChannel,
+        ):
             await interaction.response.send_message(
-                "This command can only be used in a normal text channel.",
+                (
+                    "This command can only be used in a normal "
+                    "text channel."
+                ),
                 ephemeral=True,
             )
             return
@@ -297,21 +446,31 @@ class ModerationCog(commands.Cog):
             )
             return
 
-        permissions = interaction.channel.permissions_for(bot_member)
+        permissions = interaction.channel.permissions_for(
+            bot_member
+        )
+
         required = {
             "View Channel": permissions.view_channel,
-            "Read Message History": permissions.read_message_history,
+            "Read Message History": (
+                permissions.read_message_history
+            ),
             "Manage Messages": permissions.manage_messages,
             "Send Messages": permissions.send_messages,
         }
+
         missing = [
-            name for name, allowed in required.items() if not allowed
+            name
+            for name, allowed in required.items()
+            if not allowed
         ]
 
         if missing:
             await interaction.response.send_message(
-                "I am missing these permissions in this channel: "
-                + ", ".join(missing),
+                (
+                    "I am missing these permissions in this channel: "
+                    + ", ".join(missing)
+                ),
                 ephemeral=True,
             )
             return
@@ -345,11 +504,16 @@ class ModerationCog(commands.Cog):
                 f"Deleted {len(deleted_messages)} message(s).",
                 ephemeral=True,
             )
+
         except discord.Forbidden:
             await interaction.followup.send(
-                "I do not have permission to delete messages in this channel.",
+                (
+                    "I do not have permission to delete messages "
+                    "in this channel."
+                ),
                 ephemeral=True,
             )
+
         except discord.HTTPException as error:
             await interaction.followup.send(
                 f"Discord rejected the purge request: `{error}`",
@@ -377,7 +541,11 @@ class ModerationCog(commands.Cog):
         if interaction.guild is None:
             return
 
-        if not await self._validate_target(interaction, member, "ban"):
+        if not await self._validate_target(
+            interaction,
+            member,
+            "ban",
+        ):
             return
 
         if not isinstance(interaction.user, discord.Member):
@@ -397,9 +565,14 @@ class ModerationCog(commands.Cog):
             async def undo_ban(
                 undo_interaction: discord.Interaction,
             ) -> None:
-                if not await self._head_mod_check(undo_interaction):
+                if not await self._head_mod_check(
+                    undo_interaction
+                ):
                     await undo_interaction.response.send_message(
-                        "Only the head of moderation can undo actions.",
+                        (
+                            "Only the head of moderation can "
+                            "undo actions."
+                        ),
                         ephemeral=True,
                     )
                     return
@@ -407,12 +580,17 @@ class ModerationCog(commands.Cog):
                 try:
                     await interaction.guild.unban(
                         member,
-                        reason=f"Ban undone by {undo_interaction.user}",
+                        reason=(
+                            f"Ban undone by "
+                            f"{undo_interaction.user}"
+                        ),
                     )
+
                     await undo_interaction.response.send_message(
                         f"Unbanned `{member}`.",
                         ephemeral=True,
                     )
+
                 except discord.HTTPException:
                     await undo_interaction.response.send_message(
                         "Failed to unban the user.",
@@ -432,18 +610,20 @@ class ModerationCog(commands.Cog):
                 f"Banned `{member}`.",
                 ephemeral=True,
             )
+
         except discord.Forbidden:
             await interaction.followup.send(
                 "I do not have permission to ban that member.",
                 ephemeral=True,
             )
+
         except discord.HTTPException as error:
             await interaction.followup.send(
                 f"Discord rejected the ban request: `{error}`",
                 ephemeral=True,
             )
 
-    # ============================================================ Kick
+    # ============================================================ Kick aka "Boot"
 
     @app_commands.command(
         name="kick",
@@ -464,7 +644,11 @@ class ModerationCog(commands.Cog):
         if interaction.guild is None:
             return
 
-        if not await self._validate_target(interaction, member, "kick"):
+        if not await self._validate_target(
+            interaction,
+            member,
+            "kick",
+        ):
             return
 
         if not isinstance(interaction.user, discord.Member):
@@ -484,16 +668,23 @@ class ModerationCog(commands.Cog):
             async def undo_kick(
                 undo_interaction: discord.Interaction,
             ) -> None:
-                if not await self._head_mod_check(undo_interaction):
+                if not await self._head_mod_check(
+                    undo_interaction
+                ):
                     await undo_interaction.response.send_message(
-                        "Only the head of moderation can undo actions.",
+                        (
+                            "Only the head of moderation can "
+                            "undo actions."
+                        ),
                         ephemeral=True,
                     )
                     return
 
                 await undo_interaction.response.send_message(
-                    "A kick cannot be undone automatically. "
-                    "The user must rejoin the server.",
+                    (
+                        "A kick cannot be undone automatically. "
+                        "The user must rejoin the server."
+                    ),
                     ephemeral=True,
                 )
 
@@ -510,18 +701,20 @@ class ModerationCog(commands.Cog):
                 f"Kicked `{member}`.",
                 ephemeral=True,
             )
+
         except discord.Forbidden:
             await interaction.followup.send(
                 "I do not have permission to kick that member.",
                 ephemeral=True,
             )
+
         except discord.HTTPException as error:
             await interaction.followup.send(
                 f"Discord rejected the kick request: `{error}`",
                 ephemeral=True,
             )
 
-    # ============================================================ Timeout
+    # ============================================================ Timeout stuff
 
     @app_commands.command(
         name="timeout",
@@ -531,7 +724,9 @@ class ModerationCog(commands.Cog):
     @app_commands.check(mod_perms_check)
     @app_commands.describe(
         member="Member to timeout.",
-        duration_minutes="Timeout duration in minutes, from 1 to 40320.",
+        duration_minutes=(
+            "Timeout duration in minutes, from 1 to 40320."
+        ),
         reason="Reason for the timeout.",
     )
     async def timeout(
@@ -546,12 +741,19 @@ class ModerationCog(commands.Cog):
 
         if duration_minutes < 1 or duration_minutes > 40320:
             await interaction.response.send_message(
-                "The timeout must be between 1 and 40320 minutes.",
+                (
+                    "The timeout must be between 1 and 40320 "
+                    "minutes."
+                ),
                 ephemeral=True,
             )
             return
 
-        if not await self._validate_target(interaction, member, "timeout"):
+        if not await self._validate_target(
+            interaction,
+            member,
+            "timeout",
+        ):
             return
 
         if not isinstance(interaction.user, discord.Member):
@@ -565,7 +767,10 @@ class ModerationCog(commands.Cog):
                 + timedelta(minutes=duration_minutes)
             )
 
-            await member.timeout(timeout_until, reason=reason)
+            await member.timeout(
+                timeout_until,
+                reason=reason,
+            )
 
             self.mod_stats.increment(
                 interaction.guild.id,
@@ -576,9 +781,14 @@ class ModerationCog(commands.Cog):
             async def undo_timeout(
                 undo_interaction: discord.Interaction,
             ) -> None:
-                if not await self._head_mod_check(undo_interaction):
+                if not await self._head_mod_check(
+                    undo_interaction
+                ):
                     await undo_interaction.response.send_message(
-                        "Only the head of moderation can undo actions.",
+                        (
+                            "Only the head of moderation can "
+                            "undo actions."
+                        ),
                         ephemeral=True,
                     )
                     return
@@ -586,12 +796,17 @@ class ModerationCog(commands.Cog):
                 try:
                     await member.timeout(
                         None,
-                        reason=f"Timeout undone by {undo_interaction.user}",
+                        reason=(
+                            f"Timeout undone by "
+                            f"{undo_interaction.user}"
+                        ),
                     )
+
                     await undo_interaction.response.send_message(
                         f"Removed timeout from {member.mention}.",
                         ephemeral=True,
                     )
+
                 except discord.HTTPException:
                     await undo_interaction.response.send_message(
                         "Failed to remove the timeout.",
@@ -608,21 +823,29 @@ class ModerationCog(commands.Cog):
             )
 
             await interaction.followup.send(
-                f"Timed out {member.mention} for {duration_minutes} minute(s).",
+                (
+                    f"Timed out {member.mention} for "
+                    f"{duration_minutes} minute(s)."
+                ),
                 ephemeral=True,
             )
+
         except discord.Forbidden:
             await interaction.followup.send(
-                "I do not have permission to timeout that member.",
+                (
+                    "I do not have permission to timeout "
+                    "that member."
+                ),
                 ephemeral=True,
             )
+
         except discord.HTTPException as error:
             await interaction.followup.send(
                 f"Discord rejected the timeout request: `{error}`",
                 ephemeral=True,
             )
 
-    # ============================================================ Moderator stats
+    # ============================================================ Mod chud stats
 
     @app_commands.command(
         name="modstats",
@@ -649,111 +872,60 @@ class ModerationCog(commands.Cog):
             return
 
         target = moderator or interaction.user
-        stats = self.mod_stats.get(interaction.guild.id, target.id)
+        stats = self.mod_stats.get(
+            interaction.guild.id,
+            target.id,
+        )
 
         total_actions = sum(stats.values())
 
         embed = discord.Embed(
-            title=f"Moderation Stats — {target.display_name}",
+            title=(
+                f"Moderation Stats — "
+                f"{target.display_name}"
+            ),
             color=DEFAULT_LOG_COLOR,
         )
-        embed.set_thumbnail(url=target.display_avatar.url)
+
+        embed.set_thumbnail(
+            url=target.display_avatar.url
+        )
 
         embed.add_field(
             name="Reports claimed",
             value=str(stats["reports_claimed"]),
             inline=True,
         )
+
         embed.add_field(
             name="Kicks",
             value=str(stats["kicks"]),
             inline=True,
         )
+
         embed.add_field(
             name="Bans",
             value=str(stats["bans"]),
             inline=True,
         )
+
         embed.add_field(
             name="Timeouts",
             value=str(stats["timeouts"]),
             inline=True,
         )
+
         embed.add_field(
             name="Total actions",
             value=str(total_actions),
             inline=True,
         )
 
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    # ============================================================ Legacy setup command
-
-    @app_commands.command(
-        name="logging_setup",
-        description="Configure moderation logging and roles.",
-    )
-    @app_commands.guild_only()
-    @owner_or_has_permissions(manage_guild=True)
-    @app_commands.describe(
-        log_channel="Channel where moderation logs will be sent.",
-        moderator_role="Role allowed to use moderation commands.",
-        head_moderator_role="Role allowed to undo moderation actions.",
-        embed_color="Optional hex color, for example: 96edf1.",
-    )
-    async def logging_setup(
-        self,
-        interaction: discord.Interaction,
-        log_channel: discord.TextChannel,
-        moderator_role: discord.Role,
-        head_moderator_role: discord.Role,
-        embed_color: Optional[str] = None,
-    ) -> None:
-        if interaction.guild is None:
-            return
-
-        cleaned_color = "96edf1"
-
-        if embed_color:
-            cleaned_color = embed_color.strip().lstrip("#")
-
-            try:
-                color = int(cleaned_color, 16)
-
-                if not 0 <= color <= 0xFFFFFF:
-                    raise ValueError
-            except ValueError:
-                await interaction.response.send_message(
-                    "Invalid hex color. Use a value such as `96edf1`.",
-                    ephemeral=True,
-                )
-                return
-
-        guild_id = interaction.guild.id
-        self.store.set(guild_id, MODULE_KEY, "enabled", True)
-        self.store.set(guild_id, MODULE_KEY, "log_channel", log_channel.id)
-        self.store.set(guild_id, MODULE_KEY, "mod_role", moderator_role.id)
-        self.store.set(
-            guild_id,
-            MODULE_KEY,
-            "head_mod_role",
-            head_moderator_role.id,
-        )
-        self.store.set(
-            guild_id,
-            MODULE_KEY,
-            "embed_color",
-            cleaned_color,
-        )
-
         await interaction.response.send_message(
-            "Moderation logging configured:\n"
-            f"- Channel: {log_channel.mention}\n"
-            f"- Moderator role: {moderator_role.mention}\n"
-            f"- Head moderator role: {head_moderator_role.mention}\n"
-            f"- Embed color: `#{cleaned_color}`",
+            embed=embed,
             ephemeral=True,
         )
+
 
     # ============================================================ Error handling
 
@@ -764,19 +936,28 @@ class ModerationCog(commands.Cog):
     ) -> None:
         if isinstance(error, app_commands.CheckFailure):
             message = (
-                "You need the configured Moderator or Head Moderator "
-                "role to use that command."
+                "You need the configured Moderator or Head "
+                "Moderator role to use that command."
             )
         else:
             print(
-                f"[moderation] {type(error).__name__}: {error}"
+                f"[moderation] "
+                f"{type(error).__name__}: {error}"
             )
-            message = "An unexpected moderation error occurred."
+            message = (
+                "An unexpected moderation error occurred."
+            )
 
         if interaction.response.is_done():
-            await interaction.followup.send(message, ephemeral=True)
+            await interaction.followup.send(
+                message,
+                ephemeral=True,
+            )
         else:
-            await interaction.response.send_message(message, ephemeral=True)
+            await interaction.response.send_message(
+                message,
+                ephemeral=True,
+            )
 
 
 async def setup(bot: commands.Bot) -> None:

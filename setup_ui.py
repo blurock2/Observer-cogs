@@ -425,8 +425,8 @@ MODULES: List[ModuleSpec] = [
         label="Tickets",
         emoji="🎫",
         description=(
-            "Support ticket panels. Configure the settings below, then use "
-            "`/ticket_panel` to post the Create Ticket button."
+            "Support ticket panels. Configure the settings below, "
+            "then use `/ticket_panel` to post the Create Ticket button."
         ),
         settings=[
             SettingSpec(
@@ -440,7 +440,9 @@ MODULES: List[ModuleSpec] = [
                 "panel_channel",
                 "Panel channel",
                 "channel",
-                description="Where `/ticket_panel` posts the ticket panel.",
+                description=(
+                    "Where `/ticket_panel` posts the ticket panel."
+                ),
             ),
             SettingSpec(
                 "support_role",
@@ -449,10 +451,22 @@ MODULES: List[ModuleSpec] = [
                 description="Role with access to all tickets.",
             ),
             SettingSpec(
+                "ping_support_role",
+                "Ping support role",
+                "toggle",
+                default=False,
+                description=(
+                    "Mention the Support role when a ticket is created."
+                ),
+            ),
+            SettingSpec(
                 "blacklisted_role",
                 "Blacklisted role",
                 "role",
-                description="Role that cannot create tickets (optional).",
+                description=(
+                    "Role that cannot create tickets (optional)."
+                
+                ),
             ),
         ],
     ),
@@ -497,6 +511,15 @@ MODULES: List[ModuleSpec] = [
             SettingSpec("log_channel", "Mod log channel", "channel"),
             SettingSpec("mod_role", "Moderator role", "role"),
             SettingSpec("head_mod_role", "Head moderator role", "role"),
+            SettingSpec(
+                        "ping_mod_role",
+                        "Ping moderator role",
+                        "toggle",
+                        default=False,
+                        description=(
+                        "Mention the Moderator role when a report is sent."
+                        ),
+            ),
             SettingSpec("embed_color", "Log embed color", "text",
                         description="Hex color, e.g. 96edf1",
                         default="96edf1"),
