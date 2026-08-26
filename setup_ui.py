@@ -343,7 +343,8 @@ MODULES: List[ModuleSpec] = [
         key="report_msg",
         label="Report Message",
         emoji="📣",
-        description="Let users report a message to staff.",
+        description="Let users report a message to staff. If you are looking for the moderator ping," \
+        "check the Moderation module instead.",
         settings=[
             SettingSpec("enabled", "Enabled", "toggle", default=False),
             SettingSpec("report_channel", "Reports channel", "channel"),
