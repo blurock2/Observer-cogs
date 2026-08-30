@@ -331,6 +331,27 @@ MODULES: List[ModuleSpec] = [
         ],
     ),
     ModuleSpec(
+        key="acc_link",
+        label="Account Linking",
+        emoji="🔗",
+        description="Link and display public GitHub and Steam profiles.",
+        settings=[
+            SettingSpec(
+                "enabled",
+                "Enabled",
+                "toggle",
+                default=False,
+                description="Enable account-linking commands and profile lookups.",
+            ),
+            SettingSpec(
+                "channel",
+                "Allowed channel",
+                "channel",
+                description="Only allow account lookups in this channel. Leave unset for all channels.",
+            ),
+        ],
+    ),
+    ModuleSpec(
         key="utilities",
         label="Utilities",
         emoji="🧰",

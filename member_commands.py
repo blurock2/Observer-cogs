@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Optional
 
 import discord
+from discord import app_commands
+from discord.abc import User as DiscordUser
 from discord.ext import commands
 
 from cogs.setup_ui import DB_PATH, SetupConfigStore
@@ -99,6 +101,27 @@ class MemberCommands(commands.Cog):
     def timestamp(date) -> str:
         return f"<t:{int(date.timestamp())}:F>"
 
+    @staticmethod
+    def _debug_avatar_target(label: str, target: object) -> None:
+        print(
+            f"[avatar-debug] {label}: type={type(target).__name__}, "
+            f"is_user={isinstance(target, discord.User)}, "
+            f"is_abc_user={isinstance(target, DiscordUser)}"
+        )
+
+    async def _resolve_user_for_details(
+        self,
+        target: discord.abc.User,
+    ) -> discord.abc.User:
+        try:
+            if isinstance(target, discord.Member):
+                return await self.bot.fetch_user(target.id)
+            if isinstance(target, discord.User):
+                return await self.bot.fetch_user(target.id)
+        except discord.HTTPException:
+            pass
+        return target
+
     def get_message_count(self, guild_id: int, user_id: int) -> int:
         result = self.database.execute(
             """
@@ -134,26 +157,56 @@ class MemberCommands(commands.Cog):
 
     # ============================================================ Avatar
 
-    @commands.hybrid_command(
-        name="avatar",
-        description="Show a member's avatar.",
+    @app_commands.command(name="avatar")
+    @app_commands.describe(
+        member="User whose avatar you want to view.",
     )
-    @commands.guild_only()
-    async def avatar(
+    async def avatar_slash(
         self,
-        ctx: commands.Context,
-        member: Optional[discord.Member] = None,
+        interaction: discord.Interaction,
+        member: Optional[discord.User] = None,
     ) -> None:
-        if not await self._require_enabled(ctx):
+        target = member or interaction.user
+        self._debug_avatar_target("slash avatar target", target)
+
+        if not isinstance(target, DiscordUser):
+            print(
+                f"[avatar-debug] rejecting slash avatar target: "
+                f"{type(target).__name__}"
+            )
             return
 
-        target = member or ctx.author
-
-        if not isinstance(target, discord.Member):
-            return
+        display_name = getattr(target, "display_name", target.name)
 
         embed = discord.Embed(
-            title=f"{target.display_name}'s Avatar",
+            title=f"{display_name}'s Avatar",
+            color=EMBED_COLOR,
+        )
+        embed.set_image(url=target.display_avatar.url)
+        embed.set_footer(text=f"User ID: {target.id}")
+
+        await interaction.response.send_message(embed=embed)
+
+    @commands.command(name="avatar")
+    async def avatar_prefix(
+        self,
+        ctx: commands.Context,
+        member: Optional[discord.User] = None,
+    ) -> None:
+        target = member or ctx.author
+        self._debug_avatar_target("prefix avatar target", target)
+
+        if not isinstance(target, DiscordUser):
+            print(
+                f"[avatar-debug] rejecting prefix avatar target: "
+                f"{type(target).__name__}"
+            )
+            return
+
+        display_name = getattr(target, "display_name", target.name)
+
+        embed = discord.Embed(
+            title=f"{display_name}'s Avatar",
             color=EMBED_COLOR,
         )
         embed.set_image(url=target.display_avatar.url)
@@ -257,60 +310,161 @@ class MemberCommands(commands.Cog):
         name="id",
         description="Show a member's Discord and server IDs.",
     )
-    @commands.guild_only()
+    @app_commands.describe(
+        member="User to look up.",
+        show_all="Include the user's available profile details with the ID.",
+    )
     async def user_id(
         self,
         ctx: commands.Context,
-        member: Optional[discord.Member] = None,
+        member: Optional[discord.User] = None,
+        show_all: bool = False,
     ) -> None:
-        if not await self._require_enabled(ctx):
-            return
-
         guild = ctx.guild
 
-        if guild is None:
+        if guild is not None:
+            if not await self._require_enabled(ctx):
+                return
+
+            target = member or ctx.author
+
+            if not isinstance(target, discord.Member):
+                return
+
+            if show_all:
+                user_for_details = await self._resolve_user_for_details(target)
+                details = []
+                username = getattr(user_for_details, "name", None)
+                global_name = getattr(user_for_details, "global_name", None)
+                nickname = getattr(target, "nick", None) or getattr(target, "display_name", None)
+                mention = getattr(target, "mention", None)
+                user_id_value = getattr(target, "id", None)
+
+                if username:
+                    details.append(f"**Username:** `{username}`")
+                if global_name:
+                    details.append(f"**Global name:** `{global_name}`")
+                if nickname and nickname != username:
+                    details.append(f"**Nickname:** `{nickname}`")
+                if user_id_value is not None:
+                    details.append(f"**User ID:** `{user_id_value}`")
+                if mention:
+                    details.append(f"**Mention:** {mention}")
+
+                banner = getattr(user_for_details, "banner", None)
+                banner_url = banner.url if banner is not None else None
+                avatar_url = getattr(user_for_details.display_avatar, "url", None)
+
+                embed = discord.Embed(
+                    title=f"{target.display_name}'s ID and profile",
+                    description="\n".join(details) if details else "No extra profile data available.",
+                    color=EMBED_COLOR,
+                )
+                if avatar_url:
+                    embed.set_thumbnail(url=avatar_url)
+                if banner_url:
+                    embed.set_image(url=banner_url)
+                embed.add_field(
+                    name="🏠 Server ID",
+                    value=f"`{guild.id}`",
+                    inline=False,
+                )
+                embed.add_field(
+                    name="🎭 Highest Role ID",
+                    value=f"`{target.top_role.id}`",
+                    inline=False,
+                )
+                embed.set_footer(text=f"{guild.name} • ID information")
+
+                await ctx.send(
+                    embed=embed,
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+                return
+
+            embed = discord.Embed(
+                title=f"{target.display_name}'s IDs",
+                description=(
+                    "Useful identifiers for this member and the current server."
+                ),
+                color=EMBED_COLOR,
+            )
+            embed.set_thumbnail(url=target.display_avatar.url)
+
+            embed.add_field(
+                name="👤 User ID",
+                value=f"`{target.id}`",
+                inline=False,
+            )
+            embed.add_field(
+                name="🏠 Server ID",
+                value=f"`{guild.id}`",
+                inline=False,
+            )
+            embed.add_field(
+                name="🎭 Highest Role ID",
+                value=f"`{target.top_role.id}`",
+                inline=False,
+            )
+            embed.add_field(
+                name="📛 Mention",
+                value=target.mention,
+                inline=False,
+            )
+            embed.set_footer(text=f"{guild.name} • ID information")
+
+            await ctx.send(
+                embed=embed,
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
             return
 
         target = member or ctx.author
 
-        if not isinstance(target, discord.Member):
+        if not isinstance(target, DiscordUser):
+            print(
+                f"[id-debug] rejecting DM target: {type(target).__name__}"
+            )
             return
 
-        embed = discord.Embed(
-            title=f"{target.display_name}'s IDs",
-            description=(
-                "Useful identifiers for this member and the current server."
-            ),
-            color=EMBED_COLOR,
-        )
-        embed.set_thumbnail(url=target.display_avatar.url)
+        if show_all:
+            user_for_details = await self._resolve_user_for_details(target)
+            details = []
+            username = getattr(user_for_details, "name", None)
+            global_name = getattr(user_for_details, "global_name", None)
+            display_name = getattr(target, "display_name", None) or getattr(user_for_details, "name", None)
+            mention = getattr(target, "mention", None) or getattr(user_for_details, "mention", None)
+            user_id_value = getattr(target, "id", None) or getattr(user_for_details, "id", None)
 
-        embed.add_field(
-            name="👤 User ID",
-            value=f"`{target.id}`",
-            inline=False,
-        )
-        embed.add_field(
-            name="🏠 Server ID",
-            value=f"`{guild.id}`",
-            inline=False,
-        )
-        embed.add_field(
-            name="🎭 Highest Role ID",
-            value=f"`{target.top_role.id}`",
-            inline=False,
-        )
-        embed.add_field(
-            name="📛 Mention",
-            value=target.mention,
-            inline=False,
-        )
-        embed.set_footer(text=f"{guild.name} • ID information")
+            if username:
+                details.append(f"**Username:** `{username}`")
+            if global_name:
+                details.append(f"**Global name:** `{global_name}`")
+            if display_name and display_name != username:
+                details.append(f"**Display name:** `{display_name}`")
+            if user_id_value is not None:
+                details.append(f"**User ID:** `{user_id_value}`")
+            if mention:
+                details.append(f"**Mention:** {mention}")
 
-        await ctx.send(
-            embed=embed,
-            allowed_mentions=discord.AllowedMentions.none(),
-        )
+            banner = getattr(user_for_details, "banner", None)
+            banner_url = banner.url if banner is not None else None
+            avatar_url = getattr(user_for_details.display_avatar, "url", None)
+
+            embed = discord.Embed(
+                title=f"{display_name or username or 'User'}'s ID and profile",
+                description="\n".join(details) if details else "No extra profile data available.",
+                color=EMBED_COLOR,
+            )
+            if avatar_url:
+                embed.set_thumbnail(url=avatar_url)
+            if banner_url:
+                embed.set_image(url=banner_url)
+
+            await ctx.send(embed=embed)
+            return
+
+        await ctx.send(f"`{target.id}`")
 
 
 async def setup(bot: commands.Bot) -> None:

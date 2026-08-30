@@ -46,6 +46,7 @@ intents.presences = True
 class MyBot(commands.Bot):
     EXTENSIONS = (
         "cogs.setup_ui",
+        "cogs.acc_link",
         "cogs.reaction_roles",
         "cogs.message_quoter",
         "cogs.utilities",
@@ -62,6 +63,7 @@ class MyBot(commands.Bot):
         "cogs.leveling",
         "cogs.weather",
         "cogs.spotify_show",
+        "cogs.app_bridge",
     )
 
     def __init__(self) -> None:

@@ -1392,17 +1392,15 @@ class Leveling(commands.Cog):
 
     # ============================================================ Weekly scheduler
 
-    @tasks.loop(minutes=5)
+    @tasks.loop(minutes=1)
     async def _weekly_loop(self) -> None:
         await self.bot.wait_until_ready()
 
         try:
             now = datetime.now(timezone.utc)
 
-            # Iterate every guild the bot is in and read its config via
-            # _get_guild_config (which overlays /setup store values).
-            # This honors weekly channels set from the dashboard, not
-            # only those written to guild_config by /weekly_config.
+            # Iterate every guild and post only when the configured weekday
+            # and UTC time exactly matches the current minute.
             for guild in self.bot.guilds:
                 try:
                     config = await self._get_guild_config(guild.id)
@@ -1416,32 +1414,13 @@ class Leveling(commands.Cog):
                     hour = config.get("weekly_hour", 0) or 0
                     minute = config.get("weekly_minute", 0) or 0
 
-                    target = now.replace(
-                        hour=hour,
-                        minute=minute,
-                        second=0,
-                        microsecond=0,
-                    )
+                    if now.weekday() != day:
+                        continue
 
-                    days_ahead = day - target.weekday()
-
-                    if days_ahead < 0:
-                        days_ahead += 7
-
-                    target += timedelta(days=days_ahead)
-
-                    if target <= now:
-                        target += timedelta(days=7)
-
-                    seconds_until_target = (
-                        target - now
-                    ).total_seconds()
-
-                    if not 0 <= seconds_until_target < 300:
+                    if now.hour != hour or now.minute != minute:
                         continue
 
                     today = now.date()
-
                     previous_monday = today - timedelta(
                         days=today.weekday() + 7
                     )
