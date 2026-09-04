@@ -24,7 +24,7 @@ class Mentions(commands.Cog):
     Dashboard settings:
     - mentions.enabled
     - mentions.blocked_role
-    - mentions.whitelist_role
+    - mentions.whitelist_role (sender bypass role)
     - mentions.timeout_minutes
     - mentions.delete_warning_after
     """
@@ -98,23 +98,32 @@ class Mentions(commands.Cog):
         self,
         message: discord.Message,
         blocked_role_id: int,
-        whitelist_role_id: Optional[int],
+        bypass_role_id: Optional[int],
     ) -> Optional[str]:
         """Return a reason when a protected mention is found."""
+        author = message.author
+        can_ping_protected = self._has_role(author, blocked_role_id) or (
+            bypass_role_id is not None
+            and self._has_role(author, bypass_role_id)
+        )
+
+        if can_ping_protected:
+            return None
+
         for mentioned_member in message.mentions:
             if not self._has_role(mentioned_member, blocked_role_id):
                 continue
 
-            is_exempt = (
-                whitelist_role_id is not None
-                and self._has_role(mentioned_member, whitelist_role_id)
-            )
+            if (
+                bypass_role_id is not None
+                and self._has_role(mentioned_member, bypass_role_id)
+            ):
+                continue
 
-            if not is_exempt:
-                return (
-                    "pinging protected member "
-                    f"{mentioned_member.mention}"
-                )
+            return (
+                "pinging protected member "
+                f"{mentioned_member.mention}"
+            )
 
         for mentioned_role in message.role_mentions:
             if mentioned_role.id == blocked_role_id:
@@ -142,7 +151,7 @@ class Mentions(commands.Cog):
         if blocked_role_id is None:
             return
 
-        whitelist_role_id = self._get_role_id(
+        bypass_role_id = self._get_role_id(
             guild.id,
             "whitelist_role",
         )
@@ -150,7 +159,7 @@ class Mentions(commands.Cog):
         violation_reason = self._get_violation_reason(
             message,
             blocked_role_id,
-            whitelist_role_id,
+            bypass_role_id,
         )
 
         if violation_reason is None:

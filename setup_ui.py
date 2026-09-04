@@ -574,10 +574,10 @@ MODULES: List[ModuleSpec] = [
             ),
             SettingSpec(
                 "whitelist_role",
-                "Exempt role",
+                "Ping bypass role",
                 "role",
                 description=(
-                    "Protected members with this role can still be pinged."
+                    "Members with this role can ping protected members and roles."
                 ),
             ),
             SettingSpec(
