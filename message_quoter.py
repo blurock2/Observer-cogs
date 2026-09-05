@@ -21,6 +21,7 @@ NO_MENTIONS = discord.AllowedMentions.none()
 MESSAGE_LINK_RE = re.compile(
     r"https?://(?:[a-zA-Z0-9-]+\.)?discord(?:app)?\.com/channels/(\d+)/(\d+)/(\d+)"
 )
+BARE_EMOJI_ID_RE = re.compile(r"(?<!\w):([0-9]{9,20}):(?!\w)")
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -113,6 +114,24 @@ class MessageQuoter(commands.Cog):
         self.config = MessageQuoterConfig()
 
 
+    @staticmethod
+    def normalize_custom_emojis(
+        content: str,
+        guild: Optional[discord.Guild],
+    ) -> str:
+        """Convert bare custom emoji IDs to Discord's renderable emoji format."""
+        if guild is None or not content:
+            return content
+
+        emojis_by_id = {emoji.id: emoji for emoji in guild.emojis}
+
+        def replace_emoji(match: re.Match[str]) -> str:
+            emoji = emojis_by_id.get(int(match.group(1)))
+            return str(emoji) if emoji is not None else match.group(0)
+
+        return BARE_EMOJI_ID_RE.sub(replace_emoji, content)
+
+
     def get_embed_color(
         self,
         guild_id: int,
@@ -181,7 +200,11 @@ class MessageQuoter(commands.Cog):
 
         if has_text or has_image:
             embed = discord.Embed(
-                description=quoted.content if has_text else None,
+                description=(
+                    self.normalize_custom_emojis(quoted.content, quoted.guild)
+                    if has_text
+                    else None
+                ),
                 color=embed_color,
                 timestamp=quoted.created_at,
             )
