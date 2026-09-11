@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from typing import Optional
 
 import aiohttp
 import discord
@@ -11,7 +10,6 @@ from discord import app_commands
 from discord.ext import commands
 
 from cogs.setup_ui import DB_PATH, SetupConfigStore
-
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +81,7 @@ class Weather(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.store = SetupConfigStore(DB_PATH)
-        self.session: Optional[aiohttp.ClientSession] = None
+        self.session: aiohttp.ClientSession | None = None
 
     # ======================================================== Cog lifecycle
 
@@ -126,7 +124,7 @@ class Weather(commands.Cog):
     def _default_location(
         self,
         guild_id: int,
-    ) -> Optional[str]:
+    ) -> str | None:
         value = self._get(
             guild_id,
             "location",
@@ -160,12 +158,24 @@ class Weather(commands.Cog):
             )
         )
 
+    def _is_user_installed(
+        self,
+        interaction: discord.Interaction,
+    ) -> bool:
+        owners = getattr(
+            interaction,
+            "_integration_owners",
+            {},
+        )
+
+        return bool(owners.get(1))
+
     # ======================================================== Open-Meteo API calls
 
     async def geocode_location(
         self,
         location: str,
-    ) -> Optional[dict]:
+    ) -> dict | None:
         if self.session is None or self.session.closed:
             logger.error("Weather HTTP session is unavailable.")
             return None
@@ -207,7 +217,7 @@ class Weather(commands.Cog):
         latitude: float,
         longitude: float,
         units: str,
-    ) -> Optional[dict]:
+    ) -> dict | None:
         if self.session is None or self.session.closed:
             logger.error("Weather HTTP session is unavailable.")
             return None
@@ -394,7 +404,7 @@ class Weather(commands.Cog):
         *,
         units: str,
         show_humidity: bool,
-    ) -> tuple[Optional[discord.Embed], Optional[str]]:
+    ) -> tuple[discord.Embed | None, str | None]:
         try:
             location = await self.geocode_location(
                 location_query,
@@ -482,7 +492,7 @@ class Weather(commands.Cog):
     async def weather_command(
         self,
         interaction: discord.Interaction,
-        location: Optional[str] = None,
+        location: str | None = None,
     ) -> None:
         guild = interaction.guild
 
@@ -521,6 +531,43 @@ class Weather(commands.Cog):
         # ==================================================== Guild context
 
         if not self._is_enabled(guild.id):
+            if self._is_user_installed(interaction):
+                location_query = (
+                    location.strip()
+                    if location and location.strip()
+                    else None
+                )
+
+                if not location_query:
+                    await interaction.response.send_message(
+                        "Provide a location when using Weather in this server.",
+                        ephemeral=True,
+                    )
+                    return
+
+                await interaction.response.defer()
+
+                embed, error_message = (
+                    await self.build_weather_response(
+                        location_query,
+                        units="metric",
+                        show_humidity=True,
+                    )
+                )
+
+                if error_message is not None:
+                    await interaction.followup.send(
+                        error_message,
+                        allowed_mentions=discord.AllowedMentions.none(),
+                    )
+                    return
+
+                await interaction.followup.send(
+                    embed=embed,
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+                return
+
             await interaction.response.send_message(
                 (
                     "The Weather module is disabled. "
@@ -573,7 +620,7 @@ class Weather(commands.Cog):
     def extract_city(
         self,
         content: str,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Recognize simple weather questions.
 

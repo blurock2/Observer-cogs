@@ -1,27 +1,29 @@
 from __future__ import annotations
 
 import io
-import json
+import logging
 from pathlib import Path
-from typing import Optional
 
 import aiohttp
 import discord
 from discord import app_commands
 from discord.ext import commands
 
+from cogs.config import BOT_OWNER_ID, is_bot_owner
 from cogs.setup_ui import (
     DB_PATH,
     SetupConfigStore,
     owner_or_has_permissions,
 )
-
+from database import RelayConfigStore
 
 CONFIG_FILE = Path("message_relay_config.json")
+RELAY_STORE = RelayConfigStore(DB_PATH, Path(__file__).resolve().parent.parent / CONFIG_FILE)
 MODULE_KEY = "message_relay"
 EMBED_COLOR = discord.Colour(0x96EDF1)
 NO_MENTIONS = discord.AllowedMentions.none()
 MAX_ATTACHMENT_SIZE = 25 * 1024 * 1024
+logger = logging.getLogger("observer.relay")
 
 
 def load_config() -> dict:
@@ -41,29 +43,11 @@ def load_config() -> dict:
         }
     }
     """
-    if not CONFIG_FILE.exists():
-        return {"links": [], "sources": {}, "targets": {}}
-
-    try:
-        data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-
-        if not isinstance(data, dict):
-            raise ValueError("Relay config is not a dictionary")
-
-        data.setdefault("links", [])
-        data.setdefault("sources", {})
-        data.setdefault("targets", {})
-
-        return data
-    except (json.JSONDecodeError, OSError, ValueError):
-        return {"links": [], "sources": {}, "targets": {}}
+    return RELAY_STORE.load()
 
 
 def save_config(data: dict) -> None:
-    CONFIG_FILE.write_text(
-        json.dumps(data, indent=4),
-        encoding="utf-8",
-    )
+    RELAY_STORE.save(data)
 
 
 def get_source_guilds_for_target(
@@ -96,7 +80,7 @@ def get_target_guilds_for_source(
 class DestinationSelect(discord.ui.Select):
     def __init__(
         self,
-        cog: "MessageRelay",
+        cog: MessageRelay,
         message: discord.Message,
     ):
         self.cog = cog
@@ -198,7 +182,7 @@ class DestinationSelect(discord.ui.Select):
 class DestinationView(discord.ui.View):
     def __init__(
         self,
-        cog: "MessageRelay",
+        cog: MessageRelay,
         message: discord.Message,
     ):
         super().__init__(timeout=120)
@@ -258,6 +242,25 @@ class MessageRelay(commands.Cog):
             for word in str(raw).split(",")
             if word.strip()
         ]
+
+    def _can_manage_relay(self, user_id: int, guild: discord.Guild) -> bool:
+        if user_id == BOT_OWNER_ID or is_bot_owner(self.bot.get_user(user_id)):
+            return True
+
+        member = guild.get_member(user_id)
+        return member is not None and member.guild_permissions.manage_guild
+
+    def _bot_can_relay(self, guild: discord.Guild) -> bool:
+        member = guild.me
+        if member is None:
+            return False
+        permissions = member.guild_permissions
+        return (
+            permissions.view_channel
+            and permissions.send_messages
+            and permissions.embed_links
+            and permissions.attach_files
+        )
 
     def _is_filtered(
         self,
@@ -383,9 +386,9 @@ class MessageRelay(commands.Cog):
         interaction: discord.Interaction,
         source_server_id: str,
         target_server_1: str,
-        target_server_2: Optional[str] = None,
-        target_server_3: Optional[str] = None,
-        target_server_4: Optional[str] = None,
+        target_server_2: str | None = None,
+        target_server_3: str | None = None,
+        target_server_4: str | None = None,
     ) -> None:
         raw_ids = [
             source_server_id,
@@ -422,6 +425,23 @@ class MessageRelay(commands.Cog):
 
         source_guild = guilds[0]
         target_guilds = guilds[1:]
+
+        if any(
+            not self._can_manage_relay(interaction.user.id, guild)
+            for guild in guilds
+        ):
+            await interaction.response.send_message(
+                "You need Manage Server authority in the source and every target server.",
+                ephemeral=True,
+            )
+            return
+
+        if any(not self._bot_can_relay(guild) for guild in guilds):
+            await interaction.response.send_message(
+                "I need View Channel, Send Messages, Embed Links, and Attach Files in every participating server.",
+                ephemeral=True,
+            )
+            return
 
         if not target_guilds:
             await interaction.response.send_message(
@@ -697,7 +717,7 @@ class MessageRelay(commands.Cog):
         )
 
         files: list[discord.File] = []
-        first_image_filename: Optional[str] = None
+        first_image_filename: str | None = None
 
         timeout = aiohttp.ClientTimeout(total=30)
 
@@ -754,8 +774,9 @@ class MessageRelay(commands.Cog):
                 "You need **Manage Server** permission to configure relay links."
             )
         else:
-            print(
-                f"[message_relay] {type(error).__name__}: {error}"
+            logger.error(
+                "Relay command failed",
+                exc_info=(type(error), error, error.__traceback__),
             )
             message = "An unexpected relay error occurred."
 

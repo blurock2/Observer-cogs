@@ -1,10 +1,8 @@
 import socket
 
-import discord
 from discord.ext import commands
 
-from cogs.setup_ui import SetupConfigStore, DB_PATH
-
+from cogs.setup_ui import DB_PATH, SetupConfigStore
 
 MODULE_KEY = "utilities"
 

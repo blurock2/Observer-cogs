@@ -1,18 +1,18 @@
 from __future__ import annotations
 
-import os
 import json
+import os
 import sqlite3
+from collections.abc import Callable
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, List, Optional
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
-# Import owner logic from bot.py
-from bot import BOT_OWNER_ID, is_bot_owner
+from cogs.config import is_bot_owner
 
 
 def owner_or_has_permissions(**perms: bool):
@@ -126,12 +126,19 @@ class SetupConfigStore:
         os.makedirs(os.path.dirname(db_path) or ".", exist_ok=True)
         self._init()
 
-    def _connect(self) -> sqlite3.Connection:
-        # `check_same_thread=False` because discord.py calls view
-        # callbacks from its own threads.
-        conn = sqlite3.connect(self.db_path, check_same_thread=False)
+    @contextmanager
+    def _connect(self):
+        conn = sqlite3.connect(self.db_path, timeout=10)
         conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            yield conn
+        except Exception:
+            conn.rollback()
+            raise
+        else:
+            conn.commit()
+        finally:
+            conn.close()
 
     def _init(self) -> None:
         with self._connect() as conn:
@@ -248,10 +255,10 @@ class ModuleSpec:
     label: str                         # e.g. "Leveling"
     emoji: str                         # e.g. "📈"
     description: str                   # one-line summary
-    settings: List[SettingSpec] = field(default_factory=list)
+    settings: list[SettingSpec] = field(default_factory=list)
 
 
-MODULES: List[ModuleSpec] = [
+MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="bot",
         label="Bot System",
@@ -668,7 +675,7 @@ MODULES: List[ModuleSpec] = [
 ]
 
 
-def get_module(key: str) -> Optional[ModuleSpec]:
+def get_module(key: str) -> ModuleSpec | None:
     for module in MODULES:
         if module.key == key:
             return module
@@ -767,7 +774,7 @@ def format_value(guild: discord.Guild, value) -> str:
     return str(value)
 
 
-def format_channel(guild: Optional[discord.Guild], channel_id) -> str:
+def format_channel(guild: discord.Guild | None, channel_id) -> str:
     if channel_id is None:
         return "Not set"
     if guild is not None:
@@ -777,7 +784,7 @@ def format_channel(guild: Optional[discord.Guild], channel_id) -> str:
     return f"<#{channel_id}>"
 
 
-def format_role(guild: Optional[discord.Guild], role_id) -> str:
+def format_role(guild: discord.Guild | None, role_id) -> str:
     if role_id is None:
         return "Not set"
     if guild is not None:
@@ -787,7 +794,7 @@ def format_role(guild: Optional[discord.Guild], role_id) -> str:
     return f"<@&{role_id}>"
 
 
-def display_setting(guild: Optional[discord.Guild], spec: SettingSpec, value) -> str:
+def display_setting(guild: discord.Guild | None, spec: SettingSpec, value) -> str:
     """Format a setting value according to its kind."""
     if value is None:
         value = spec.default
@@ -928,7 +935,7 @@ class AdminOnlyView(discord.ui.View):
 class MainView(AdminOnlyView):
     """The dashboard root: a dropdown listing every module."""
 
-    def __init__(self, cog: "SetupUICog"):
+    def __init__(self, cog: SetupUICog):
         super().__init__(timeout=600)
         self.cog = cog
         self.add_item(self._build_select())
@@ -964,7 +971,7 @@ class MainView(AdminOnlyView):
             embed = build_module_embed(self.cog.store, interaction.guild, module)
             view = ModuleView(self.cog, module_key, interaction.guild)
             await interaction.response.edit_message(embed=embed, view=view)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - UI boundary must report a user-facing error
             print(f"[setup_ui] Error in MainView._on_select: {type(e).__name__}: {e}")
             if not interaction.response.is_done():
                 await interaction.response.send_message(
@@ -976,7 +983,7 @@ class MainView(AdminOnlyView):
 class ModuleView(AdminOnlyView):
     """A single module's config panel: one button per setting + Back."""
 
-    def __init__(self, cog: "SetupUICog", module_key: str, guild: discord.Guild):
+    def __init__(self, cog: SetupUICog, module_key: str, guild: discord.Guild):
         super().__init__(timeout=600)
         self.cog = cog
         self.module_key = module_key
@@ -1056,7 +1063,7 @@ class ModuleView(AdminOnlyView):
                     embed = build_select_embed(module, spec)
                     view = RoleSelectView(cog, module_key, spec.key, guild)
                     await interaction.response.edit_message(embed=embed, view=view)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - UI boundary must report a user-facing error
                 print(f"[setup_ui] Error in ModuleView callback: {type(e).__name__}: {e}")
                 if not interaction.response.is_done():
                     await interaction.response.send_message(
@@ -1071,7 +1078,7 @@ class ModuleView(AdminOnlyView):
             embed = build_main_embed(self.cog.store, interaction.guild)
             view = MainView(self.cog)
             await interaction.response.edit_message(embed=embed, view=view)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - UI boundary must report a user-facing error
             print(f"[setup_ui] Error in ModuleView._on_back: {type(e).__name__}: {e}")
             if not interaction.response.is_done():
                 await interaction.response.send_message(
@@ -1085,7 +1092,7 @@ class ModuleView(AdminOnlyView):
             embed = build_module_embed(self.cog.store, interaction.guild, module)
             view = ModuleView(self.cog, self.module_key, interaction.guild)
             await interaction.response.edit_message(embed=embed, view=view)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - UI boundary must report a user-facing error
             print(f"[setup_ui] Error in ModuleView._refresh: {type(e).__name__}: {e}")
             if not interaction.response.is_done():
                 await interaction.response.send_message(
@@ -1095,7 +1102,7 @@ class ModuleView(AdminOnlyView):
 
 
 class _BackToModuleButton(discord.ui.Button):
-    def __init__(self, parent: "ChannelSelectView | RoleSelectView"):
+    def __init__(self, parent: ChannelSelectView | RoleSelectView):
         super().__init__(label="◀ Back", style=discord.ButtonStyle.secondary)
         self._parent = parent
 
@@ -1107,7 +1114,7 @@ class _BackToModuleButton(discord.ui.Button):
             embed = build_module_embed(cog.store, interaction.guild, module)
             view = ModuleView(cog, module_key, interaction.guild)
             await interaction.response.edit_message(embed=embed, view=view)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - UI boundary must report a user-facing error
             print(f"[setup_ui] Error in _BackToModuleButton: {type(e).__name__}: {e}")
             if not interaction.response.is_done():
                 await interaction.response.send_message(
@@ -1117,7 +1124,7 @@ class _BackToModuleButton(discord.ui.Button):
 
 
 class ChannelSelectView(AdminOnlyView):
-    def __init__(self, cog: "SetupUICog", module_key: str, setting_key: str, guild: discord.Guild):
+    def __init__(self, cog: SetupUICog, module_key: str, setting_key: str, guild: discord.Guild):
         super().__init__(timeout=600)
         self.cog = cog
         self.module_key = module_key
@@ -1147,7 +1154,7 @@ class ChannelSelectView(AdminOnlyView):
             await interaction.followup.send(
                 f"✅ Set to {channel.mention}.", ephemeral=True
             )
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - UI boundary must report a user-facing error
             print(f"[setup_ui] Error in ChannelSelectView._on_select: {type(e).__name__}: {e}")
             if not interaction.response.is_done():
                 await interaction.response.send_message(
@@ -1157,7 +1164,7 @@ class ChannelSelectView(AdminOnlyView):
 
 
 class RoleSelectView(AdminOnlyView):
-    def __init__(self, cog: "SetupUICog", module_key: str, setting_key: str, guild: discord.Guild):
+    def __init__(self, cog: SetupUICog, module_key: str, setting_key: str, guild: discord.Guild):
         super().__init__(timeout=600)
         self.cog = cog
         self.module_key = module_key
@@ -1193,7 +1200,7 @@ class RoleSelectView(AdminOnlyView):
             await interaction.followup.send(
                 f"✅ Set to {role.mention}.", ephemeral=True
             )
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - UI boundary must report a user-facing error
             print(f"[setup_ui] Error in RoleSelectView._on_select: {type(e).__name__}: {e}")
             if not interaction.response.is_done():
                 await interaction.response.send_message(
@@ -1205,7 +1212,7 @@ class RoleSelectView(AdminOnlyView):
 class TextModal(discord.ui.Modal):
     """Modal for `text` and `integer` settings."""
 
-    def __init__(self, cog: "SetupUICog", module_key: str, spec: SettingSpec, guild: discord.Guild):
+    def __init__(self, cog: SetupUICog, module_key: str, spec: SettingSpec, guild: discord.Guild):
         title = f"{spec.label}"[:45]
         super().__init__(title=title)
         self.cog = cog
@@ -1252,7 +1259,7 @@ class TextModal(discord.ui.Modal):
             await interaction.followup.send(
                 f"✅ {self.spec.label} updated.", ephemeral=True
             )
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - UI boundary must report a user-facing error
             print(f"[setup_ui] Error in TextModal.on_submit: {type(e).__name__}: {e}")
             if not interaction.response.is_done():
                 await interaction.response.send_message(

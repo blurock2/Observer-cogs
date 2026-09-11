@@ -4,12 +4,14 @@ import html
 import json
 import re
 import sqlite3
+import ssl
+import xml.etree.ElementTree as ET
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 from urllib import error as urlerror
 from urllib import parse as urlparse
 from urllib import request
-import xml.etree.ElementTree as ET
 
 import discord
 from discord import app_commands
@@ -19,7 +21,7 @@ from cogs.setup_ui import DB_PATH, SetupConfigStore
 
 EMBED_COLOR = 0x96EDF1
 MODULE_KEY = "acc_link"
-ACCOUNT_DB_PATH = Path("data/account_links.sqlite3")
+ACCOUNT_DB_PATH = Path(DB_PATH)
 
 
 class AccountLinkStore:
@@ -30,10 +32,19 @@ class AccountLinkStore:
         ACCOUNT_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
         self._init()
 
-    def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path, check_same_thread=False)
+    @contextmanager
+    def _connect(self):
+        conn = sqlite3.connect(self.db_path, timeout=10)
         conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            yield conn
+        except Exception:
+            conn.rollback()
+            raise
+        else:
+            conn.commit()
+        finally:
+            conn.close()
 
     def _init(self) -> None:
         with self._connect() as conn:
@@ -94,11 +105,11 @@ class AccountLinkStore:
                 path = parsed.path.strip("/")
                 if path:
                     candidates.add(path.lower())
-            if cleaned.startswith("https://") or cleaned.startswith("http://"):
+            if cleaned.startswith(("https://", "http://")):
                 candidates.add(cleaned.rstrip("/").lower())
 
         if normalized_platform == "steam":
-            if cleaned.startswith("https://") or cleaned.startswith("http://"):
+            if cleaned.startswith(("https://", "http://")):
                 parsed = urlparse.urlparse(cleaned)
                 candidates.add(parsed.path.strip("/").lower())
                 if "/id/" in parsed.path.lower():
@@ -112,6 +123,18 @@ class AccountLinkStore:
                 candidates.add(f"https://steamcommunity.com/id/{target}".lower())
                 candidates.add(f"https://steamcommunity.com/profiles/{target}".lower())
 
+        if normalized_platform == "spotify":
+            if cleaned.startswith(("https://", "http://")):
+                parsed = urlparse.urlparse(cleaned)
+                candidates.add(parsed.path.strip("/").lower())
+                if parsed.path.lower().startswith("/user/"):
+                    candidates.add(parsed.path.split("/user/", 1)[1].strip("/").lower())
+                candidates.add(cleaned.rstrip("/").lower())
+            target = AccountLink._spotify_target_from_input(cleaned)
+            if target:
+                candidates.add(target.lower())
+                candidates.add(f"https://open.spotify.com/user/{target}".lower())
+
         with self._connect() as conn:
             rows = conn.execute(
                 "SELECT user_id, username FROM account_links WHERE platform = ?",
@@ -123,17 +146,21 @@ class AccountLinkStore:
             stored_variants: set[str] = {stored.lower()}
             if normalized_platform == "steam":
                 stored_variants.add(AccountLink._steam_target_from_input(stored).lower())
-                if stored.startswith("https://") or stored.startswith("http://"):
+                if stored.startswith(("https://", "http://")):
                     parsed = urlparse.urlparse(stored)
                     stored_variants.add(parsed.path.strip("/").lower())
                     if "/id/" in parsed.path.lower():
                         stored_variants.add(parsed.path.split("/id/", 1)[1].strip("/").lower())
                     if "/profiles/" in parsed.path.lower():
                         stored_variants.add(parsed.path.split("/profiles/", 1)[1].strip("/").lower())
-            if normalized_platform == "github":
-                if stored.startswith("https://") or stored.startswith("http://"):
+            if normalized_platform == "github" and stored.startswith(("https://", "http://")):
                     parsed = urlparse.urlparse(stored)
                     stored_variants.add(parsed.path.strip("/").lower())
+            if normalized_platform == "spotify" and stored.startswith(("https://", "http://")):
+                    parsed = urlparse.urlparse(stored)
+                    stored_variants.add(parsed.path.strip("/").lower())
+                    if parsed.path.lower().startswith("/user/"):
+                        stored_variants.add(parsed.path.split("/user/", 1)[1].strip("/").lower())
             if candidates & stored_variants:
                 return int(row["user_id"]), row["username"]
 
@@ -177,10 +204,7 @@ class AccountLink(commands.Cog):
         if not self._is_enabled(guild_id):
             return False
 
-        if not self._channel_allowed(guild_id, channel_id):
-            return False
-
-        return True
+        return self._channel_allowed(guild_id, channel_id)
 
     @staticmethod
     def _embed_error(message: str) -> discord.Embed:
@@ -196,8 +220,11 @@ class AccountLink(commands.Cog):
     @staticmethod
     def _safe_urlopen(url: str) -> str | None:
         req = request.Request(url, headers=AccountLink._user_agent())
+        context = ssl.create_default_context()
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
         try:
-            with request.urlopen(req, timeout=10) as response:
+            with request.urlopen(req, timeout=10, context=context) as response:
                 return response.read().decode("utf-8", errors="ignore")
         except (urlerror.URLError, TimeoutError, ValueError):
             return None
@@ -211,7 +238,7 @@ class AccountLink(commands.Cog):
         cleaned = value.strip()
         if not cleaned:
             return "https://steamcommunity.com"
-        if cleaned.startswith("http://") or cleaned.startswith("https://"):
+        if cleaned.startswith(("http://", "https://")):
             return cleaned
         return f"https://steamcommunity.com/id/{urlparse.quote(cleaned)}"
 
@@ -220,7 +247,7 @@ class AccountLink(commands.Cog):
         cleaned = value.strip()
         if not cleaned:
             return ""
-        if cleaned.startswith("http://") or cleaned.startswith("https://"):
+        if cleaned.startswith(("http://", "https://")):
             parsed = urlparse.urlparse(cleaned)
             if "/id/" in parsed.path.lower():
                 return parsed.path.split("/id/", 1)[1].strip("/")
@@ -238,7 +265,11 @@ class AccountLink(commands.Cog):
             return "github"
         if key in {"steam", "ste"}:
             return "steam"
-        raise commands.BadArgument("Platform must be `github` or `steam`.")
+        if key in {"spotify", "sp"}:
+            return "spotify"
+        if key in {"xbox", "xb"}:
+            return "xbox"
+        raise commands.BadArgument("Platform must be `github`, `steam`, `spotify`, or `xbox`.")
 
     @staticmethod
     def _sanitize_steam_description(value: str | None) -> str:
@@ -286,6 +317,49 @@ class AccountLink(commands.Cog):
         }
 
     @staticmethod
+    def _decode_escaped_json_string(value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if not cleaned:
+            return None
+        try:
+            return json.loads(f'"{cleaned}"')
+        except json.JSONDecodeError:
+            return cleaned.replace('\\"', '"').replace('\\/', '/').replace('\\u0026', '&')
+
+    @staticmethod
+    def _spotify_profile_url(value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            return "https://open.spotify.com"
+        if cleaned.startswith(("http://", "https://")):
+            return cleaned.rstrip("/")
+        if cleaned.startswith("spotify:user:"):
+            target = cleaned.replace("spotify:user:", "", 1).strip("/")
+            if target:
+                return f"https://open.spotify.com/user/{target}"
+        if cleaned.startswith("/user/"):
+            return f"https://open.spotify.com{cleaned.rstrip('/')}"
+        return f"https://open.spotify.com/user/{cleaned.strip('/')}"
+
+    @staticmethod
+    def _spotify_target_from_input(value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            return ""
+        if cleaned.startswith(("http://", "https://")):
+            parsed = urlparse.urlparse(cleaned)
+            if parsed.path.lower().startswith("/user/"):
+                return parsed.path.split("/user/", 1)[1].strip("/")
+            if parsed.path.lower().startswith("/artist/"):
+                return parsed.path.split("/artist/", 1)[1].strip("/")
+            return parsed.path.strip("/")
+        if cleaned.lower().startswith("spotify:user:"):
+            return cleaned.split(":", 2)[2].strip("/")
+        return cleaned.strip("/")
+
+    @staticmethod
     def _github_embed_data(profile_data: dict[str, Any]) -> dict[str, Any]:
         username = profile_data.get("login") or "github-user"
         profile_url = profile_data.get("html_url") or AccountLink._github_profile_url(username)
@@ -307,6 +381,26 @@ class AccountLink(commands.Cog):
             "repos": public_repos,
             "followers": followers,
             "following": following,
+        }
+
+    @staticmethod
+    def _spotify_embed_data(profile_data: dict[str, Any]) -> dict[str, Any]:
+        profile_url = profile_data.get("profile_url") or "https://open.spotify.com"
+        display_name = (
+            profile_data.get("display_name")
+            or profile_data.get("name")
+            or profile_data.get("username")
+            or "Spotify user"
+        )
+        bio = profile_data.get("bio") or "No public bio provided."
+        avatar = profile_data.get("avatar") or profile_data.get("image_url")
+        return {
+            "title": display_name,
+            "url": profile_url,
+            "avatar": avatar,
+            "description": bio,
+            "username": profile_data.get("username") or display_name,
+            "profile_url": profile_url,
         }
 
     @staticmethod
@@ -334,6 +428,11 @@ class AccountLink(commands.Cog):
             embed.set_thumbnail(url=payload.get("avatar") or None)
             embed.add_field(name="Status", value=payload.get("status") or "Unknown", inline=True)
             embed.add_field(name="Location", value=payload.get("location") or "Unknown", inline=True)
+        elif platform == "spotify":
+            embed.title = f"Spotify • {payload['title']}"
+            embed.url = payload["url"]
+            embed.set_thumbnail(url=payload.get("avatar") or None)
+            embed.add_field(name="Profile", value=f"[Open Spotify profile]({payload['url']})", inline=False)
 
         if claimed_by is not None:
             claim_label = getattr(claimed_by, "mention", str(claimed_by))
@@ -407,6 +506,80 @@ class AccountLink(commands.Cog):
         return None
 
     @staticmethod
+    def _fetch_spotify_profile(username: str) -> dict[str, Any] | None:
+        cleaned = username.strip()
+        if not cleaned:
+            return None
+
+        profile_url = AccountLink._spotify_profile_url(cleaned)
+        urls = [profile_url]
+        if profile_url.startswith("https://open.spotify.com") and not profile_url.endswith("?output=1"):
+            urls.append(f"{profile_url}?output=1")
+
+        for url in urls:
+            response = AccountLink._safe_urlopen(url)
+            if response is None:
+                continue
+
+            display_name = None
+
+            canonical_match = re.search(
+                r'<link[^>]+rel=["\']canonical["\'][^>]+href=["\']([^"\']+)["\']',
+                response,
+                re.IGNORECASE,
+            )
+            if canonical_match:
+                profile_url = canonical_match.group(1)
+
+            for pattern in (
+                r'<meta\s+property=["\']og:title["\']\s+content=["\']([^"\']+)["\']',
+                r'<meta\s+name=["\']twitter:title["\']\s+content=["\']([^"\']+)["\']',
+                r'<title[^>]*>(.*?)</title>',
+                r'"displayName":"((?:\\.|[^"\\])*)"',
+                r'"profileName":"((?:\\.|[^"\\])*)"',
+                r'"name":"((?:\\.|[^"\\])*)"',
+            ):
+                match = re.search(pattern, response, re.IGNORECASE | re.DOTALL)
+                if not match:
+                    continue
+                candidate = match.group(1) if match.lastindex else match.group(0)
+                candidate = html.unescape(candidate)
+                candidate = candidate.strip()
+                if candidate and candidate.lower() not in {"spotify", "user · spotify", "user · spotify on spotify"}:
+                    display_name = candidate
+                    break
+
+            if not display_name:
+                display_name = AccountLink._spotify_target_from_input(cleaned) or "Spotify user"
+                if display_name.lower() == "spotify":
+                    display_name = "Spotify"
+
+            avatar = None
+            for pattern in (
+                r'"avatarUrl":"((?:\\.|[^"\\])*)"',
+                r'"imageUrl":"((?:\\.|[^"\\])*)"',
+                r'"url":"((?:https://i\.scdn\.co|https://mosaic\.scdn\.co)[^"\\]*)"',
+                r'<meta\s+property=["\']og:image["\']\s+content=["\']([^"\']+)["\']',
+            ):
+                match = re.search(pattern, response)
+                if match:
+                    avatar = AccountLink._decode_escaped_json_string(match.group(1))
+                    if avatar:
+                        break
+
+            username_value = AccountLink._spotify_target_from_input(profile_url) or display_name
+            return {
+                "display_name": display_name,
+                "username": username_value,
+                "profile_url": profile_url,
+                "avatar": avatar or None,
+                "bio": "No public bio provided.",
+                "name": display_name,
+            }
+
+        return None
+
+    @staticmethod
     def _save_link_for_user(store: AccountLinkStore, user_id: int, platform: str, username: str) -> None:
         store.set_link(user_id, platform, username)
 
@@ -424,8 +597,7 @@ class AccountLink(commands.Cog):
 
         if cleaned.startswith("<@") and cleaned.endswith(">"):
             cleaned = cleaned[2:-1]
-            if cleaned.startswith("!"):
-                cleaned = cleaned[1:]
+            cleaned = cleaned.removeprefix("!")
             try:
                 user_id = int(cleaned)
             except ValueError:
@@ -463,14 +635,20 @@ class AccountLink(commands.Cog):
                 return None
             return self._build_profile_embed("steam", self._steam_embed_data(profile))
 
+        if platform == "spotify":
+            profile = self._fetch_spotify_profile(saved)
+            if profile is None:
+                return None
+            return self._build_profile_embed("spotify", self._spotify_embed_data(profile))
+
         profile = self._fetch_github_profile(saved)
         if profile is None:
             return None
         return self._build_profile_embed("github", self._github_embed_data(profile))
 
-    @commands.hybrid_command(name="link", description="Link your GitHub or Steam account to your Discord profile.")
+    @commands.hybrid_command(name="link", description="Link your GitHub, Steam, or Spotify account to your Discord profile.")
     @app_commands.describe(
-        platform="Which account to link: github or steam.",
+        platform="Which account to link: github, steam, or spotify.",
         username="Your public profile username or URL.",
     )
     async def link_account(
@@ -479,11 +657,15 @@ class AccountLink(commands.Cog):
         platform: str,
         username: str,
     ) -> None:
-        """Link a public GitHub or Steam profile to the caller's Discord account."""
+        """Link a public GitHub, Steam, or Spotify profile to the caller's Discord account."""
         try:
             normalized = self._normalize_platform(platform)
         except commands.BadArgument as error:
             await ctx.reply(embed=self._embed_error(str(error)))
+            return
+
+        if normalized == "xbox":
+            await ctx.reply("Why not switch over to Playstation?")
             return
 
         guild_id = getattr(ctx.guild, "id", None)
@@ -519,7 +701,7 @@ class AccountLink(commands.Cog):
                 await ctx.reply(embed=self._embed_error(f"No public GitHub profile was found for `{username}`."))
                 return
             payload = self._github_embed_data(profile)
-            title = payload["title"]
+            payload["title"]
             profile_url = payload["url"]
             username_value = payload["username"]
         elif normalized == "steam":
@@ -528,11 +710,18 @@ class AccountLink(commands.Cog):
                 await ctx.reply(embed=self._embed_error(f"No public Steam profile was found for `{username}`."))
                 return
             payload = self._steam_embed_data(profile)
-            title = payload["title"]
             profile_url = payload["url"]
             username_value = self._steam_target_from_input(username) or payload["title"]
-            if username_value and (username.startswith("http://") or username.startswith("https://")):
+            if username_value and (username.startswith(("http://", "https://"))):
                 username_value = self._steam_target_from_input(username) or username_value
+        elif normalized == "spotify":
+            profile = self._fetch_spotify_profile(username)
+            if profile is None:
+                await ctx.reply(embed=self._embed_error(f"No public Spotify profile was found for `{username}`."))
+                return
+            payload = self._spotify_embed_data(profile)
+            profile_url = payload["url"]
+            username_value = payload["profile_url"] or payload["username"]
         self._save_link_for_user(self.store, ctx.author.id, normalized, username_value)
 
         embed = self._build_profile_embed(normalized, payload)
@@ -643,6 +832,108 @@ class AccountLink(commands.Cog):
 
         await interaction.response.send_message(
             embed=self._embed_error("Please provide a Discord member or a Steam username to look up."),
+        )
+
+    @app_commands.command(name="spotify_profile")
+    @app_commands.describe(
+        member="Look up a Discord member's linked Spotify account.",
+        username="Spotify profile URL or username to search publicly.",
+    )
+    async def spotify_profile_lookup(
+        self,
+        interaction: discord.Interaction,
+        member: discord.Member | None = None,
+        username: str | None = None,
+    ) -> None:
+        guild_id = interaction.guild_id
+        channel_id = interaction.channel_id
+        if not await self._require_enabled(guild_id, channel_id):
+            if guild_id is None:
+                await interaction.response.send_message(
+                    embed=self._embed_error(
+                        "Account linking is disabled in this server. Enable it through `/setup` first."
+                    ),
+                    ephemeral=True,
+                )
+                return
+
+            configured = self.config.get(guild_id, MODULE_KEY, "channel")
+            if configured not in (None, "", 0, False):
+                channel_name = self.bot.get_channel(int(configured))
+                channel_label = getattr(channel_name, "mention", f"<#{configured}>")
+                await interaction.response.send_message(
+                    embed=self._embed_error(
+                        f"This command can only be used in {channel_label}."
+                    ),
+                    ephemeral=True,
+                )
+                return
+
+            await interaction.response.send_message(
+                embed=self._embed_error(
+                    "Account linking is disabled in this server. Enable it through `/setup` first."
+                ),
+                ephemeral=True,
+            )
+            return
+
+        if member is not None:
+            embed = self._get_linked_profile_embed("spotify", member)
+            if embed is not None:
+                await interaction.response.send_message(embed=embed)
+                return
+            await interaction.response.send_message(
+                embed=self._embed_error(
+                    f"{member.mention} has not linked a Spotify account yet."
+                )
+            )
+            return
+
+        if username:
+            resolved_member = self._resolve_member_from_string(interaction.guild, username)
+            if resolved_member is not None:
+                embed = self._get_linked_profile_embed("spotify", resolved_member)
+                if embed is not None:
+                    await interaction.response.send_message(embed=embed)
+                    return
+                await interaction.response.send_message(
+                    embed=self._embed_error(
+                        f"{resolved_member.mention} has not linked a Spotify account yet."
+                    )
+                )
+                return
+
+            profile = self._fetch_spotify_profile(username)
+            if profile is None:
+                await interaction.response.send_message(
+                    embed=self._embed_error(f"I could not find a public Spotify profile for `{username}` and no linked Spotify account was found."),
+                )
+                return
+
+            claimed_user_id, _ = self.store.find_claim_by_username("spotify", username)
+            claimed_member = None
+            if claimed_user_id is not None and interaction.guild is not None:
+                claimed_member = interaction.guild.get_member(claimed_user_id)
+
+            embed = self._build_profile_embed("spotify", self._spotify_embed_data(profile), claimed_member)
+            if claimed_member is not None:
+                embed.description = (
+                    f"{embed.description}\n\n**Claimed:** {claimed_member.mention}"
+                )
+            elif claimed_user_id is not None:
+                embed.description = (
+                    f"{embed.description}\n\n**Claimed:** <@{claimed_user_id}>"
+                )
+            else:
+                embed.description = (
+                    f"{embed.description}\n\n**Claimed:** No"
+                )
+
+            await interaction.response.send_message(embed=embed)
+            return
+
+        await interaction.response.send_message(
+            embed=self._embed_error("Please provide a Discord member or a Spotify profile URL/username to look up."),
         )
 
     @app_commands.command(name="github")

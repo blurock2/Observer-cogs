@@ -1,7 +1,7 @@
-# This single source of truth is imported by cogs that need the owner ID.
-# It deliberately does NOT import anything from the bot to avoid circular imports or sum nonhalant shit like that.
+import os
 
-BOT_OWNER_ID = 805687087784394773
+# This is the single source of truth for owner configuration.
+BOT_OWNER_ID = int(os.getenv("BOT_OWNER_ID", "805687087784394773"))
 
 
 def is_bot_owner(user) -> bool:

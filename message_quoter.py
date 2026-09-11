@@ -1,19 +1,14 @@
 # cogs/message_quoter.py
 from __future__ import annotations
 
-
 import json
 import re
 import sqlite3
 import traceback
 from pathlib import Path
-from typing import Optional
-
 
 import discord
 from discord.ext import commands
-
-
 
 NO_MENTIONS = discord.AllowedMentions.none()
 
@@ -74,7 +69,7 @@ class MessageQuoterConfig:
         return bool(self.get(guild_id, "require_reply", True))
 
 
-    def embed_color(self, guild_id: int) -> Optional[discord.Color]:
+    def embed_color(self, guild_id: int) -> discord.Color | None:
         raw_color = self.get(guild_id, "embed_color", "96edf1")
 
 
@@ -109,6 +104,11 @@ class MessageQuoterConfig:
 
 
 class MessageQuoter(commands.Cog):
+    COPIED_BUTTON_MESSAGE = (
+        "This button was copied from the quoted message. "
+        "To interact with it, you'll need to do so on the original!"
+    )
+
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.config = MessageQuoterConfig()
@@ -117,7 +117,7 @@ class MessageQuoter(commands.Cog):
     @staticmethod
     def normalize_custom_emojis(
         content: str,
-        guild: Optional[discord.Guild],
+        guild: discord.Guild | None,
     ) -> str:
         """Convert bare custom emoji IDs to Discord's renderable emoji format."""
         if guild is None or not content:
@@ -148,6 +148,43 @@ class MessageQuoter(commands.Cog):
 
 
         return discord.Color.blurple()
+
+
+    @classmethod
+    def build_quote_view(cls, quoted: discord.Message) -> discord.ui.View | None:
+        """Copy message buttons, keeping only buttons that can work in a quote."""
+        view = discord.ui.View(timeout=None)
+        has_buttons = False
+
+        for row_index, component_row in enumerate(quoted.components):
+            for component in component_row.children:
+                if not isinstance(component, discord.Button):
+                    continue
+
+                has_buttons = True
+                copied_button = discord.ui.Button(
+                    label=component.label,
+                    style=component.style,
+                    emoji=component.emoji,
+                    url=component.url,
+                    disabled=component.disabled,
+                    row=row_index,
+                )
+
+                if component.url is None and not component.disabled:
+                    async def explain_copied_button(
+                        interaction: discord.Interaction,
+                    ) -> None:
+                        await interaction.response.send_message(
+                            cls.COPIED_BUTTON_MESSAGE,
+                            ephemeral=True,
+                        )
+
+                    copied_button.callback = explain_copied_button
+
+                view.add_item(copied_button)
+
+        return view if has_buttons else None
 
 
     async def quote_message(
@@ -197,6 +234,7 @@ class MessageQuoter(commands.Cog):
         if quoted.guild and quoted.guild.icon:
             guild_icon_url = quoted.guild.icon.url
 
+        quote_view = self.build_quote_view(quoted)
 
         if has_text or has_image:
             embed = discord.Embed(
@@ -223,7 +261,11 @@ class MessageQuoter(commands.Cog):
                 embed.set_image(url=image_attachments[0].url)
 
 
-            await destination.send(embed=embed, allowed_mentions=NO_MENTIONS)
+            await destination.send(
+                embed=embed,
+                view=quote_view,
+                allowed_mentions=NO_MENTIONS,
+            )
 
 
             for image in image_attachments[1:]:
@@ -248,8 +290,15 @@ class MessageQuoter(commands.Cog):
             for original_embed in quoted.embeds:
                 await destination.send(
                     embed=original_embed,
+                    view=quote_view,
                     allowed_mentions=NO_MENTIONS,
                 )
+
+        elif quote_view is not None:
+            await destination.send(
+                view=quote_view,
+                allowed_mentions=NO_MENTIONS,
+            )
 
 
         for attachment in other_attachments:
@@ -311,9 +360,8 @@ class MessageQuoter(commands.Cog):
 
 
         # Setup Dashboard: Message Quoter > Require reply
-        if self.config.require_reply(guild_id):
-            if message.reference is None:
-                return
+        if self.config.require_reply(guild_id) and message.reference is None:
+            return
 
 
         matches = MESSAGE_LINK_RE.findall(message.content)
@@ -356,7 +404,7 @@ class MessageQuoter(commands.Cog):
                 await self.quote_message(message.channel, quoted)
 
 
-            except Exception as error:
+            except Exception as error:  # noqa: BLE001 - isolate one malformed message link
                 print(f"[message_quoter] Error processing message link: {error}")
                 traceback.print_exc()
 

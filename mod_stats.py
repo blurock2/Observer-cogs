@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
-
+from typing import ClassVar
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = PROJECT_ROOT / "data" / "bot.db"
 
 
 class ModerationStatsStore:
-    VALID_ACTIONS = {
+    VALID_ACTIONS: ClassVar[set[str]] = {
         "reports_claimed",
         "kicks",
         "bans",
@@ -20,10 +21,19 @@ class ModerationStatsStore:
         self.db_path = str(db_path)
         self._init_table()
 
-    def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path, check_same_thread=False)
+    @contextmanager
+    def _connect(self):
+        conn = sqlite3.connect(self.db_path, timeout=10)
         conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            yield conn
+        except Exception:
+            conn.rollback()
+            raise
+        else:
+            conn.commit()
+        finally:
+            conn.close()
 
     def _init_table(self) -> None:
         with self._connect() as conn:

@@ -1,14 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-import re
-from typing import Optional
 
 import discord
 from discord.ext import commands
 
 from cogs.setup_ui import DB_PATH, SetupConfigStore
-
 
 MODULE_KEY = "temporary_voice"
 
@@ -71,7 +68,7 @@ class TemporaryVoice(commands.Cog):
     def _is_enabled(self, guild_id: int) -> bool:
         return bool(self._get(guild_id, "enabled", default=False))
 
-    def _get_join_channel_id(self, guild_id: int) -> Optional[int]:
+    def _get_join_channel_id(self, guild_id: int) -> int | None:
         value = self._get(guild_id, "join_channel")
 
         try:
@@ -79,7 +76,7 @@ class TemporaryVoice(commands.Cog):
         except (TypeError, ValueError):
             return None
 
-    def _get_category_id(self, guild_id: int) -> Optional[int]:
+    def _get_category_id(self, guild_id: int) -> int | None:
         value = self._get(guild_id, "category")
 
         try:
@@ -115,7 +112,7 @@ class TemporaryVoice(commands.Cog):
         self,
         guild_id: int,
         voice_channel_id: int,
-    ) -> Optional[dict]:
+    ) -> dict | None:
         return self._get_rooms(guild_id).get(str(voice_channel_id))
 
     def _set_room(
@@ -132,7 +129,7 @@ class TemporaryVoice(commands.Cog):
         self,
         guild_id: int,
         voice_channel_id: int,
-    ) -> Optional[dict]:
+    ) -> dict | None:
         rooms = self._get_rooms(guild_id)
         room = rooms.pop(str(voice_channel_id), None)
         self._save_rooms(guild_id, rooms)
@@ -174,7 +171,7 @@ class TemporaryVoice(commands.Cog):
     async def _get_owned_room(
         self,
         interaction: discord.Interaction,
-    ) -> Optional[discord.VoiceChannel]:
+    ) -> discord.VoiceChannel | None:
         if interaction.guild is None:
             return None
 
@@ -204,7 +201,7 @@ class TemporaryVoice(commands.Cog):
     async def _owner_only(
         self,
         interaction: discord.Interaction,
-    ) -> Optional[discord.VoiceChannel]:
+    ) -> discord.VoiceChannel | None:
         channel = await self._get_owned_room(interaction)
 
         if channel is not None:
@@ -226,7 +223,7 @@ class TemporaryVoice(commands.Cog):
         self,
         member: discord.Member,
         category: discord.CategoryChannel,
-    ) -> Optional[discord.VoiceChannel]:
+    ) -> discord.VoiceChannel | None:
         guild = member.guild
         room_name = self._build_room_name(
             member,
@@ -679,7 +676,7 @@ class InviteUserSelect(discord.ui.UserSelect):
 def _get_room_from_any_guild(
     self: TemporaryVoice,
     voice_channel_id: int,
-) -> Optional[dict]:
+) -> dict | None:
     for guild in self.bot.guilds:
         room = self._get_room(guild.id, voice_channel_id)
 

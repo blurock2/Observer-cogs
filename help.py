@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Optional
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
 from cogs.setup_ui import DB_PATH, SetupConfigStore
-
 
 MODULE_KEY = "help"
 HELP_COLOR = discord.Color(0x96EDF1)
@@ -19,10 +17,10 @@ PREFIX = "!"
 class HelpView(discord.ui.View):
     def __init__(
         self,
-        cog: "HelpCog",
+        cog: HelpCog,
         pages: list[tuple[str, str]],
         *,
-        timeout: Optional[float] = 300.0,
+        timeout: float | None = 300.0,
     ):
         super().__init__(timeout=timeout)
         self.cog = cog
@@ -156,7 +154,7 @@ class HelpCog(commands.Cog):
     def _is_enabled(self, guild_id: int) -> bool:
         return bool(self._get(guild_id, "enabled", default=False))
 
-    def _get_help_channel_id(self, guild_id: int) -> Optional[int]:
+    def _get_help_channel_id(self, guild_id: int) -> int | None:
         value = self._get(guild_id, "help_channel")
 
         try:
@@ -345,7 +343,7 @@ class HelpCog(commands.Cog):
         interaction: discord.Interaction,
         *,
         embed: discord.Embed,
-        view: Optional[discord.ui.View] = None,
+        view: discord.ui.View | None = None,
     ) -> None:
         guild = interaction.guild
 
@@ -382,7 +380,7 @@ class HelpCog(commands.Cog):
         self,
         ctx: commands.Context,
         *,
-        command: Optional[str] = None,
+        command: str | None = None,
     ) -> None:
         if ctx.guild is None:
             return
@@ -454,7 +452,7 @@ class HelpCog(commands.Cog):
     async def help_slash(
         self,
         interaction: discord.Interaction,
-        command: Optional[str] = None,
+        command: str | None = None,
     ) -> None:
         if interaction.guild is None:
             return

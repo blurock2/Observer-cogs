@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import Optional
 
 import discord
 from discord.ext import commands
 
 from cogs.setup_ui import DB_PATH, SetupConfigStore
-
 
 MODULE_KEY = "mentions"
 NO_MENTIONS = discord.AllowedMentions.none()
@@ -45,7 +43,7 @@ class Mentions(commands.Cog):
         self,
         guild_id: int,
         key: str,
-    ) -> Optional[int]:
+    ) -> int | None:
         value = self._get(guild_id, key)
 
         try:
@@ -71,7 +69,7 @@ class Mentions(commands.Cog):
     def _get_warning_delete_delay(
         self,
         guild_id: int,
-    ) -> Optional[float]:
+    ) -> float | None:
         value = self._get(
             guild_id,
             "delete_warning_after",
@@ -98,8 +96,8 @@ class Mentions(commands.Cog):
         self,
         message: discord.Message,
         blocked_role_id: int,
-        bypass_role_id: Optional[int],
-    ) -> Optional[str]:
+        bypass_role_id: int | None,
+    ) -> str | None:
         """Return a reason when a protected mention is found."""
         author = message.author
         can_ping_protected = self._has_role(author, blocked_role_id) or (

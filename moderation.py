@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from datetime import timedelta
-from typing import Optional
 
 import discord
 from discord import app_commands
@@ -14,13 +14,13 @@ from cogs.mod_stats import ModerationStatsStore
 from cogs.setup_ui import (
     DB_PATH,
     SetupConfigStore,
-    owner_or_has_permissions,
 )
-
+from database import ModerationActionStore
 
 DEFAULT_LOG_COLOR = 0x96EDF1
 MODULE_KEY = "moderation"
 LEGACY_CONFIG_PATH = "mod_config.json"
+logger = logging.getLogger("observer.moderation")
 
 
 def _load_legacy_config() -> dict:
@@ -50,12 +50,102 @@ async def mod_perms_check(interaction: discord.Interaction) -> bool:
     return await cog._check_mod_perms(interaction)
 
 
+class ModerationUndoView(discord.ui.View):
+    """Persistent view for moderation log messages."""
+
+    def __init__(self, cog: ModerationCog):
+        super().__init__(timeout=None)
+        self.cog = cog
+        button = discord.ui.Button(
+            label="Undo",
+            style=discord.ButtonStyle.danger,
+            custom_id="moderation_undo",
+        )
+        button.callback = self.undo
+        self.add_item(button)
+
+    async def undo(self, interaction: discord.Interaction) -> None:
+        if interaction.guild is None or interaction.message is None:
+            await interaction.response.send_message(
+                "This action is only available in a server moderation log.",
+                ephemeral=True,
+            )
+            return
+
+        action = self.cog.actions.get_by_log_message(interaction.message.id)
+
+        if action is None or action["guild_id"] != interaction.guild.id:
+            await interaction.response.send_message(
+                "This moderation action could not be found.",
+                ephemeral=True,
+            )
+            return
+
+        if not await self.cog._head_mod_check(interaction):
+            await interaction.response.send_message(
+                "Only the head of moderation can undo actions.",
+                ephemeral=True,
+            )
+            return
+
+        if action["status"] != "active":
+            await interaction.response.send_message(
+                "This moderation action has already been undone or is being processed.",
+                ephemeral=True,
+            )
+            return
+
+        if not self.cog.actions.claim(action["id"]):
+            await interaction.response.send_message(
+                "This moderation action has already been undone or is being processed.",
+                ephemeral=True,
+            )
+            return
+
+        try:
+            target = discord.Object(id=action["target_id"])
+
+            if action["action_type"] == "ban":
+                await interaction.guild.unban(
+                    target,
+                    reason=f"Ban undone by {interaction.user}",
+                )
+                message = "Ban undone."
+            elif action["action_type"] == "timeout":
+                member = interaction.guild.get_member(action["target_id"])
+                if member is None:
+                    raise RuntimeError("Member is no longer in the server")
+                await member.timeout(
+                    None,
+                    reason=f"Timeout undone by {interaction.user}",
+                )
+                message = f"Removed timeout from {member.mention}."
+            else:
+                raise RuntimeError("Unsupported moderation action")
+        except (discord.Forbidden, discord.HTTPException, RuntimeError):
+            self.cog.actions.release(action["id"])
+            await interaction.response.send_message(
+                "Discord rejected the undo request.",
+                ephemeral=True,
+            )
+            return
+
+        self.cog.actions.complete(action["id"], interaction.user.id)
+        await interaction.response.send_message(message, ephemeral=True)
+        try:
+            await interaction.message.edit(view=None)
+        except discord.HTTPException:
+            pass
+
+
 class ModerationCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.store = SetupConfigStore(DB_PATH)
         self.mod_stats = ModerationStatsStore(DB_PATH)
+        self.actions = ModerationActionStore(DB_PATH)
         self._legacy = _load_legacy_config()
+        self.bot.add_view(ModerationUndoView(self))
 
     # ============================================================ Confiiiiig
 
@@ -208,7 +298,7 @@ class ModerationCog(commands.Cog):
     async def _get_log_channel(
         self,
         guild: discord.Guild,
-    ) -> Optional[discord.TextChannel]:
+    ) -> discord.TextChannel | None:
         if not await self._is_logging_enabled(guild):
             return None
 
@@ -232,8 +322,9 @@ class ModerationCog(commands.Cog):
         action: str,
         moderator: discord.Member,
         target: discord.Member,
-        reason: Optional[str],
-        undo_callback,
+        reason: str | None,
+        action_id: int | None = None,
+        undo_callback=None,
     ) -> None:
         """
         Send a normal moderation log.
@@ -281,22 +372,16 @@ class ModerationCog(commands.Cog):
             inline=False,
         )
 
-        view = discord.ui.View(timeout=None)
-
-        undo_button = discord.ui.Button(
-            label="Undo",
-            style=discord.ButtonStyle.danger,
-        )
-
-        undo_button.callback = undo_callback
-        view.add_item(undo_button)
+        view = ModerationUndoView(self) if action_id is not None else None
 
         try:
-            await channel.send(
+            message = await channel.send(
                 embed=embed,
                 view=view,
                 allowed_mentions=discord.AllowedMentions.none(),
             )
+            if action_id is not None:
+                self.actions.set_log_message(action_id, message.id)
         except (discord.Forbidden, discord.HTTPException):
             pass
 
@@ -304,7 +389,7 @@ class ModerationCog(commands.Cog):
         self,
         guild: discord.Guild,
         embed: discord.Embed,
-        channel: Optional[discord.TextChannel] = None,
+        channel: discord.TextChannel | None = None,
     ) -> bool:
         """
         Send a report embed and optionally ping the moderator role.
@@ -405,7 +490,7 @@ class ModerationCog(commands.Cog):
         self,
         interaction: discord.Interaction,
         amount: int,
-        reason: Optional[str] = None,
+        reason: str | None = None,
     ) -> None:
         if interaction.guild is None:
             return
@@ -536,7 +621,7 @@ class ModerationCog(commands.Cog):
         self,
         interaction: discord.Interaction,
         member: discord.Member,
-        reason: Optional[str] = None,
+        reason: str | None = None,
     ) -> None:
         if interaction.guild is None:
             return
@@ -555,6 +640,13 @@ class ModerationCog(commands.Cog):
 
         try:
             await member.ban(reason=reason)
+
+            action_id = self.actions.create(
+                interaction.guild.id,
+                "ban",
+                member.id,
+                interaction.user.id,
+            )
 
             self.mod_stats.increment(
                 interaction.guild.id,
@@ -603,7 +695,7 @@ class ModerationCog(commands.Cog):
                 moderator=interaction.user,
                 target=member,
                 reason=reason,
-                undo_callback=undo_ban,
+                action_id=action_id,
             )
 
             await interaction.followup.send(
@@ -639,7 +731,7 @@ class ModerationCog(commands.Cog):
         self,
         interaction: discord.Interaction,
         member: discord.Member,
-        reason: Optional[str] = None,
+        reason: str | None = None,
     ) -> None:
         if interaction.guild is None:
             return
@@ -734,7 +826,7 @@ class ModerationCog(commands.Cog):
         interaction: discord.Interaction,
         member: discord.Member,
         duration_minutes: int,
-        reason: Optional[str] = None,
+        reason: str | None = None,
     ) -> None:
         if interaction.guild is None:
             return
@@ -770,6 +862,13 @@ class ModerationCog(commands.Cog):
             await member.timeout(
                 timeout_until,
                 reason=reason,
+            )
+
+            action_id = self.actions.create(
+                interaction.guild.id,
+                "timeout",
+                member.id,
+                interaction.user.id,
             )
 
             self.mod_stats.increment(
@@ -819,7 +918,7 @@ class ModerationCog(commands.Cog):
                 moderator=interaction.user,
                 target=member,
                 reason=reason,
-                undo_callback=undo_timeout,
+                action_id=action_id,
             )
 
             await interaction.followup.send(
@@ -859,7 +958,7 @@ class ModerationCog(commands.Cog):
     async def modstats(
         self,
         interaction: discord.Interaction,
-        moderator: Optional[discord.Member] = None,
+        moderator: discord.Member | None = None,
     ) -> None:
         if interaction.guild is None:
             return
@@ -940,9 +1039,9 @@ class ModerationCog(commands.Cog):
                 "Moderator role to use that command."
             )
         else:
-            print(
-                f"[moderation] "
-                f"{type(error).__name__}: {error}"
+            logger.error(
+                "Moderation command failed",
+                exc_info=(type(error), error, error.__traceback__),
             )
             message = (
                 "An unexpected moderation error occurred."

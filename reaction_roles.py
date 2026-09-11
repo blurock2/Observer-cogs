@@ -1,14 +1,11 @@
-from typing import Dict, Optional
 
 import discord
 from discord import app_commands
 from discord.ext import commands
-from cogs.config import BOT_OWNER_ID, is_bot_owner
 
 # Shared setup store (written by the /setup dashboard). setup_ui is
 # loaded before this cog in bot.EXTENSIONS, so the import is safe.
-from cogs.setup_ui import SetupConfigStore, DB_PATH
-
+from cogs.setup_ui import DB_PATH, SetupConfigStore
 
 MODULE_KEY = "reaction_roles"
 
@@ -29,19 +26,19 @@ class ReactionRoles(commands.Cog):
         return bool(self.store.get(guild_id, MODULE_KEY, "enabled", default=False))
 
 
-    def _get_channel_id(self, guild_id: int) -> Optional[int]:
+    def _get_channel_id(self, guild_id: int) -> int | None:
         value = self.store.get(guild_id, MODULE_KEY, "channel")
         return int(value) if value is not None else None
 
 
-    def _get_roles(self, guild_id: int) -> Dict[str, int]:
+    def _get_roles(self, guild_id: int) -> dict[str, int]:
         """Return the {emoji: role_id} mapping for a guild."""
         value = self.store.get(guild_id, MODULE_KEY, "roles")
 
         if not isinstance(value, dict):
             return {}
 
-        roles: Dict[str, int] = {}
+        roles: dict[str, int] = {}
 
         for emoji, role_id in value.items():
             try:
@@ -52,16 +49,16 @@ class ReactionRoles(commands.Cog):
         return roles
 
 
-    def _set_roles(self, guild_id: int, roles: Dict[str, int]) -> None:
+    def _set_roles(self, guild_id: int, roles: dict[str, int]) -> None:
         self.store.set(guild_id, MODULE_KEY, "roles", roles)
 
 
-    def _get_message_id(self, guild_id: int) -> Optional[int]:
+    def _get_message_id(self, guild_id: int) -> int | None:
         value = self.store.get(guild_id, MODULE_KEY, "message_id")
         return int(value) if value is not None else None
 
 
-    def _set_message_id(self, guild_id: int, message_id: Optional[int]) -> None:
+    def _set_message_id(self, guild_id: int, message_id: int | None) -> None:
         self.store.set(guild_id, MODULE_KEY, "message_id", message_id)
 
 
@@ -73,7 +70,7 @@ class ReactionRoles(commands.Cog):
     def _build_reaction_embed(
         self,
         guild: discord.Guild,
-        roles: Dict[str, int],
+        roles: dict[str, int],
     ) -> discord.Embed:
         lines = ["React below to select your roles:", ""]
 

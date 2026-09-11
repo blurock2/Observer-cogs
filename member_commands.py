@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import logging
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Optional
 
 import discord
 from discord import app_commands
@@ -11,10 +12,10 @@ from discord.ext import commands
 
 from cogs.setup_ui import DB_PATH, SetupConfigStore
 
-
-DATABASE_PATH = Path("data/member_stats.sqlite3")
+DATABASE_PATH = Path(DB_PATH)
 EMBED_COLOR = 0x96EDF1
 MODULE_KEY = "member_commands"
+logger = logging.getLogger("observer.member_commands")
 
 
 class MemberCommands(commands.Cog):
@@ -33,24 +34,39 @@ class MemberCommands(commands.Cog):
 
         DATABASE_PATH.parent.mkdir(exist_ok=True)
 
-        self.database = sqlite3.connect(
-            DATABASE_PATH,
-            check_same_thread=False,
-        )
-        self.database.execute(
-            """
-            CREATE TABLE IF NOT EXISTS message_stats (
-                guild_id INTEGER NOT NULL,
-                user_id INTEGER NOT NULL,
-                message_count INTEGER NOT NULL DEFAULT 0,
-                PRIMARY KEY (guild_id, user_id)
+        # ============================================================ Message stats database
+
+        with self._connect() as database:
+            database.execute(
+                """
+                CREATE TABLE IF NOT EXISTS message_stats (
+                    guild_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    message_count INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (guild_id, user_id)
+                )
+                """
             )
-            """
-        )
-        self.database.commit()
 
     def cog_unload(self) -> None:
-        self.database.close()
+        # Database connections are scoped to individual operations. This
+        # avoids closing a handle while an event listener is still running.
+        return
+
+    @contextmanager
+    def _connect(self):
+        # Use one connection per operation so cog reloads cannot invalidate
+        # an event listener that is still running.
+        database = sqlite3.connect(DATABASE_PATH, timeout=10)
+        try:
+            yield database
+        except Exception:
+            database.rollback()
+            raise
+        else:
+            database.commit()
+        finally:
+            database.close()
 
     # ============================================================ Dashboard config
 
@@ -90,6 +106,8 @@ class MemberCommands(commands.Cog):
 
     # ============================================================ Utilities
 
+    # ============================================================ Asset helpers
+
     @staticmethod
     def error_embed(message: str) -> discord.Embed:
         return discord.Embed(
@@ -102,12 +120,24 @@ class MemberCommands(commands.Cog):
         return f"<t:{int(date.timestamp())}:F>"
 
     @staticmethod
-    def _debug_avatar_target(label: str, target: object) -> None:
-        print(
-            f"[avatar-debug] {label}: type={type(target).__name__}, "
-            f"is_user={isinstance(target, discord.User)}, "
-            f"is_abc_user={isinstance(target, DiscordUser)}"
-        )
+    def _asset_url(asset: discord.Asset | None) -> str | None:
+        if asset is None:
+            return None
+
+        # Explicit PNG URLs render reliably in Discord embeds. Preserve GIF
+        # URLs for animated assets so animated avatars still work.
+        if asset.is_animated():
+            return asset.with_format("gif").url
+
+        return asset.with_format("png").url
+
+    @classmethod
+    def _avatar_url(cls, target: discord.abc.User) -> str | None:
+        return cls._asset_url(target.display_avatar)
+
+    @classmethod
+    def _banner_url(cls, target: discord.abc.User) -> str | None:
+        return cls._asset_url(getattr(target, "banner", None))
 
     async def _resolve_user_for_details(
         self,
@@ -123,14 +153,15 @@ class MemberCommands(commands.Cog):
         return target
 
     def get_message_count(self, guild_id: int, user_id: int) -> int:
-        result = self.database.execute(
-            """
-            SELECT message_count
-            FROM message_stats
-            WHERE guild_id = ? AND user_id = ?
-            """,
-            (guild_id, user_id),
-        ).fetchone()
+        with self._connect() as database:
+            result = database.execute(
+                """
+                SELECT message_count
+                FROM message_stats
+                WHERE guild_id = ? AND user_id = ?
+                """,
+                (guild_id, user_id),
+            ).fetchone()
 
         return int(result[0]) if result else 0
 
@@ -144,18 +175,19 @@ class MemberCommands(commands.Cog):
         if not self._is_enabled(message.guild.id):
             return
 
-        self.database.execute(
-            """
-            INSERT INTO message_stats (guild_id, user_id, message_count)
-            VALUES (?, ?, 1)
-            ON CONFLICT(guild_id, user_id)
-            DO UPDATE SET message_count = message_count + 1
-            """,
-            (message.guild.id, message.author.id),
-        )
-        self.database.commit()
+        with self._connect() as database:
+            database.execute(
+                """
+                INSERT INTO message_stats (guild_id, user_id, message_count)
+                VALUES (?, ?, 1)
+                ON CONFLICT(guild_id, user_id)
+                DO UPDATE SET message_count = message_count + 1
+                """,
+                (message.guild.id, message.author.id),
+            )
 
     # ============================================================ Avatar
+
 
     @app_commands.command(name="avatar")
     @app_commands.describe(
@@ -164,16 +196,12 @@ class MemberCommands(commands.Cog):
     async def avatar_slash(
         self,
         interaction: discord.Interaction,
-        member: Optional[discord.User] = None,
+        member: discord.User | None = None,
     ) -> None:
         target = member or interaction.user
-        self._debug_avatar_target("slash avatar target", target)
 
         if not isinstance(target, DiscordUser):
-            print(
-                f"[avatar-debug] rejecting slash avatar target: "
-                f"{type(target).__name__}"
-            )
+            logger.warning("Rejected invalid slash avatar target: %s", type(target).__name__)
             return
 
         display_name = getattr(target, "display_name", target.name)
@@ -182,7 +210,7 @@ class MemberCommands(commands.Cog):
             title=f"{display_name}'s Avatar",
             color=EMBED_COLOR,
         )
-        embed.set_image(url=target.display_avatar.url)
+        embed.set_image(url=self._avatar_url(target))
         embed.set_footer(text=f"User ID: {target.id}")
 
         await interaction.response.send_message(embed=embed)
@@ -191,16 +219,12 @@ class MemberCommands(commands.Cog):
     async def avatar_prefix(
         self,
         ctx: commands.Context,
-        member: Optional[discord.User] = None,
+        member: discord.User | None = None,
     ) -> None:
         target = member or ctx.author
-        self._debug_avatar_target("prefix avatar target", target)
 
         if not isinstance(target, DiscordUser):
-            print(
-                f"[avatar-debug] rejecting prefix avatar target: "
-                f"{type(target).__name__}"
-            )
+            logger.warning("Rejected invalid prefix avatar target: %s", type(target).__name__)
             return
 
         display_name = getattr(target, "display_name", target.name)
@@ -209,7 +233,7 @@ class MemberCommands(commands.Cog):
             title=f"{display_name}'s Avatar",
             color=EMBED_COLOR,
         )
-        embed.set_image(url=target.display_avatar.url)
+        embed.set_image(url=self._avatar_url(target))
         embed.set_footer(text=f"User ID: {target.id}")
 
         await ctx.send(embed=embed)
@@ -224,7 +248,7 @@ class MemberCommands(commands.Cog):
     async def profile(
         self,
         ctx: commands.Context,
-        member: Optional[discord.Member] = None,
+        member: discord.Member | None = None,
     ) -> None:
         if not await self._require_enabled(ctx):
             return
@@ -239,13 +263,21 @@ class MemberCommands(commands.Cog):
         if not isinstance(target, discord.Member):
             return
 
+        user_for_assets = await self._resolve_user_for_details(target)
         message_count = self.get_message_count(guild.id, target.id)
 
         embed = discord.Embed(
             title=f"{target.display_name}'s Profile",
             color=EMBED_COLOR,
         )
-        embed.set_thumbnail(url=target.display_avatar.url)
+        avatar_url = self._avatar_url(user_for_assets)
+        banner_url = self._banner_url(user_for_assets)
+
+        if avatar_url:
+            embed.set_thumbnail(url=avatar_url)
+
+        if banner_url:
+            embed.set_image(url=banner_url)
 
         embed.add_field(
             name="Username",
@@ -306,6 +338,7 @@ class MemberCommands(commands.Cog):
 
     # ============================================================ IDs
 
+
     @commands.hybrid_command(
         name="id",
         description="Show a member's Discord and server IDs.",
@@ -317,7 +350,7 @@ class MemberCommands(commands.Cog):
     async def user_id(
         self,
         ctx: commands.Context,
-        member: Optional[discord.User] = None,
+        member: discord.User | None = None,
         show_all: bool = False,
     ) -> None:
         guild = ctx.guild
@@ -351,9 +384,8 @@ class MemberCommands(commands.Cog):
                 if mention:
                     details.append(f"**Mention:** {mention}")
 
-                banner = getattr(user_for_details, "banner", None)
-                banner_url = banner.url if banner is not None else None
-                avatar_url = getattr(user_for_details.display_avatar, "url", None)
+                banner_url = self._banner_url(user_for_details)
+                avatar_url = self._avatar_url(user_for_details)
 
                 embed = discord.Embed(
                     title=f"{target.display_name}'s ID and profile",
@@ -389,7 +421,7 @@ class MemberCommands(commands.Cog):
                 ),
                 color=EMBED_COLOR,
             )
-            embed.set_thumbnail(url=target.display_avatar.url)
+            embed.set_thumbnail(url=self._avatar_url(target))
 
             embed.add_field(
                 name="👤 User ID",
@@ -447,9 +479,8 @@ class MemberCommands(commands.Cog):
             if mention:
                 details.append(f"**Mention:** {mention}")
 
-            banner = getattr(user_for_details, "banner", None)
-            banner_url = banner.url if banner is not None else None
-            avatar_url = getattr(user_for_details.display_avatar, "url", None)
+            banner_url = self._banner_url(user_for_details)
+            avatar_url = self._avatar_url(user_for_details)
 
             embed = discord.Embed(
                 title=f"{display_name or username or 'User'}'s ID and profile",

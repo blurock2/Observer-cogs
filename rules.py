@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import json
 import sqlite3
+from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Optional
 
 import discord
 from discord import app_commands
@@ -14,7 +13,6 @@ from cogs.setup_ui import (
     SetupConfigStore,
     owner_or_has_permissions,
 )
-
 
 MODULE_KEY = "rules"
 EMBED_COLOR = 0x96EDF1
@@ -37,10 +35,19 @@ class RulesStore:
         self.db_path = db_path
         self._init_table()
 
-    def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.db_path, check_same_thread=False)
+    @contextmanager
+    def _connect(self):
+        connection = sqlite3.connect(self.db_path, timeout=10)
         connection.row_factory = sqlite3.Row
-        return connection
+        try:
+            yield connection
+        except Exception:
+            connection.rollback()
+            raise
+        else:
+            connection.commit()
+        finally:
+            connection.close()
 
     def _init_table(self) -> None:
         with self._connect() as conn:
@@ -90,7 +97,7 @@ class RulesStore:
         self,
         guild_id: int,
         rule_id: int,
-    ) -> Optional[Rule]:
+    ) -> Rule | None:
         with self._connect() as conn:
             row = conn.execute(
                 """
@@ -174,7 +181,7 @@ class RulesStore:
         return cursor.rowcount > 0
 
     @staticmethod
-    def _row_to_rule(row: Optional[sqlite3.Row]) -> Optional[Rule]:
+    def _row_to_rule(row: sqlite3.Row | None) -> Rule | None:
         if row is None:
             return None
 
@@ -192,9 +199,9 @@ class RuleModal(discord.ui.Modal):
 
     def __init__(
         self,
-        cog: "RulesCommand",
+        cog: RulesCommand,
         *,
-        rule: Optional[Rule] = None,
+        rule: Rule | None = None,
     ):
         self.cog = cog
         self.rule = rule
@@ -358,11 +365,10 @@ class RulesCommand(commands.Cog):
         return False
 
     @staticmethod
-    def _parse_rule_id(value: str) -> Optional[int]:
+    def _parse_rule_id(value: str) -> int | None:
         value = value.strip()
 
-        if value.startswith("#"):
-            value = value[1:]
+        value = value.removeprefix("#")
 
         first_part = value.split(" ", maxsplit=1)[0]
 
@@ -407,14 +413,6 @@ class RulesCommand(commands.Cog):
     ) -> None:
         if not await self._require_enabled(interaction):
             return
-
-        rule = Rule(
-            rule_id=0,
-            guild_id=interaction.guild.id,
-            title="",
-            content="",
-            send_format=self._default_format(interaction.guild.id),
-        )
 
         await interaction.response.send_modal(
             RuleModal(self, rule=None)
@@ -582,7 +580,7 @@ class RulesCommand(commands.Cog):
         self,
         interaction: discord.Interaction,
         rule: str,
-        format: Optional[app_commands.Choice[str]] = None,
+        format: app_commands.Choice[str] | None = None,
     ) -> None:
         if not await self._require_enabled(interaction):
             return

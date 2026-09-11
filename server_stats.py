@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Optional
 
 import discord
 from discord.ext import commands, tasks
 
 from cogs.setup_ui import DB_PATH, SetupConfigStore
-
 
 MODULE_KEY = "server_stats"
 
@@ -55,7 +53,7 @@ class ServerInfo(commands.Cog):
     def _is_enabled(self, guild_id: int) -> bool:
         return bool(self._get(guild_id, "enabled", False))
 
-    def _get_category_id(self, guild_id: int) -> Optional[int]:
+    def _get_category_id(self, guild_id: int) -> int | None:
         value = self._get(guild_id, "category")
 
         try:
@@ -88,7 +86,7 @@ class ServerInfo(commands.Cog):
         self,
         guild_id: int,
         key: str,
-    ) -> Optional[int]:
+    ) -> int | None:
         value = self._get(guild_id, key)
 
         try:
@@ -134,7 +132,7 @@ class ServerInfo(commands.Cog):
         category: discord.CategoryChannel,
         config_key: str,
         name: str,
-    ) -> Optional[discord.VoiceChannel]:
+    ) -> discord.VoiceChannel | None:
         """
         Find the previously created counter channel or create it under
         the configured category.
@@ -310,7 +308,7 @@ class ServerInfo(commands.Cog):
             try:
                 await self.refresh_guild_stats(guild)
                 self.store.set(guild.id, MODULE_KEY, "last_update", now)
-            except Exception as error:
+            except Exception as error:  # noqa: BLE001 - keep the scheduler alive for other guilds
                 print(
                     f"[server_stats] Refresh error for "
                     f"{guild.name} ({guild.id}): {error}"

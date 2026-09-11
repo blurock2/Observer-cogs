@@ -2,28 +2,26 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+import logging
 import os
 import sys
-import traceback
+from pathlib import Path
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 
+from cogs.config import BOT_OWNER_ID, is_bot_owner
+from database import migrate_legacy_databases
+from logging_config import configure_logging
 
 load_dotenv()
-
-
-# ============================================================
-# Owner override
-
-BOT_OWNER_ID = 805687087784394773
-
-
-def is_bot_owner(user: discord.abc.User | None) -> bool:
-    """Return whether the user is the configured bot owner."""
-    return user is not None and user.id == BOT_OWNER_ID
+configure_logging()
+logger = logging.getLogger("observer.bot")
+migrate_legacy_databases(
+    Path(__file__).resolve().parent / "data" / "bot.db"
+)
 
 
 # ============================================================
@@ -97,42 +95,21 @@ class MyBot(commands.Bot):
         for extension in self.EXTENSIONS:
             try:
                 await self.load_extension(extension)
-                print(f"Loaded extension: {extension}")
+                logger.info("Loaded extension: %s", extension)
 
-            except Exception as error:
-                print(
-                    f"Failed to load extension {extension}: "
-                    f"{type(error).__name__}: {error}"
-                )
-                traceback.print_exc()
-
-        print("\nLocal application commands before sync:")
-
-        for command in self.tree.walk_commands():
-            print(
-                f"  /{command.qualified_name} "
-                f"({type(command).__name__})"
-            )
+            except Exception:
+                logger.exception("Failed to load extension %s", extension)
 
         try:
             synced_commands = await self.tree.sync()
 
-            print(
-                f"\nGlobally synced "
-                f"{len(synced_commands)} application command(s)."
+            logger.info(
+                "Globally synced %d application command(s)",
+                len(synced_commands),
             )
 
-            print("Commands returned by Discord:")
-
-            for command in synced_commands:
-                print(f"  /{command.name}")
-
-        except Exception as error:
-            print(
-                "Failed to synchronize application commands: "
-                f"{type(error).__name__}: {error}"
-            )
-            traceback.print_exc()
+        except Exception:
+            logger.exception("Failed to synchronize application commands")
 
 
 bot = MyBot()
@@ -177,7 +154,7 @@ async def reload_cogs(ctx: commands.Context) -> None:
                 await bot.load_extension(extension)
 
                 results.append(f"✅ `{extension}` loaded (was not loaded).")
-                print(f"Loaded extension: {extension}")
+                logger.info("Loaded extension during reload: %s", extension)
 
             except Exception as error:
                 results.append(
@@ -185,11 +162,7 @@ async def reload_cogs(ctx: commands.Context) -> None:
                     f"`{type(error).__name__}: {error}`"
                 )
 
-                print(
-                    f"Failed to load extension {extension}: "
-                    f"{type(error).__name__}: {error}"
-                )
-                traceback.print_exc()
+                logger.exception("Failed to load extension %s", extension)
 
             continue
 
@@ -200,10 +173,7 @@ async def reload_cogs(ctx: commands.Context) -> None:
             await bot.reload_extension(extension)
 
             results.append(f"✅ `{extension}` reloaded.")
-            print(
-                f"Reloaded extension: {extension}\n"
-                f"File: {module_path}"
-            )
+            logger.info("Reloaded extension %s from %s", extension, module_path)
 
         except Exception as error:
             results.append(
@@ -211,12 +181,11 @@ async def reload_cogs(ctx: commands.Context) -> None:
                 f"`{type(error).__name__}: {error}`"
             )
 
-            print(
-                f"Failed to reload extension {extension}: "
-                f"{type(error).__name__}: {error}"
+            logger.exception(
+                "Failed to reload extension %s from %s",
+                extension,
+                module_path,
             )
-            print(f"File: {module_path}")
-            traceback.print_exc()
 
     try:
         synced_commands = await bot.tree.sync()
@@ -226,9 +195,9 @@ async def reload_cogs(ctx: commands.Context) -> None:
             f"{len(synced_commands)} application command(s)."
         )
 
-        print(
-            "Globally synced "
-            f"{len(synced_commands)} application command(s) after reload."
+        logger.info(
+            "Globally synced %d application command(s) after reload",
+            len(synced_commands),
         )
 
     except Exception as error:
@@ -237,10 +206,7 @@ async def reload_cogs(ctx: commands.Context) -> None:
             f"`{type(error).__name__}: {error}`"
         )
 
-        print(
-            "Failed to synchronize application commands after reload:"
-        )
-        traceback.print_exc()
+        logger.exception("Failed to synchronize application commands after reload")
 
     response = "\n".join(results)
 
@@ -364,9 +330,9 @@ async def debug_commands(ctx: commands.Context) -> None:
 @bot.event
 async def on_ready() -> None:
     if bot.user is not None:
-        print(f"Logged in as {bot.user} ({bot.user.id})")
+        logger.info("Logged in as %s (%s)", bot.user, bot.user.id)
 
-    print(f"Connected to {len(bot.guilds)} guild(s).")
+    logger.info("Connected to %d guild(s)", len(bot.guilds))
 
 
 @bot.event
@@ -406,11 +372,13 @@ async def on_command_error(
     if isinstance(error, commands.CommandInvokeError):
         original_error = error.original
 
-        print("Error while running a prefix command:")
-        traceback.print_exception(
-            type(original_error),
-            original_error,
-            original_error.__traceback__,
+        logger.error(
+            "Prefix command failed",
+            exc_info=(
+                type(original_error),
+                original_error,
+                original_error.__traceback__,
+            ),
         )
 
         await ctx.send(
@@ -419,11 +387,9 @@ async def on_command_error(
         )
         return
 
-    print("Unhandled prefix-command error:")
-    traceback.print_exception(
-        type(error),
-        error,
-        error.__traceback__,
+    logger.error(
+        "Unhandled prefix-command error",
+        exc_info=(type(error), error, error.__traceback__),
     )
 
 
@@ -483,11 +449,9 @@ async def on_app_command_error(
         )
 
     else:
-        print("Error while running an application command:")
-        traceback.print_exception(
-            type(error),
-            error,
-            error.__traceback__,
+        logger.error(
+            "Application command failed",
+            exc_info=(type(error), error, error.__traceback__),
         )
 
         message = (
@@ -525,7 +489,7 @@ async def main() -> None:
             await bot.start(token)
 
     except asyncio.CancelledError:
-        print("Bot shutdown requested.")
+        logger.info("Bot shutdown requested")
 
     finally:
         if not bot.is_closed():
@@ -537,4 +501,4 @@ if __name__ == "__main__":
         asyncio.run(main())
 
     except KeyboardInterrupt:
-        print("Bot stopped cleanly.")
+        logger.info("Bot stopped cleanly")

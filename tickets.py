@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Optional
 
 import discord
 from discord import app_commands
@@ -13,7 +12,6 @@ from cogs.setup_ui import (
     owner_or_has_permissions,
 )
 
-
 MODULE_KEY = "tickets"
 NO_MENTIONS = discord.AllowedMentions.none()
 
@@ -21,7 +19,7 @@ NO_MENTIONS = discord.AllowedMentions.none()
 class TicketPanelView(discord.ui.View):
     """Persistent Create Ticket button shown in panel channels."""
 
-    def __init__(self, cog: "TicketCog"):
+    def __init__(self, cog: TicketCog):
         super().__init__(timeout=None)
         self.cog = cog
 
@@ -42,7 +40,7 @@ class TicketPanelView(discord.ui.View):
 class TicketCloseView(discord.ui.View):
     """Persistent Close Ticket button inside every ticket."""
 
-    def __init__(self, cog: "TicketCog"):
+    def __init__(self, cog: TicketCog):
         super().__init__(timeout=None)
         self.cog = cog
 
@@ -76,8 +74,8 @@ class TicketCog(commands.Cog):
         self.bot = bot
         self.store = SetupConfigStore(DB_PATH)
 
-        self.panel_view: Optional[TicketPanelView] = None
-        self.close_view: Optional[TicketCloseView] = None
+        self.panel_view: TicketPanelView | None = None
+        self.close_view: TicketCloseView | None = None
 
     async def cog_load(self) -> None:
         """Register stable views so ticket buttons work after restarts."""
@@ -89,10 +87,12 @@ class TicketCog(commands.Cog):
 
     def cog_unload(self) -> None:
         if self.panel_view is not None:
-            self.bot.remove_view(self.panel_view)
+            self.panel_view.stop()
+            self.panel_view = None
 
         if self.close_view is not None:
-            self.bot.remove_view(self.close_view)
+            self.close_view.stop()
+            self.close_view = None
 
     # ============================================================ Dsashboard config
 
@@ -122,7 +122,7 @@ class TicketCog(commands.Cog):
         self,
         guild_id: int,
         key: str,
-    ) -> Optional[int]:
+    ) -> int | None:
         value = self._get(guild_id, key)
 
         try:
@@ -137,7 +137,7 @@ class TicketCog(commands.Cog):
     def _panel_channel_id(
         self,
         guild_id: int,
-    ) -> Optional[int]:
+    ) -> int | None:
         return self._get_id(
             guild_id,
             "panel_channel",
@@ -146,7 +146,7 @@ class TicketCog(commands.Cog):
     def _support_role_id(
         self,
         guild_id: int,
-    ) -> Optional[int]:
+    ) -> int | None:
         return self._get_id(
             guild_id,
             "support_role",
@@ -155,7 +155,7 @@ class TicketCog(commands.Cog):
     def _blacklisted_role_id(
         self,
         guild_id: int,
-    ) -> Optional[int]:
+    ) -> int | None:
         return self._get_id(
             guild_id,
             "blacklisted_role",
@@ -210,7 +210,7 @@ class TicketCog(commands.Cog):
         self,
         guild: discord.Guild,
         user: discord.Member,
-    ) -> Optional[discord.TextChannel]:
+    ) -> discord.TextChannel | None:
         expected_name = self._ticket_name(user)
 
         for channel in guild.text_channels:
@@ -232,7 +232,7 @@ class TicketCog(commands.Cog):
     @staticmethod
     def _ticket_owner_id(
         channel: discord.TextChannel,
-    ) -> Optional[int]:
+    ) -> int | None:
         if channel.topic is None:
             return None
 

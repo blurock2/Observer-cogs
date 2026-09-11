@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import time
-from typing import Optional
 
 import discord
 from discord import app_commands
@@ -10,7 +9,6 @@ from discord.ext import commands
 
 from cogs.mod_stats import ModerationStatsStore
 from cogs.setup_ui import DB_PATH, SetupConfigStore
-
 
 MODULE_KEY = "report_msg"
 MODERATION_MODULE_KEY = "moderation"
@@ -29,10 +27,10 @@ class ClaimReportView(discord.ui.View):
 
     def __init__(
         self,
-        cog: "ReportMessage",
-        staff_role_id: Optional[int],
+        cog: ReportMessage,
+        staff_role_id: int | None,
         *,
-        claimed_by: Optional[int] = None,
+        claimed_by: int | None = None,
     ):
         super().__init__(timeout=None)
         self.cog = cog
@@ -221,7 +219,7 @@ class ClaimReportView(discord.ui.View):
 class ReportModal(discord.ui.Modal):
     def __init__(
         self,
-        cog: "ReportMessage",
+        cog: ReportMessage,
         reported_message: discord.Message,
     ):
         super().__init__(title="Report Message")
@@ -503,7 +501,7 @@ class ReportMessage(commands.Cog):
     def get_report_channel_id(
         self,
         guild_id: int,
-    ) -> Optional[int]:
+    ) -> int | None:
         value = self.get_config(
             guild_id,
             "report_channel",
@@ -521,7 +519,7 @@ class ReportMessage(commands.Cog):
     def get_staff_role_id(
         self,
         guild_id: int,
-    ) -> Optional[int]:
+    ) -> int | None:
         value = self.get_config(
             guild_id,
             "staff_role",
@@ -572,7 +570,7 @@ class ReportMessage(commands.Cog):
     def get_moderator_role_id(
         self,
         guild_id: int,
-    ) -> Optional[int]:
+    ) -> int | None:
         value = self.get_moderation_config(
             guild_id,
             "mod_role",

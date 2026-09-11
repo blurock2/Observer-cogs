@@ -5,7 +5,6 @@ import logging
 import re
 import ssl
 from io import BytesIO
-from typing import Optional
 
 import aiohttp
 import discord
@@ -15,8 +14,7 @@ from PIL import Image
 
 # Reuse the same config store the setup dashboard writes to, so the
 # "Spotify" module's Enabled toggle actually controls this cog.
-from cogs.setup_ui import SetupConfigStore, DB_PATH
-
+from cogs.setup_ui import DB_PATH, SetupConfigStore
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +78,7 @@ class SpotifyShow(commands.Cog):
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
-        self.session: Optional[aiohttp.ClientSession] = None
+        self.session: aiohttp.ClientSession | None = None
         # Same on-disk store the setup dashboard reads and writes.
         self.store = SetupConfigStore(DB_PATH)
 
@@ -121,7 +119,7 @@ class SpotifyShow(commands.Cog):
     def extract_spotify_track(
         self,
         content: str,
-    ) -> Optional[tuple[str, str]]:
+    ) -> tuple[str, str] | None:
         """
         Extract a Spotify track ID and the matching URL from text.
 
@@ -145,7 +143,7 @@ class SpotifyShow(commands.Cog):
         self,
         track_id: str,
         original_url: str,
-    ) -> Optional[dict[str, Optional[str]]]:
+    ) -> dict[str, str | None] | None:
         """
         Fetch track information through Spotify oEmbed.
 
@@ -243,7 +241,7 @@ class SpotifyShow(commands.Cog):
 
     # ============================================================ Cover-art color extraction
 
-    async def _fetch_image_bytes(self, image_url: str) -> Optional[bytes]:
+    async def _fetch_image_bytes(self, image_url: str) -> bytes | None:
         """
         Download the cover-art image so its dominant color can be
         extracted. Returns None on any failure.
@@ -265,7 +263,7 @@ class SpotifyShow(commands.Cog):
             logger.exception("Failed to fetch Spotify cover art.")
             return None
 
-    def _extract_dominant_color(self, image_bytes: bytes) -> Optional[discord.Color]:
+    def _extract_dominant_color(self, image_bytes: bytes) -> discord.Color | None:
         """
         Pick a representative accent color from the cover art.
 
@@ -302,7 +300,7 @@ class SpotifyShow(commands.Cog):
 
         return None
 
-    async def get_cover_color(self, image_url: Optional[str]) -> discord.Color:
+    async def get_cover_color(self, image_url: str | None) -> discord.Color:
         """
         Resolve the embed accent color from the track's cover art,
         falling back to Spotify green if there is no artwork or
@@ -322,7 +320,7 @@ class SpotifyShow(commands.Cog):
 
     async def create_spotify_embed(
         self,
-        track_info: dict[str, Optional[str]],
+        track_info: dict[str, str | None],
     ) -> discord.Embed:
         """
         Create a Discord embed for a Spotify track, colored to match

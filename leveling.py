@@ -7,22 +7,24 @@ import shutil
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
-from cogs.config import BOT_OWNER_ID, is_bot_owner
 
+from cogs.config import BOT_OWNER_ID
 
 # Shared setup store (written by the /setup dashboard). setup_ui is
 # loaded before this cog in bot.EXTENSIONS, so the import is safe.
-from cogs.setup_ui import SetupConfigStore, DB_PATH, owner_or_has_permissions, owner_or_has_guild_permissions
-
+from cogs.setup_ui import (
+    DB_PATH,
+    SetupConfigStore,
+    owner_or_has_guild_permissions,
+    owner_or_has_permissions,
+)
 
 # ============================================================ Configuration
-
-BOT_OWNER_ID = 805687087784394773
 
 BRAND_COLOR = discord.Color.from_rgb(150, 237, 241)
 SUCCESS_COLOR = discord.Color.from_rgb(87, 242, 135)
@@ -40,6 +42,8 @@ MODULE_KEY = "leveling"
 # Keys mirrored between this cog's guild_config table and the shared
 # setup store, so the dashboard and the slash commands stay in sync.
 MIRRORED_KEYS = {
+    "enabled",
+    "xp_cooldown",
     "level_up_channel",
     "level_up_message",
     "weekly_channel",
@@ -54,7 +58,7 @@ logger = logging.getLogger(__name__)
 # ============================================================ Stable database path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DATABASE_PATH = PROJECT_ROOT / "data" / "leveling.db"
+DATABASE_PATH = Path(DB_PATH)
 
 
 def _db_path() -> Path:
@@ -119,7 +123,7 @@ SPECIAL_LEVELS = {
 
 # ============================================================ Database backup
 
-def _backup_database() -> Optional[Path]:
+def _backup_database() -> Path | None:
     database = _db_path()
 
     if not database.exists():
@@ -127,7 +131,7 @@ def _backup_database() -> Optional[Path]:
 
     backup_path = database.with_name(
         f"{database.stem}_backup_"
-        f"{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        f"{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
         f"{database.suffix}"
     )
 
@@ -340,9 +344,9 @@ def _current_week_start(now: datetime) -> str:
 def themed_embed(
     *,
     title: str,
-    description: Optional[str] = None,
+    description: str | None = None,
     color: discord.Color = BRAND_COLOR,
-    guild: Optional[discord.Guild] = None,
+    guild: discord.Guild | None = None,
 ) -> discord.Embed:
     embed = discord.Embed(
         title=title,
@@ -367,7 +371,7 @@ def themed_embed(
 
 def error_embed(
     message: str,
-    guild: Optional[discord.Guild] = None,
+    guild: discord.Guild | None = None,
 ) -> discord.Embed:
     return themed_embed(
         title="❌ Something went wrong",
@@ -379,7 +383,7 @@ def error_embed(
 
 def success_embed(
     message: str,
-    guild: Optional[discord.Guild] = None,
+    guild: discord.Guild | None = None,
 ) -> discord.Embed:
     return themed_embed(
         title="✅ Success",
@@ -420,8 +424,8 @@ class Leveling(commands.Cog):
         # Shared config store (read by this cog, written by /setup).
         self.store = SetupConfigStore(DB_PATH)
 
-        self._xp_cooldowns: Dict[
-            Tuple[int, int],
+        self._xp_cooldowns: dict[
+            tuple[int, int],
             datetime,
         ] = {}
 
@@ -504,7 +508,7 @@ class Leveling(commands.Cog):
         guild_id: int,
         user_id: int,
         xp: int,
-    ) -> Tuple[int, int, int, int]:
+    ) -> tuple[int, int, int, int]:
         async with self._db_lock:
             conn = _get_conn()
 
@@ -619,7 +623,7 @@ class Leveling(commands.Cog):
     async def _get_guild_config(
         self,
         guild_id: int,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         async with self._db_lock:
             conn = _get_conn()
 
@@ -704,7 +708,9 @@ class Leveling(commands.Cog):
             value = stored.get(key)
             return value if value is not None else legacy[legacy_key]
 
-        return {
+        config = {
+            "enabled": stored.get("enabled", True),
+            "xp_cooldown": stored.get("xp_cooldown", 15),
             "level_up_channel": overlay("level_up_channel", "level_up_channel"),
             "level_up_message": overlay("level_up_message", "level_up_message"),
             "weekly_channel": overlay("weekly_channel", "weekly_channel"),
@@ -716,6 +722,16 @@ class Leveling(commands.Cog):
                 for reward in rewards
             },
         }
+
+        # Keep legacy DB values intact when the setup store is empty.
+        # This prevents new runtime toggles from silently wiping saved guild data.
+        if row is None:
+            config["level_up_message"] = "🎉 {user} just reached level {level}!"
+            config["weekly_day"] = 0
+            config["weekly_hour"] = 0
+            config["weekly_minute"] = 0
+
+        return config
 
     async def _set_guild_config(
         self,
@@ -764,8 +780,8 @@ class Leveling(commands.Cog):
                     (guild_id,),
                 )
 
-                updates: List[str] = []
-                params: List[Any] = []
+                updates: list[str] = []
+                params: list[Any] = []
 
                 for key, value in kwargs.items():
                     if key not in allowed_columns:
@@ -787,6 +803,7 @@ class Leveling(commands.Cog):
                     )
 
                 if "role_rewards" in kwargs:
+                    rewards = kwargs["role_rewards"] or {}
                     cur.execute(
                         """
                         DELETE FROM role_rewards
@@ -795,9 +812,7 @@ class Leveling(commands.Cog):
                         (guild_id,),
                     )
 
-                    for level, role_id in kwargs[
-                        "role_rewards"
-                    ].items():
+                    for level, role_id in rewards.items():
                         cur.execute(
                             """
                             INSERT INTO role_rewards
@@ -817,7 +832,8 @@ class Leveling(commands.Cog):
                 conn.close()
 
         # Mirror config keys into the shared store so /setup sees the
-        # same values the slash commands write.
+        # same values the slash commands write, without destroying any
+        # legacy guild row values that were previously stored elsewhere.
         for key, value in kwargs.items():
             if key in MIRRORED_KEYS:
                 self.store.set(guild_id, MODULE_KEY, key, value)
@@ -856,7 +872,7 @@ class Leveling(commands.Cog):
     async def _reset_weekly_xp(
         self,
         guild_id: int,
-        user_id: Optional[int] = None,
+        user_id: int | None = None,
     ) -> None:
         week_start = _current_week_start(
             datetime.now(timezone.utc)
@@ -982,10 +998,10 @@ class Leveling(commands.Cog):
     def _build_leaderboard_embed(
         self,
         guild: discord.Guild,
-        rows: List[sqlite3.Row],
+        rows: list[sqlite3.Row],
     ) -> discord.Embed:
         medals = ["🥇", "🥈", "🥉"]
-        lines: List[str] = []
+        lines: list[str] = []
 
         for index, row in enumerate(rows, start=1):
             member = guild.get_member(row["user_id"])
@@ -1220,7 +1236,7 @@ class Leveling(commands.Cog):
         self,
         guild_id: int,
         week_start: str,
-    ) -> List[sqlite3.Row]:
+    ) -> list[sqlite3.Row]:
         async with self._db_lock:
             conn = _get_conn()
 
@@ -1310,7 +1326,7 @@ class Leveling(commands.Cog):
     async def _post_weekly_leaderboard(
         self,
         guild: discord.Guild,
-        week_start: Optional[str] = None,
+        week_start: str | None = None,
     ) -> bool:
         config = await self._get_guild_config(guild.id)
         channel_id = config.get("weekly_channel")
@@ -1341,7 +1357,7 @@ class Leveling(commands.Cog):
             return False
 
         medals = ["🥇", "🥈", "🥉"]
-        lines: List[str] = []
+        lines: list[str] = []
 
         for index, row in enumerate(rows, start=1):
             member = guild.get_member(row["user_id"])
@@ -1554,7 +1570,7 @@ class Leveling(commands.Cog):
     async def rank_slash(
         self,
         interaction: discord.Interaction,
-        member: Optional[discord.Member] = None,
+        member: discord.Member | None = None,
     ) -> None:
         if interaction.guild is None:
             await interaction.response.send_message(
@@ -1589,7 +1605,7 @@ class Leveling(commands.Cog):
     async def rank_prefix(
         self,
         ctx: commands.Context,
-        member: Optional[discord.Member] = None,
+        member: discord.Member | None = None,
     ) -> None:
         if ctx.guild is None:
             await ctx.send(
@@ -1625,7 +1641,7 @@ class Leveling(commands.Cog):
     async def _get_leaderboard_rows(
         self,
         guild_id: int,
-    ) -> List[sqlite3.Row]:
+    ) -> list[sqlite3.Row]:
         async with self._db_lock:
             conn = _get_conn()
 
@@ -1731,7 +1747,7 @@ class Leveling(commands.Cog):
         self,
         guild_id: int,
         user_id: int,
-    ) -> Tuple[str, int, int]:
+    ) -> tuple[str, int, int]:
         week_start = _current_week_start(
             datetime.now(timezone.utc)
         )
@@ -1791,7 +1807,7 @@ class Leveling(commands.Cog):
     async def weekly_rank_slash(
         self,
         interaction: discord.Interaction,
-        member: Optional[discord.Member] = None,
+        member: discord.Member | None = None,
     ) -> None:
         if interaction.guild is None:
             await interaction.response.send_message(
@@ -1826,7 +1842,7 @@ class Leveling(commands.Cog):
     async def weekly_rank_prefix(
         self,
         ctx: commands.Context,
-        member: Optional[discord.Member] = None,
+        member: discord.Member | None = None,
     ) -> None:
         if ctx.guild is None:
             await ctx.send(
@@ -1862,7 +1878,7 @@ class Leveling(commands.Cog):
     @staticmethod
     def _parse_time(
         value: str,
-    ) -> Optional[Tuple[int, int]]:
+    ) -> tuple[int, int] | None:
         try:
             hour_text, minute_text = value.strip().split(":")
             hour = int(hour_text)
@@ -2002,7 +2018,7 @@ class Leveling(commands.Cog):
     async def weekly_reset_slash(
         self,
         interaction: discord.Interaction,
-        member: Optional[discord.Member] = None,
+        member: discord.Member | None = None,
     ) -> None:
         if interaction.guild is None:
             await interaction.response.send_message(
@@ -2047,7 +2063,7 @@ class Leveling(commands.Cog):
     async def weekly_reset_prefix(
         self,
         ctx: commands.Context,
-        member: Optional[discord.Member] = None,
+        member: discord.Member | None = None,
     ) -> None:
         if ctx.guild is None:
             return
@@ -2217,7 +2233,7 @@ class Leveling(commands.Cog):
     async def test_levelup(
         self,
         ctx: commands.Context,
-        member: Optional[discord.Member] = None,
+        member: discord.Member | None = None,
         level: int = 1,
     ) -> None:
         if ctx.author.id != BOT_OWNER_ID:
