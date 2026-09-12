@@ -24,7 +24,7 @@ def systemctl(action: str) -> None:
     if action not in allowed:
         raise ValueError("Unsupported service action")
     subprocess.run(
-        ["sudo", "/usr/bin/systemctl", action, SERVICE],
+        ["sudo", "-n", "/usr/bin/systemctl", action, SERVICE],
         check=True,
         capture_output=True,
         text=True,
@@ -38,12 +38,15 @@ def status() -> dict[str, Any]:
         capture_output=True,
         text=True,
     ).stdout.strip() == "active"
-    log_text = subprocess.run(
-        ["/usr/bin/journalctl", "-u", SERVICE, "-n", "120", "--no-pager", "-o", "cat"],
+    log_result = subprocess.run(
+        ["sudo", "-n", "/usr/bin/journalctl", "-u", SERVICE, "-n", "120", "--no-pager", "-o", "cat"],
         capture_output=True,
         text=True,
         timeout=15,
-    ).stdout
+    )
+    if log_result.returncode != 0:
+        raise RuntimeError(log_result.stderr.strip() or "Could not read the Observer journal.")
+    log_text = log_result.stdout
     connected = "Logged in as" in log_text or "Connected to" in log_text
     match = re.search(r"Connected to (\d+) guild", log_text)
     return {
@@ -55,11 +58,13 @@ def status() -> dict[str, Any]:
 
 def logs(lines: int) -> list[str]:
     result = subprocess.run(
-        ["/usr/bin/journalctl", "-u", SERVICE, "-n", str(min(max(lines, 1), 500)), "--no-pager", "-o", "cat"],
+        ["sudo", "-n", "/usr/bin/journalctl", "-u", SERVICE, "-n", str(min(max(lines, 1), 500)), "--no-pager", "-o", "cat"],
         capture_output=True,
         text=True,
         timeout=15,
     )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or "Could not read the Observer journal.")
     return result.stdout.splitlines()
 
 
@@ -96,6 +101,24 @@ def get_module(guild_id: int, module: str) -> dict[str, Any]:
     return values
 
 
+def config_snapshot() -> dict[str, Any]:
+    with sqlite3.connect(DB, timeout=10) as connection:
+        rows = connection.execute(
+            "SELECT guild_id, module, key, value FROM guild_setup_config"
+        ).fetchall()
+    modules: dict[str, dict[str, dict[str, Any]]] = {}
+    guild_ids: set[int] = set()
+    for guild_id, module, key, value in rows:
+        guild_key = str(guild_id)
+        guild_ids.add(int(guild_id))
+        module_values = modules.setdefault(guild_key, {}).setdefault(str(module), {})
+        try:
+            module_values[str(key)] = json.loads(value)
+        except (TypeError, json.JSONDecodeError):
+            module_values[str(key)] = value
+    return {"guild_ids": sorted(guild_ids), "modules": modules}
+
+
 def message_result(request_id: str) -> dict[str, Any] | None:
     result_file = DATA / "app_message_results.json"
     if not result_file.is_file():
@@ -121,6 +144,8 @@ def main() -> None:
         response(json.loads(GUILDS.read_text(encoding="utf-8")) if GUILDS.is_file() else {})
     elif action == "config_guilds":
         response(get_configured_guilds())
+    elif action == "config_snapshot":
+        response(config_snapshot())
     elif action == "get_module":
         response(get_module(int(payload["guild_id"]), str(payload["module"])))
     elif action == "set_module":
