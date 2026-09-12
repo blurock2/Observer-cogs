@@ -90,7 +90,7 @@ class MyBot(commands.Bot):
 
     async def setup_hook(self) -> None:
         """
-        Load all cogs, then globally synchronize the application command tree.
+        Load all cogs without globally syncing commands on every startup.
         """
 
         for extension in self.EXTENSIONS:
@@ -101,16 +101,10 @@ class MyBot(commands.Bot):
             except Exception:
                 logger.exception("Failed to load extension %s", extension)
 
-        try:
-            synced_commands = await self.tree.sync()
-
-            logger.info(
-                "Globally synced %d application command(s)",
-                len(synced_commands),
-            )
-
-        except Exception:
-            logger.exception("Failed to synchronize application commands")
+        logger.info(
+            "Loaded extensions without global command sync; "
+            "use !sync_commands after command changes."
+        )
 
 
 bot = MyBot()
@@ -188,27 +182,6 @@ async def reload_cogs(ctx: commands.Context) -> None:
                 module_path,
             )
 
-    try:
-        synced_commands = await bot.tree.sync()
-
-        results.append(
-            f"\n🔄 Globally synced "
-            f"{len(synced_commands)} application command(s)."
-        )
-
-        logger.info(
-            "Globally synced %d application command(s) after reload",
-            len(synced_commands),
-        )
-
-    except Exception as error:
-        results.append(
-            "\n❌ Slash commands did not sync: "
-            f"`{type(error).__name__}: {error}`"
-        )
-
-        logger.exception("Failed to synchronize application commands after reload")
-
     response = "\n".join(results)
 
     if len(response) <= 2000:
@@ -216,6 +189,24 @@ async def reload_cogs(ctx: commands.Context) -> None:
     else:
         for start in range(0, len(response), 1900):
             await ctx.send(response[start:start + 1900])
+
+
+@bot.command(name="sync_commands")
+@commands.is_owner()
+async def sync_commands(ctx: commands.Context) -> None:
+    """Explicitly synchronize global application commands after changes."""
+    try:
+        synced_commands = await bot.tree.sync()
+        await ctx.send(
+            f"🔄 Globally synced {len(synced_commands)} application command(s)."
+        )
+        logger.info("Globally synced %d application command(s)", len(synced_commands))
+    except Exception as error:
+        logger.exception("Failed to synchronize application commands")
+        await ctx.send(
+            "❌ Slash commands did not sync: "
+            f"`{type(error).__name__}: {error}`"
+        )
 
 
 # ============================================================

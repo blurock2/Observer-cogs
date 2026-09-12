@@ -4,7 +4,6 @@ import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-
 PROJECT_ROOT = Path(__file__).resolve().parent
 LOG_PATH = PROJECT_ROOT / "logs" / "logs.txt"
 

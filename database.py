@@ -6,11 +6,10 @@ from contextlib import closing, contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from time import time
-from typing import Optional
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
-DATABASE_PATH = DATA_DIR / "reports.db"
+DATABASE_PATH = DATA_DIR / "bot.db"
 logger = logging.getLogger("observer.database")
 
 BACKUP_RETENTION_DAYS = 5
@@ -20,6 +19,18 @@ BACKUP_PATTERNS = (
     "*.backup-*",
     "migration_backup_*",
 )
+
+
+def connect_sqlite(
+    database_path: str | Path,
+    timeout: float = 10,
+) -> sqlite3.Connection:
+    """Open a project SQLite connection with contention-safe defaults."""
+    connection = sqlite3.connect(database_path, timeout=timeout)
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA busy_timeout = 10000")
+    connection.execute("PRAGMA journal_mode = WAL")
+    return connection
 
 
 def cleanup_old_backups(
@@ -68,7 +79,7 @@ def migrate_legacy_databases(primary_path: str | Path) -> None:
         "leveling": BASE_DIR / "data" / "leveling.db",
     }
 
-    with closing(sqlite3.connect(primary, timeout=30)) as connection:
+    with closing(connect_sqlite(primary, timeout=30)) as connection:
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS database_migrations (
@@ -96,7 +107,7 @@ def migrate_legacy_databases(primary_path: str | Path) -> None:
             if not backup_path.exists():
                 shutil.copy2(legacy_path, backup_path)
 
-            with closing(sqlite3.connect(legacy_path)) as legacy_connection:
+            with closing(connect_sqlite(legacy_path)) as legacy_connection:
                 legacy_connection.row_factory = sqlite3.Row
                 if name == "account_links":
                     connection.execute(
@@ -211,7 +222,7 @@ def migrate_legacy_databases(primary_path: str | Path) -> None:
 def init_database():
     DATA_DIR.mkdir(exist_ok=True)
 
-    connection = sqlite3.connect(DATABASE_PATH)
+    connection = connect_sqlite(DATABASE_PATH)
 
     connection.execute("""
         CREATE TABLE IF NOT EXISTS reports (
@@ -246,8 +257,7 @@ class ModerationActionStore:
 
     @contextmanager
     def _connect(self):
-        connection = sqlite3.connect(self.db_path, timeout=10)
-        connection.row_factory = sqlite3.Row
+        connection = connect_sqlite(self.db_path)
         try:
             yield connection
         except Exception:
@@ -308,7 +318,7 @@ class ModerationActionStore:
                 (message_id, action_id),
             )
 
-    def get_by_log_message(self, message_id: int) -> Optional[sqlite3.Row]:
+    def get_by_log_message(self, message_id: int) -> sqlite3.Row | None:
         with self._connect() as connection:
             return connection.execute(
                 "SELECT * FROM moderation_actions WHERE log_message_id = ?",
@@ -399,6 +409,10 @@ class RelayConfigStore:
                 )
                 """
             )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_relay_targets_guild "
+                "ON relay_target_channels(target_guild_id)"
+            )
 
     def _migrate_legacy(self) -> None:
         if not self.legacy_path.exists():
@@ -407,7 +421,7 @@ class RelayConfigStore:
         try:
             data = json.loads(self.legacy_path.read_text(encoding="utf-8"))
             if not isinstance(data, dict):
-                raise ValueError("Relay config is not a dictionary")
+                raise TypeError("Relay config is not a dictionary")
 
             backup_path = self.legacy_path.with_name(
                 self.legacy_path.name
@@ -419,7 +433,11 @@ class RelayConfigStore:
             self.legacy_path.rename(
                 self.legacy_path.with_name(self.legacy_path.name + ".migrated")
             )
-        except (OSError, ValueError, json.JSONDecodeError):
+        except (OSError, TypeError, json.JSONDecodeError):
+            logger.exception(
+                "Failed to migrate legacy relay configuration from %s",
+                self.legacy_path,
+            )
             return
 
     def load(self) -> dict:
@@ -432,7 +450,7 @@ class RelayConfigStore:
             ).fetchall()
             targets = connection.execute(
                 """
-                SELECT source_guild_id, channel_id
+                SELECT target_guild_id, channel_id
                 FROM relay_target_channels
                 """
             ).fetchall()
@@ -452,15 +470,18 @@ class RelayConfigStore:
                 for source_id, target_ids in links_by_source.items()
             ],
             "sources": self._group_channels(sources),
-            "targets": self._group_channels(targets),
+            "targets": self._group_channels(targets, "target_guild_id"),
         }
 
     @staticmethod
-    def _group_channels(rows) -> dict[str, list[str]]:
+    def _group_channels(
+        rows,
+        guild_column: str = "source_guild_id",
+    ) -> dict[str, list[str]]:
         grouped: dict[str, list[str]] = {}
         for row in rows:
-            source_id = str(row["source_guild_id"])
-            grouped.setdefault(source_id, []).append(str(row["channel_id"]))
+            guild_id = str(row[guild_column])
+            grouped.setdefault(guild_id, []).append(str(row["channel_id"]))
         return grouped
 
     def save(self, data: dict) -> None:
@@ -484,17 +505,42 @@ class RelayConfigStore:
                         (int(source_id), int(channel_id)),
                     )
 
-            target_guilds = {
-                int(link["source_guild"]): {
+            source_guilds_by_target = {}
+            target_guilds_by_source = {}
+            for link in data.get("links", []):
+                source_id = int(link["source_guild"])
+                target_ids = {
                     int(target_id) for target_id in link.get("target_guilds", [])
                 }
-                for link in data.get("links", [])
-            }
-            for source_id, channel_ids in data.get("targets", {}).items():
-                source_id_int = int(source_id)
+                target_guilds_by_source[source_id] = target_ids
+                for target_id in target_ids:
+                    source_guilds_by_target.setdefault(int(target_id), set()).add(
+                        source_id
+                    )
+
+            for target_id, channel_ids in data.get("targets", {}).items():
+                target_id_int = int(target_id)
+                source_ids = source_guilds_by_target.get(target_id_int)
+
+                # Legacy data keyed channels by source guild. Fan those
+                # channels out to every target in that source's link.
+                if source_ids is None:
+                    target_ids = target_guilds_by_source.get(target_id_int)
+                    if target_ids is not None:
+                        for linked_target_id in target_ids:
+                            for channel_id in channel_ids:
+                                connection.execute(
+                                    "INSERT OR IGNORE INTO relay_target_channels "
+                                    "VALUES (?, ?, ?)",
+                                    (target_id_int, linked_target_id, int(channel_id)),
+                                )
+                        continue
+
+                source_ids = source_ids or set()
+
                 for channel_id in channel_ids:
-                    for target_id in target_guilds.get(source_id_int, set()):
+                    for source_id in source_ids:
                         connection.execute(
                             "INSERT OR IGNORE INTO relay_target_channels VALUES (?, ?, ?)",
-                            (source_id_int, target_id, int(channel_id)),
+                            (source_id, target_id_int, int(channel_id)),
                         )
