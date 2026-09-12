@@ -47,12 +47,26 @@ def status() -> dict[str, Any]:
     if log_result.returncode != 0:
         raise RuntimeError(log_result.stderr.strip() or "Could not read the Observer journal.")
     log_text = log_result.stdout
-    connected = "Logged in as" in log_text or "Connected to" in log_text
+    live_data: dict[str, Any] = {}
+    if GUILDS.is_file():
+        try:
+            loaded = json.loads(GUILDS.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                live_data = loaded
+        except (OSError, json.JSONDecodeError):
+            live_data = {}
+
+    guilds = live_data.get("guilds", [])
+    connected = active and isinstance(guilds, list) and bool(
+        live_data.get("bot_user")
+    )
     match = re.search(r"Connected to (\d+) guild", log_text)
     return {
         "running": active,
         "connected": active and connected,
-        "guild_count": int(match.group(1)) if match else 0,
+        "guild_count": len(guilds) if connected else (int(match.group(1)) if match else 0),
+        "started_at": live_data.get("started_at"),
+        "latency_ms": live_data.get("latency_ms"),
     }
 
 
