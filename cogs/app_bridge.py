@@ -3,6 +3,9 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import base64
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -17,6 +20,10 @@ DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 GUILDS_FILE = DATA_DIR / "app_guilds.json"
 REQUESTS_FILE = DATA_DIR / "app_message_requests.json"
 RESULTS_FILE = DATA_DIR / "app_message_results.json"
+GITHUB_OWNER = "blurock2"
+GITHUB_REPOSITORY = "my-website"
+GITHUB_BRANCH = "main"
+GITHUB_STATS_PATH = "observer-stats.json"
 
 
 def write_json_atomic(path: Path, data: Any) -> None:
@@ -40,6 +47,59 @@ def write_json_atomic(path: Path, data: Any) -> None:
     os.replace(temp_path, path)
 
 
+def publish_public_stats(payload: dict[str, Any]) -> None:
+    token = os.environ.get("GITHUB_TOKEN", "").strip()
+
+    if not token:
+        return
+
+    api_url = (
+        f"https://api.github.com/repos/{GITHUB_OWNER}/"
+        f"{GITHUB_REPOSITORY}/contents/{GITHUB_STATS_PATH}"
+    )
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {token}",
+        "User-Agent": "Observer-Bot",
+    }
+    file_sha = None
+
+    try:
+        with urlopen(Request(api_url, headers=headers), timeout=10) as response:
+            file_sha = json.loads(response.read().decode("utf-8")).get("sha")
+    except HTTPError as error:
+        if error.code != 404:
+            print(f"[app_bridge] Could not read public stats: HTTP {error.code}")
+            return
+    except (OSError, URLError, json.JSONDecodeError) as error:
+        print(f"[app_bridge] Could not read public stats: {error}")
+        return
+
+    content = json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+    request_payload: dict[str, Any] = {
+        "message": "Update Observer live stats",
+        "content": base64.b64encode(content.encode("utf-8")).decode("ascii"),
+        "branch": GITHUB_BRANCH,
+    }
+
+    if file_sha:
+        request_payload["sha"] = file_sha
+
+    request = Request(
+        api_url,
+        data=json.dumps(request_payload).encode("utf-8"),
+        headers={**headers, "Content-Type": "application/json"},
+        method="PUT",
+    )
+
+    try:
+        with urlopen(request, timeout=15) as response:
+            if response.status not in (200, 201):
+                print(f"[app_bridge] GitHub rejected public stats: HTTP {response.status}")
+    except (HTTPError, OSError, URLError) as error:
+        print(f"[app_bridge] Could not publish public stats: {error}")
+
+
 class AppBridge(commands.Cog):
     """
     Local bridge between Observer Bot Manager and the running bot.
@@ -52,15 +112,32 @@ class AppBridge(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.started_at = datetime.now(UTC)
+        self.commands_run = 0
 
         DATA_DIR.mkdir(exist_ok=True)
 
         self.process_message_requests.start()
         self.refresh_guild_data.start()
+        self.publish_stats.start()
 
     def cog_unload(self) -> None:
         self.process_message_requests.cancel()
         self.refresh_guild_data.cancel()
+        self.publish_stats.cancel()
+
+    def write_public_stats(self) -> None:
+        member_count = sum(
+            guild.member_count or 0
+            for guild in self.bot.guilds
+        )
+        payload = {
+            "status": "Online",
+            "servers": len(self.bot.guilds),
+            "users": member_count,
+            "commands_run": self.commands_run,
+            "updated_at": datetime.now(UTC).isoformat(),
+        }
+        publish_public_stats(payload)
 
     def write_guild_data(self) -> None:
         guilds: list[dict[str, Any]] = []
@@ -125,6 +202,7 @@ class AppBridge(commands.Cog):
     @commands.Cog.listener()
     async def on_ready(self) -> None:
         self.write_guild_data()
+        self.write_public_stats()
 
         print(
             "[app_bridge] Saved live data for "
@@ -134,6 +212,7 @@ class AppBridge(commands.Cog):
     @commands.Cog.listener()
     async def on_guild_join(self, guild: discord.Guild) -> None:
         self.write_guild_data()
+        self.write_public_stats()
 
     @commands.Cog.listener()
     async def on_guild_remove(self, guild: discord.Guild) -> None:
@@ -142,6 +221,7 @@ class AppBridge(commands.Cog):
         store.reset_guild(guild.id)
 
         self.write_guild_data()
+        self.write_public_stats()
 
         print(
             "[app_bridge] Observer was removed from "
@@ -152,6 +232,18 @@ class AppBridge(commands.Cog):
     @tasks.loop(seconds=10)
     async def refresh_guild_data(self) -> None:
         self.write_guild_data()
+
+    @tasks.loop(minutes=10)
+    async def publish_stats(self) -> None:
+        self.write_public_stats()
+
+    @publish_stats.before_loop
+    async def before_publish_stats(self) -> None:
+        await self.bot.wait_until_ready()
+
+    @commands.Cog.listener()
+    async def on_command_completion(self, context: commands.Context) -> None:
+        self.commands_run += 1
 
     @refresh_guild_data.before_loop
     async def before_refresh_guild_data(self) -> None:
