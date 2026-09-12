@@ -1,1 +1,39 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
 
+# Python virtual environments
+.venv/
+venv/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Test and lint caches
+.pytest_cache/
+.ruff_cache/
+
+# Local databases and database backups
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+data/*_backup_*.db
+
+# Local/generated configuration and data
+data/*.json
+data/migration_backup_*/
+
+# Logs
+logs/
+*.log
+
+# IDE and editor files
+.vscode/
+.idea/
+
+# Operating-system files
+.DS_Store
+Thumbs.db
