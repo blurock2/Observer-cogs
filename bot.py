@@ -13,7 +13,7 @@ from discord.ext import commands
 from dotenv import load_dotenv
 
 from cogs.config import BOT_OWNER_ID, is_bot_owner
-from database import migrate_legacy_databases
+from database import cleanup_old_backups, migrate_legacy_databases
 from logging_config import configure_logging
 
 load_dotenv()
@@ -22,6 +22,7 @@ logger = logging.getLogger("observer.bot")
 migrate_legacy_databases(
     Path(__file__).resolve().parent / "data" / "bot.db"
 )
+cleanup_old_backups()
 
 
 # ============================================================
