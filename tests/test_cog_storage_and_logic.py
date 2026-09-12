@@ -20,7 +20,7 @@ from cogs.rules import RulesStore
 from cogs.setup_ui import SetupConfigStore
 from cogs.temporary_voice import TemporaryVoice
 from cogs.weather import Weather
-from database import migrate_legacy_databases
+from database import cleanup_old_backups, migrate_legacy_databases
 
 
 class CogStorageAndLogicTests(unittest.TestCase):
@@ -220,6 +220,41 @@ class CogStorageAndLogicTests(unittest.TestCase):
             self.assertTrue(
                 (data_dir / "account_links.sqlite3.pre-migration-backup").exists()
             )
+
+    def test_old_backups_are_cleaned_without_removing_active_data(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            old_timestamp = 1
+
+            old_files = (
+                root / "leveling_backup_20200101_000000.db",
+                root / "account_links.sqlite3.pre-migration-backup",
+                root / "message_relay_config.json.backup-20200101000000",
+            )
+            for backup_path in old_files:
+                backup_path.write_text("backup", encoding="utf-8")
+                backup_path.touch()
+                import os
+
+                os.utime(backup_path, (old_timestamp, old_timestamp))
+
+            old_directory = root / "migration_backup_20200101_000000"
+            old_directory.mkdir()
+            (old_directory / "account_links.sqlite3").write_text(
+                "backup",
+                encoding="utf-8",
+            )
+            import os
+
+            os.utime(old_directory, (old_timestamp, old_timestamp))
+
+            active_database = root / "leveling.db"
+            active_database.write_text("active", encoding="utf-8")
+
+            self.assertEqual(cleanup_old_backups(root), 4)
+            self.assertTrue(active_database.exists())
+            self.assertFalse(any(path.exists() for path in old_files))
+            self.assertFalse(old_directory.exists())
 
 
 if __name__ == "__main__":

@@ -15,6 +15,7 @@ ONLINE_CHANNEL_KEY = "online_channel_id"
 DEFAULT_INTERVAL_MINUTES = 10
 MIN_INTERVAL_MINUTES = 1
 MAX_INTERVAL_MINUTES = 60
+PRESENCE_REFRESH_DELAY_SECONDS = 60
 
 
 class ServerInfo(commands.Cog):
@@ -39,11 +40,17 @@ class ServerInfo(commands.Cog):
 
         # Prevent duplicate refreshes for the same guild.
         self._locks: dict[int, asyncio.Lock] = {}
+        self._presence_refresh_tasks: dict[int, asyncio.Task[None]] = {}
 
         self.stats_updater.start()
 
     def cog_unload(self) -> None:
         self.stats_updater.cancel()
+
+        for task in self._presence_refresh_tasks.values():
+            task.cancel()
+
+        self._presence_refresh_tasks.clear()
 
     # ============================================================ Config helpers
 
@@ -275,6 +282,41 @@ class ServerInfo(commands.Cog):
             else:
                 await self._delete_counter(guild, ONLINE_CHANNEL_KEY)
 
+    async def _delayed_presence_refresh(self, guild: discord.Guild) -> None:
+        try:
+            await asyncio.sleep(PRESENCE_REFRESH_DELAY_SECONDS)
+
+            if not self._is_enabled(guild.id):
+                return
+
+            await self.refresh_guild_stats(guild)
+            self.store.set(
+                guild.id,
+                MODULE_KEY,
+                "last_update",
+                discord.utils.utcnow().timestamp(),
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:  # noqa: BLE001 - keep presence events isolated
+            print(
+                f"[server_stats] Delayed refresh error for "
+                f"{guild.name} ({guild.id}): {error}"
+            )
+        finally:
+            if self._presence_refresh_tasks.get(guild.id) is asyncio.current_task():
+                self._presence_refresh_tasks.pop(guild.id, None)
+
+    def _schedule_presence_refresh(self, guild: discord.Guild) -> None:
+        existing_task = self._presence_refresh_tasks.get(guild.id)
+
+        if existing_task is not None:
+            existing_task.cancel()
+
+        self._presence_refresh_tasks[guild.id] = asyncio.create_task(
+            self._delayed_presence_refresh(guild)
+        )
+
     # ============================================================ Automatic updates
 
     @tasks.loop(minutes=1)
@@ -344,7 +386,7 @@ class ServerInfo(commands.Cog):
             return
 
         if self._is_enabled(after.guild.id):
-            await self.refresh_guild_stats(after.guild)
+            self._schedule_presence_refresh(after.guild)
 
     # ============================================================ Existing server command
 
