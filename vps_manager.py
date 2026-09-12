@@ -48,13 +48,11 @@ def status() -> dict[str, Any]:
             live_data = {}
 
     guilds = live_data.get("guilds", [])
-    connected = active and isinstance(guilds, list) and bool(
-        live_data.get("bot_user")
-    )
+    connected = active
     return {
         "running": active,
-        "connected": active and connected,
-            "guild_count": len(guilds) if connected else 0,
+        "connected": connected,
+        "guild_count": len(guilds) if isinstance(guilds, list) else 0,
         "started_at": live_data.get("started_at"),
         "latency_ms": live_data.get("latency_ms"),
     }
