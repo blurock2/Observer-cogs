@@ -1,5 +1,4 @@
 discord.py==2.3.2
-audioop-lts; python_version >= "3.13"
 PyNaCl
 davey
 python-dotenv
