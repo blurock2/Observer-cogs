@@ -1,2 +1,4 @@
-observer ALL=(root) NOPASSWD: /usr/bin/systemctl start observer, /usr/bin/systemctl stop observer, /usr/bin/systemctl restart observer
+observer ALL=(root) NOPASSWD: /usr/bin/systemctl start observer
+observer ALL=(root) NOPASSWD: /usr/bin/systemctl stop observer
+observer ALL=(root) NOPASSWD: /usr/bin/systemctl restart observer
 observer ALL=(root) NOPASSWD: /usr/bin/journalctl -u observer -n * --no-pager -o cat
