@@ -1,0 +1,18 @@
+[Unit]
+Description=Observer Discord Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=observer
+WorkingDirectory=/opt/observer-bot
+ExecStart=/opt/observer-bot/.venv/bin/python -u /opt/observer-bot/bot.py
+Restart=on-failure
+RestartSec=5
+EnvironmentFile=/opt/observer-bot/.env
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
