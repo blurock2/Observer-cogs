@@ -10,11 +10,11 @@ from unittest.mock import patch
 from cogs.acc_link import AccountLinkStore
 from cogs.app_bridge import write_json_atomic
 from cogs.leveling import _level_from_xp
-from cogs.mod_stats import ModerationStatsStore
 from cogs.message_relay import (
     get_source_guilds_for_target,
     get_target_guilds_for_source,
 )
+from cogs.mod_stats import ModerationStatsStore
 from cogs.reaction_roles import ReactionRoles
 from cogs.rules import RulesStore
 from cogs.setup_ui import SetupConfigStore
@@ -46,6 +46,17 @@ class CogStorageAndLogicTests(unittest.TestCase):
             self.assertTrue(store.get(1, "weather", "enabled"))
             self.assertFalse(store.get(2, "weather", "enabled"))
             self.assertIsNone(store.get(3, "weather", "enabled"))
+
+    def test_setup_configuration_cache_is_invalidated_on_write(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = SetupConfigStore(str(Path(directory) / "bot.db"))
+            store.set(1, "server_stats", "enabled", False)
+
+            self.assertFalse(store.get(1, "server_stats", "enabled"))
+
+            store.set(1, "server_stats", "enabled", True)
+
+            self.assertTrue(store.get(1, "server_stats", "enabled"))
 
     def test_moderation_stats_are_isolated_by_guild(self):
         with tempfile.TemporaryDirectory() as directory:
