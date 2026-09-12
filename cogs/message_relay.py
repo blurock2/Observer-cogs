@@ -77,6 +77,18 @@ def get_target_guilds_for_source(
     return []
 
 
+def get_target_channel_ids_for_source(
+    data: dict,
+    source_guild_id: int,
+) -> list[int]:
+    target_guild_ids = get_target_guilds_for_source(data, source_guild_id)
+    return [
+        int(channel_id)
+        for target_guild_id in target_guild_ids
+        for channel_id in data["targets"].get(str(target_guild_id), [])
+    ]
+
+
 class DestinationSelect(discord.ui.Select):
     def __init__(
         self,
@@ -93,14 +105,10 @@ class DestinationSelect(discord.ui.Select):
             source_guild_id,
         )
 
-        target_channel_ids = [
-            channel_id
-            for target_guild_id in target_guild_ids
-            for channel_id in data["targets"].get(
-                str(target_guild_id),
-                [],
-            )
-        ]
+        target_channel_ids = get_target_channel_ids_for_source(
+            data,
+            source_guild_id,
+        )
 
         options: list[discord.SelectOption] = []
 
@@ -355,9 +363,12 @@ class MessageRelay(commands.Cog):
             )
             return
 
-        targets = data["targets"].setdefault(str(interaction.guild.id), [])
+        target_channel_ids = get_target_channel_ids_for_source(
+            data,
+            source_guild_id,
+        )
 
-        if not targets:
+        if not target_channel_ids:
             await interaction.response.send_message(
                 "No destination channels are configured for this server.",
                 ephemeral=True,
@@ -454,9 +465,9 @@ class MessageRelay(commands.Cog):
             )
             return
 
-        if len({guild.id for guild in guilds}) != len(guilds):
+        if len({guild.id for guild in target_guilds}) != len(target_guilds):
             await interaction.response.send_message(
-                "The source and target servers must all be different.",
+            "Target servers must be unique.",
                 ephemeral=True,
             )
             return
@@ -527,7 +538,7 @@ class MessageRelay(commands.Cog):
         # associates the channel with the first configured source mapping.
         source_guild_id = source_guild_ids[0]
 
-        targets = data["targets"].get(str(source_guild_id), [])
+        targets = data["targets"].get(str(interaction.guild.id), [])
 
         normalized_targets = [str(channel_id) for channel_id in targets]
 
