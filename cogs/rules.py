@@ -13,6 +13,7 @@ from cogs.setup_ui import (
     SetupConfigStore,
     owner_or_has_permissions,
 )
+from database import connect_sqlite
 
 MODULE_KEY = "rules"
 EMBED_COLOR = 0x96EDF1
@@ -37,8 +38,7 @@ class RulesStore:
 
     @contextmanager
     def _connect(self):
-        connection = sqlite3.connect(self.db_path, timeout=10)
-        connection.row_factory = sqlite3.Row
+        connection = connect_sqlite(self.db_path)
         try:
             yield connection
         except Exception:

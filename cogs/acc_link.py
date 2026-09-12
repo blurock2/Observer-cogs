@@ -3,7 +3,6 @@ from __future__ import annotations
 import html
 import json
 import re
-import sqlite3
 import ssl
 import xml.etree.ElementTree as ET
 from contextlib import contextmanager
@@ -18,6 +17,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from cogs.setup_ui import DB_PATH, SetupConfigStore
+from database import connect_sqlite
 
 EMBED_COLOR = 0x96EDF1
 MODULE_KEY = "acc_link"
@@ -34,8 +34,7 @@ class AccountLinkStore:
 
     @contextmanager
     def _connect(self):
-        conn = sqlite3.connect(self.db_path, timeout=10)
-        conn.row_factory = sqlite3.Row
+        conn = connect_sqlite(self.db_path)
         try:
             yield conn
         except Exception:

@@ -10,6 +10,8 @@ from pathlib import Path
 import discord
 from discord.ext import commands
 
+from database import connect_sqlite
+
 NO_MENTIONS = discord.AllowedMentions.none()
 
 
@@ -38,7 +40,7 @@ class MessageQuoterConfig:
 
     def get(self, guild_id: int, key: str, default=None):
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with connect_sqlite(self.db_path) as conn:
                 row = conn.execute(
                     """
                     SELECT value

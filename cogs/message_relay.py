@@ -93,10 +93,14 @@ class DestinationSelect(discord.ui.Select):
             source_guild_id,
         )
 
-        target_channel_ids = data["targets"].get(
-            str(source_guild_id),
-            [],
-        )
+        target_channel_ids = [
+            channel_id
+            for target_guild_id in target_guild_ids
+            for channel_id in data["targets"].get(
+                str(target_guild_id),
+                [],
+            )
+        ]
 
         options: list[discord.SelectOption] = []
 
@@ -351,7 +355,7 @@ class MessageRelay(commands.Cog):
             )
             return
 
-        targets = data["targets"].get(str(source_guild_id), [])
+        targets = data["targets"].setdefault(str(interaction.guild.id), [])
 
         if not targets:
             await interaction.response.send_message(
@@ -529,7 +533,7 @@ class MessageRelay(commands.Cog):
 
         if str(channel.id) not in normalized_targets:
             normalized_targets.append(str(channel.id))
-            data["targets"][str(source_guild_id)] = normalized_targets
+            data["targets"][str(interaction.guild.id)] = normalized_targets
             save_config(data)
 
         await interaction.response.send_message(
@@ -566,11 +570,10 @@ class MessageRelay(commands.Cog):
             )
             return
 
-        source_guild_id = source_guild_ids[0]
         targets = [
             str(channel_id)
             for channel_id in data["targets"].get(
-                str(source_guild_id),
+                str(interaction.guild.id),
                 [],
             )
         ]
@@ -583,7 +586,7 @@ class MessageRelay(commands.Cog):
             return
 
         targets.remove(str(channel.id))
-        data["targets"][str(source_guild_id)] = targets
+        data["targets"][str(interaction.guild.id)] = targets
         save_config(data)
 
         await interaction.response.send_message(

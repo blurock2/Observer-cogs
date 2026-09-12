@@ -23,6 +23,7 @@ from cogs.setup_ui import (
     owner_or_has_guild_permissions,
     owner_or_has_permissions,
 )
+from database import connect_sqlite
 
 # ============================================================ Configuration
 
@@ -35,6 +36,7 @@ PURPLE_COLOR = discord.Color.from_rgb(155, 89, 182)
 
 XP_COOLDOWN_SECONDS = 15
 XP_REWARDS = [15, 20, 25, 30, 35, 40, 45, 50]
+XP_FLUSH_DELAY_SECONDS = 5
 
 # Module key used by the /setup dashboard for this cog.
 MODULE_KEY = "leveling"
@@ -71,14 +73,7 @@ def _db_path() -> Path:
 
 
 def _get_conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(
-        str(_db_path()),
-        timeout=30,
-    )
-
-    conn.row_factory = sqlite3.Row
-
-    return conn
+    return connect_sqlite(_db_path(), timeout=30)
 
 
 # ============================================================ Special level configuration
@@ -297,6 +292,15 @@ def _init_db() -> None:
             """
         )
 
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_users_guild_level_xp "
+            "ON users(guild_id, level DESC, xp DESC)"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_weekly_xp_guild_week_xp "
+            "ON weekly_xp(guild_id, week_start, xp DESC)"
+        )
+
         conn.commit()
 
         logger.info(
@@ -434,6 +438,10 @@ class Leveling(commands.Cog):
         )
 
         self._db_lock = asyncio.Lock()
+        self._user_state: dict[tuple[int, int], tuple[int, int, int]] = {}
+        self._pending_xp: dict[tuple[int, int], tuple[int, int]] = {}
+        self._pending_weekly_xp: dict[tuple[int, int, str], int] = {}
+        self._xp_flush_task: asyncio.Task[None] | None = None
 
         backup_path = _backup_database()
 
@@ -453,6 +461,12 @@ class Leveling(commands.Cog):
     def cog_unload(self) -> None:
         self._weekly_loop.cancel()
 
+        if self._xp_flush_task is not None:
+            self._xp_flush_task.cancel()
+
+        if self._pending_xp:
+            asyncio.create_task(self._flush_pending_xp())
+
 
     # ============================================================ User database operations
 
@@ -461,6 +475,8 @@ class Leveling(commands.Cog):
         guild_id: int,
         user_id: int,
     ) -> sqlite3.Row:
+        await self._flush_pending_xp()
+
         async with self._db_lock:
             conn = _get_conn()
 
@@ -700,15 +716,13 @@ class Leveling(commands.Cog):
             finally:
                 conn.close()
 
-        # Overlay dashboard store values: a key set via /setup wins,
-        # otherwise fall back to the guild_config (legacy) value.
         stored = self.store.get_module(guild_id, MODULE_KEY)
 
         def overlay(key: str, legacy_key: str):
             value = stored.get(key)
             return value if value is not None else legacy[legacy_key]
 
-        config = {
+        return {
             "enabled": stored.get("enabled", True),
             "xp_cooldown": stored.get("xp_cooldown", 15),
             "level_up_channel": overlay("level_up_channel", "level_up_channel"),
@@ -723,121 +737,134 @@ class Leveling(commands.Cog):
             },
         }
 
-        # Keep legacy DB values intact when the setup store is empty.
-        # This prevents new runtime toggles from silently wiping saved guild data.
-        if row is None:
-            config["level_up_message"] = "🎉 {user} just reached level {level}!"
-            config["weekly_day"] = 0
-            config["weekly_hour"] = 0
-            config["weekly_minute"] = 0
-
-        return config
-
     async def _set_guild_config(
         self,
         guild_id: int,
         **kwargs: Any,
     ) -> None:
         allowed_columns = {
-            "level_up_channel",
-            "level_up_message",
-            "weekly_channel",
-            "weekly_day",
-            "weekly_hour",
-            "weekly_minute",
+            "level_up_channel", "level_up_message", "weekly_channel",
+            "weekly_day", "weekly_hour", "weekly_minute",
         }
 
         async with self._db_lock:
             conn = _get_conn()
-
             try:
-                cur = conn.cursor()
-
-                cur.execute(
-                    """
-                    INSERT INTO guild_config
-                        (
-                            guild_id,
-                            level_up_channel,
-                            level_up_message,
-                            weekly_channel,
-                            weekly_day,
-                            weekly_hour,
-                            weekly_minute
-                        )
-                    VALUES (
-                        ?,
-                        NULL,
-                        '🎉 {user} just reached level {level}!',
-                        NULL,
-                        0,
-                        0,
-                        0
-                    )
-                    ON CONFLICT(guild_id)
-                    DO NOTHING
-                    """,
+                conn.execute(
+                    "INSERT INTO guild_config (guild_id) VALUES (?) "
+                    "ON CONFLICT(guild_id) DO NOTHING",
                     (guild_id,),
                 )
-
-                updates: list[str] = []
-                params: list[Any] = []
-
-                for key, value in kwargs.items():
-                    if key not in allowed_columns:
-                        continue
-
-                    updates.append(f"{key} = ?")
-                    params.append(value)
-
+                updates = [f"{key} = ?" for key in kwargs if key in allowed_columns]
+                params = [kwargs[key] for key in kwargs if key in allowed_columns]
                 if updates:
-                    params.append(guild_id)
-
-                    cur.execute(
-                        f"""
-                        UPDATE guild_config
-                        SET {", ".join(updates)}
-                        WHERE guild_id = ?
-                        """,
-                        params,
+                    conn.execute(
+                        f"UPDATE guild_config SET {', '.join(updates)} WHERE guild_id = ?",
+                        (*params, guild_id),
                     )
-
                 if "role_rewards" in kwargs:
-                    rewards = kwargs["role_rewards"] or {}
-                    cur.execute(
-                        """
-                        DELETE FROM role_rewards
-                        WHERE guild_id = ?
-                        """,
-                        (guild_id,),
+                    conn.execute("DELETE FROM role_rewards WHERE guild_id = ?", (guild_id,))
+                    conn.executemany(
+                        "INSERT INTO role_rewards (guild_id, level, role_id) VALUES (?, ?, ?)",
+                        [(guild_id, int(level), int(role_id)) for level, role_id in (kwargs["role_rewards"] or {}).items()],
                     )
-
-                    for level, role_id in rewards.items():
-                        cur.execute(
-                            """
-                            INSERT INTO role_rewards
-                                (guild_id, level, role_id)
-                            VALUES (?, ?, ?)
-                            """,
-                            (
-                                guild_id,
-                                int(level),
-                                int(role_id),
-                            ),
-                        )
-
                 conn.commit()
-
             finally:
                 conn.close()
 
-        # Mirror config keys into the shared store so /setup sees the
-        # same values the slash commands write, without destroying any
-        # legacy guild row values that were previously stored elsewhere.
         for key, value in kwargs.items():
             if key in MIRRORED_KEYS:
                 self.store.set(guild_id, MODULE_KEY, key, value)
 
+    async def _flush_pending_xp(self) -> None:
+        async with self._db_lock:
+            if not self._pending_xp:
+                return
+
+            pending_xp = self._pending_xp
+            pending_weekly_xp = self._pending_weekly_xp
+            self._pending_xp = {}
+            self._pending_weekly_xp = {}
+            conn = _get_conn()
+            try:
+                for (guild_id, user_id), (xp, messages) in pending_xp.items():
+                    state = self._user_state[(guild_id, user_id)]
+                    conn.execute(
+                        """
+                        INSERT INTO users (guild_id, user_id, xp, level, messages)
+                        VALUES (?, ?, ?, ?, ?)
+                        ON CONFLICT(guild_id, user_id) DO UPDATE SET
+                            xp = users.xp + excluded.xp,
+                            level = excluded.level,
+                            messages = users.messages + excluded.messages
+                        """,
+                        (guild_id, user_id, xp, state[1], messages),
+                    )
+                for (guild_id, user_id, week_start), xp in pending_weekly_xp.items():
+                    conn.execute(
+                        """
+                        INSERT INTO weekly_xp (guild_id, user_id, week_start, xp)
+                        VALUES (?, ?, ?, ?)
+                        ON CONFLICT(guild_id, user_id, week_start) DO UPDATE SET
+                            xp = weekly_xp.xp + excluded.xp
+                        """,
+                        (guild_id, user_id, week_start, xp),
+                    )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                self._pending_xp.update(pending_xp)
+                for key, value in pending_weekly_xp.items():
+                    self._pending_weekly_xp[key] = self._pending_weekly_xp.get(key, 0) + value
+                raise
+            finally:
+                conn.close()
+
+    def _schedule_xp_flush(self) -> None:
+        if self._xp_flush_task is None or self._xp_flush_task.done():
+            self._xp_flush_task = asyncio.create_task(self._delayed_xp_flush())
+
+    async def _delayed_xp_flush(self) -> None:
+        try:
+            await asyncio.sleep(XP_FLUSH_DELAY_SECONDS)
+            await self._flush_pending_xp()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Failed to flush pending leveling XP")
+        finally:
+            if self._xp_flush_task is asyncio.current_task():
+                self._xp_flush_task = None
+
+    async def _add_xp(
+        self,
+        guild_id: int,
+        user_id: int,
+        xp: int,
+    ) -> tuple[int, int, int, int]:
+        async with self._db_lock:
+            state_key = (guild_id, user_id)
+            state = self._user_state.get(state_key)
+            if state is None:
+                conn = _get_conn()
+                try:
+                    conn.execute("INSERT INTO users (guild_id, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING", (guild_id, user_id))
+                    state = tuple(conn.execute("SELECT xp, level, messages FROM users WHERE guild_id = ? AND user_id = ?", (guild_id, user_id)).fetchone())
+                    conn.commit()
+                finally:
+                    conn.close()
+
+            old_xp, old_level, old_messages = state
+            new_xp = old_xp + xp
+            new_level = _level_from_xp(new_xp)
+            self._user_state[state_key] = (new_xp, new_level, old_messages + 1)
+            pending_xp, pending_messages = self._pending_xp.get(state_key, (0, 0))
+            self._pending_xp[state_key] = (pending_xp + xp, pending_messages + 1)
+            week_start = _current_week_start(datetime.now(timezone.utc))
+            weekly_key = (guild_id, user_id, week_start)
+            self._pending_weekly_xp[weekly_key] = self._pending_weekly_xp.get(weekly_key, 0) + xp
+            self._schedule_xp_flush()
+            return old_level, new_level, old_xp, new_xp
 
     # ============================================================ Reset operations
 
@@ -1642,6 +1669,8 @@ class Leveling(commands.Cog):
         self,
         guild_id: int,
     ) -> list[sqlite3.Row]:
+        await self._flush_pending_xp()
+
         async with self._db_lock:
             conn = _get_conn()
 

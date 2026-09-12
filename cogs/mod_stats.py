@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 from typing import ClassVar
+
+from database import connect_sqlite
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = PROJECT_ROOT / "data" / "bot.db"
@@ -23,8 +24,7 @@ class ModerationStatsStore:
 
     @contextmanager
     def _connect(self):
-        conn = sqlite3.connect(self.db_path, timeout=10)
-        conn.row_factory = sqlite3.Row
+        conn = connect_sqlite(self.db_path)
         try:
             yield conn
         except Exception:

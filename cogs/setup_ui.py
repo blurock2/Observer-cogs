@@ -2,17 +2,18 @@ from __future__ import annotations
 
 import json
 import os
-import sqlite3
 from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import ClassVar
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
 from cogs.config import is_bot_owner
+from database import connect_sqlite
 
 
 def owner_or_has_permissions(**perms: bool):
@@ -121,6 +122,8 @@ class SetupConfigStore:
         Delete every setting for a guild.
     """
 
+    _module_cache: ClassVar[dict[tuple[str, int, str], dict]] = {}
+
     def __init__(self, db_path: str = DB_PATH):
         self.db_path = db_path
         os.makedirs(os.path.dirname(db_path) or ".", exist_ok=True)
@@ -128,8 +131,7 @@ class SetupConfigStore:
 
     @contextmanager
     def _connect(self):
-        conn = sqlite3.connect(self.db_path, timeout=10)
-        conn.row_factory = sqlite3.Row
+        conn = connect_sqlite(self.db_path)
         try:
             yield conn
         except Exception:
@@ -157,18 +159,8 @@ class SetupConfigStore:
     # ============================================================ Core read / write
 
     def get(self, guild_id: int, module: str, key: str, default=None):
-        with self._connect() as conn:
-            row = conn.execute(
-                "SELECT value FROM guild_setup_config "
-                "WHERE guild_id = ? AND module = ? AND key = ?",
-                (guild_id, module, key),
-            ).fetchone()
-        if row is None:
-            return default
-        try:
-            return json.loads(row["value"])
-        except (json.JSONDecodeError, TypeError):
-            return default
+        values = self.get_module(guild_id, module)
+        return values.get(key, default)
 
     def set(self, guild_id: int, module: str, key: str, value) -> None:
         encoded = json.dumps(value)
@@ -183,7 +175,17 @@ class SetupConfigStore:
                 (guild_id, module, key, encoded),
             )
 
+        cache_key = (self.db_path, guild_id, module)
+        cached = self._module_cache.get(cache_key)
+        if cached is not None:
+            cached[key] = value
+
     def get_module(self, guild_id: int, module: str) -> dict:
+        cache_key = (self.db_path, guild_id, module)
+        cached = self._module_cache.get(cache_key)
+        if cached is not None:
+            return dict(cached)
+
         with self._connect() as conn:
             rows = conn.execute(
                 "SELECT key, value FROM guild_setup_config "
@@ -196,7 +198,8 @@ class SetupConfigStore:
                 out[row["key"]] = json.loads(row["value"])
             except (json.JSONDecodeError, TypeError):
                 continue
-        return out
+        self._module_cache[cache_key] = out
+        return dict(out)
 
     # ============================================================ Enabled toggle helpers
 
@@ -216,6 +219,7 @@ class SetupConfigStore:
                 "WHERE guild_id = ? AND module = ?",
                 (guild_id, module),
             )
+            self._module_cache.pop((self.db_path, guild_id, module), None)
 
     def reset_guild(self, guild_id: int) -> None:
         with self._connect() as conn:
@@ -223,6 +227,9 @@ class SetupConfigStore:
                 "DELETE FROM guild_setup_config WHERE guild_id = ?",
                 (guild_id,),
             )
+        for cache_key in tuple(self._module_cache):
+            if cache_key[0] == self.db_path and cache_key[1] == guild_id:
+                self._module_cache.pop(cache_key, None)
 
 
 # ============================================================ Setting / module specs
