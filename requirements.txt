@@ -1,5 +1,7 @@
 discord.py==2.3.2
 audioop-lts
+PyNaCl
+davey
 python-dotenv
 pytest
 pytest-asyncio
