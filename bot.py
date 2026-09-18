@@ -54,6 +54,7 @@ class MyBot(commands.Bot):
         "cogs.temporary_voice",
         "cogs.rules",
         "cogs.tickets",
+        "cogs.reminder",
         "cogs.message_relay",
         "cogs.moderation",
         "cogs.mentions",
@@ -90,7 +91,7 @@ class MyBot(commands.Bot):
 
     async def setup_hook(self) -> None:
         """
-        Load all cogs without globally syncing commands on every startup.
+        Load all cogs and synchronize the Observer command namespace.
         """
 
         for extension in self.EXTENSIONS:
@@ -101,11 +102,14 @@ class MyBot(commands.Bot):
             except Exception:
                 logger.exception("Failed to load extension %s", extension)
 
-        logger.info(
-            "Loaded extensions without global command sync; "
-            "use !sync_commands after command changes."
-        )
-
+        try:
+            synced_commands = await self.tree.sync()
+            logger.info(
+                "Synchronized %d Observer application command(s).",
+                len(synced_commands),
+            )
+        except discord.HTTPException:
+            logger.exception("Failed to synchronize Observer application commands")
 
 bot = MyBot()
 

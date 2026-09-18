@@ -1,7 +1,9 @@
 discord.py>=2.5.0
+audioop-lts; python_version >= "3.13"
 PyNaCl
 davey
 python-dotenv
 pytest
 pytest-asyncio
 ruff
+Pillow
