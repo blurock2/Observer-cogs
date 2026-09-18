@@ -240,7 +240,31 @@ class SetupConfigStore:
 #   "integer"   -> numeric modal
 #   "channel"   -> channel select
 #   "role"      -> role select
-SETTING_KINDS = {"toggle", "text", "integer", "channel", "role"}
+SETTING_KINDS = {
+    "toggle",
+    "text",
+    "integer",
+    "channel",
+    "role",
+    "ticket_panel",
+}
+TICKET_PANEL_SETTING = "ticket_panel_editor"
+TICKET_PANEL_DEFAULTS = {
+    "panel_title": "Support Tickets",
+    "panel_description": (
+        "Need help?\n"
+        "Click the button below to open a private support ticket."
+    ),
+    "panel_footer": (
+        "Please do not open multiple tickets for the same issue."
+    ),
+    "reason_options": [
+        "Observer bug report",
+        "Team question",
+        "Report a server issue",
+    ],
+}
+MAX_TICKET_REASON_OPTIONS = 24
 
 
 @dataclass
@@ -502,6 +526,14 @@ MODULES: list[ModuleSpec] = [
                 description=(
                     "Role that cannot create tickets (optional)."
                 
+                ),
+            ),
+            SettingSpec(
+                TICKET_PANEL_SETTING,
+                "Edit ticket panel",
+                "ticket_panel",
+                description=(
+                    "Edit the panel preview, button text, and ticket reasons."
                 ),
             ),
         ],
@@ -912,6 +944,62 @@ def build_select_embed(module: ModuleSpec, spec: SettingSpec) -> discord.Embed:
     return embed
 
 
+def build_ticket_panel_preview(
+    store: SetupConfigStore,
+    guild: discord.Guild,
+) -> discord.Embed:
+    values = {
+        key: store.get(guild.id, "tickets", key, default=default)
+        for key, default in TICKET_PANEL_DEFAULTS.items()
+    }
+    reason_options = get_ticket_reason_options(store, guild.id)
+    reasons = "\n".join(
+        f"{index}. {reason}"
+        for index, reason in enumerate(reason_options, start=1)
+    )
+    embed = discord.Embed(
+        title=str(values["panel_title"]),
+        description=str(values["panel_description"]),
+        color=discord.Color.yellow(),
+    )
+    embed.add_field(
+        name="Ticket reasons",
+        value=reasons,
+        inline=False,
+    )
+    embed.set_footer(text=str(values["panel_footer"]))
+    return embed
+
+
+def get_ticket_reason_options(
+    store: SetupConfigStore,
+    guild_id: int,
+) -> list[str]:
+    configured = store.get(
+        guild_id,
+        "tickets",
+        "reason_options",
+    )
+    if isinstance(configured, list):
+        options = [str(reason).strip() for reason in configured]
+        options = [reason for reason in options if reason]
+        return options[:MAX_TICKET_REASON_OPTIONS]
+
+    legacy_options = [
+        store.get(
+            guild_id,
+            "tickets",
+            f"reason_{index}",
+            default=default,
+        )
+        for index, default in enumerate(
+            TICKET_PANEL_DEFAULTS["reason_options"],
+            start=1,
+        )
+    ]
+    return [str(reason) for reason in legacy_options if str(reason).strip()]
+
+
 # ============================================================ Views
 
 class AdminOnlyView(discord.ui.View):
@@ -985,6 +1073,201 @@ class MainView(AdminOnlyView):
                     "An error occurred while opening the panel. Check the bot console.",
                     ephemeral=True,
                 )
+
+
+class TicketPanelTextModal(discord.ui.Modal):
+    def __init__(self, parent: TicketPanelEditorView):
+        super().__init__(title="Edit ticket panel text")
+        self.parent_view = parent
+        self.title_input = discord.ui.TextInput(
+            label="Panel title",
+            default=str(parent.get_value("panel_title")),
+            max_length=256,
+            required=True,
+        )
+        self.description_input = discord.ui.TextInput(
+            label="Panel description",
+            default=str(parent.get_value("panel_description")),
+            style=discord.TextStyle.paragraph,
+            max_length=4000,
+            required=True,
+        )
+        self.footer_input = discord.ui.TextInput(
+            label="Panel footer",
+            default=str(parent.get_value("panel_footer")),
+            max_length=2048,
+            required=True,
+        )
+        for item in (
+            self.title_input,
+            self.description_input,
+            self.footer_input,
+        ):
+            self.add_item(item)
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        for key, item in (
+            ("panel_title", self.title_input),
+            ("panel_description", self.description_input),
+            ("panel_footer", self.footer_input),
+        ):
+            self.parent_view.set_value(key, str(item.value).strip())
+        await self.parent_view.refresh(interaction)
+
+
+class TicketReasonEditModal(discord.ui.Modal):
+    def __init__(
+        self,
+        parent: TicketPanelEditorView,
+        index: int,
+    ):
+        super().__init__(title=f"Edit ticket reason {index + 1}")
+        self.parent_view = parent
+        self.index = index
+        self.reason_input = discord.ui.TextInput(
+            label="Preset reason",
+            default=parent.reason_options[index],
+            max_length=100,
+            required=False,
+        )
+        self.add_item(self.reason_input)
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        reason = str(self.reason_input.value).strip()
+        if reason:
+            self.parent_view.reason_options[self.index] = reason
+        else:
+            self.parent_view.reason_options.pop(self.index)
+        self.parent_view.save_reasons()
+        await self.parent_view.refresh(interaction)
+
+
+class TicketReasonAddModal(discord.ui.Modal):
+    def __init__(self, parent: TicketPanelEditorView):
+        super().__init__(title="Add ticket reason")
+        self.parent_view = parent
+        self.reason_input = discord.ui.TextInput(
+            label="New preset reason",
+            placeholder="Enter a reason users can select...",
+            max_length=100,
+            required=True,
+        )
+        self.add_item(self.reason_input)
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        reason = str(self.reason_input.value).strip()
+        self.parent_view.reason_options.append(reason)
+        self.parent_view.save_reasons()
+        await self.parent_view.refresh(interaction)
+
+
+class TicketReasonEditorSelect(discord.ui.Select):
+    def __init__(self, parent: TicketPanelEditorView):
+        options = [
+            discord.SelectOption(
+                label=f"{index + 1}. {reason}"[:100],
+                value=str(index),
+            )
+            for index, reason in enumerate(parent.reason_options)
+        ]
+        super().__init__(
+            placeholder="Choose a preset reason to edit",
+            min_values=1,
+            max_values=1,
+            options=options,
+        )
+        self.parent_view = parent
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        await interaction.response.send_modal(
+            TicketReasonEditModal(
+                self.parent_view,
+                int(self.values[0]),
+            )
+        )
+
+
+class TicketPanelEditorView(AdminOnlyView):
+    def __init__(
+        self,
+        cog: SetupUICog,
+        guild: discord.Guild,
+    ):
+        super().__init__(timeout=600)
+        self.cog = cog
+        self.guild = guild
+        self.reason_options = get_ticket_reason_options(
+            cog.store,
+            guild.id,
+        )
+
+        text_button = discord.ui.Button(
+            label="Edit panel text",
+            style=discord.ButtonStyle.primary,
+        )
+        text_button.callback = self._edit_text
+        self.add_item(text_button)
+
+        if self.reason_options:
+            self.add_item(TicketReasonEditorSelect(self))
+
+        add_button = discord.ui.Button(
+            label="Add ticket reason",
+            style=discord.ButtonStyle.success,
+        )
+        add_button.callback = self._add_reason
+        self.add_item(add_button)
+
+        back_button = discord.ui.Button(
+            label="Back",
+            style=discord.ButtonStyle.secondary,
+        )
+        back_button.callback = self._back
+        self.add_item(back_button)
+
+    def get_value(self, key: str):
+        return self.cog.store.get(
+            self.guild.id,
+            "tickets",
+            key,
+            default=TICKET_PANEL_DEFAULTS[key],
+        )
+
+    def set_value(self, key: str, value: str) -> None:
+        self.cog.store.set(self.guild.id, "tickets", key, value)
+
+    def save_reasons(self) -> None:
+        self.cog.store.set(
+            self.guild.id,
+            "tickets",
+            "reason_options",
+            self.reason_options,
+        )
+
+    async def _edit_text(self, interaction: discord.Interaction) -> None:
+        await interaction.response.send_modal(TicketPanelTextModal(self))
+
+    async def _add_reason(self, interaction: discord.Interaction) -> None:
+        if len(self.reason_options) >= MAX_TICKET_REASON_OPTIONS:
+            await interaction.response.send_message(
+                "Discord supports up to 24 preset reasons plus Other.",
+                ephemeral=True,
+            )
+            return
+        await interaction.response.send_modal(TicketReasonAddModal(self))
+
+    async def refresh(self, interaction: discord.Interaction) -> None:
+        await interaction.response.edit_message(
+            embed=build_ticket_panel_preview(self.cog.store, self.guild),
+            view=self,
+        )
+
+    async def _back(self, interaction: discord.Interaction) -> None:
+        module = get_module("tickets")
+        await interaction.response.edit_message(
+            embed=build_module_embed(self.cog.store, self.guild, module),
+            view=ModuleView(self.cog, "tickets", self.guild),
+        )
 
 
 class ModuleView(AdminOnlyView):
@@ -1062,6 +1345,13 @@ class ModuleView(AdminOnlyView):
                 elif spec.kind in ("text", "integer"):
                     modal = TextModal(cog, module_key, spec, guild)
                     await interaction.response.send_modal(modal)
+                elif spec.kind == "ticket_panel":
+                    embed = build_ticket_panel_preview(cog.store, guild)
+                    view = TicketPanelEditorView(cog, guild)
+                    await interaction.response.edit_message(
+                        embed=embed,
+                        view=view,
+                    )
                 elif spec.kind == "channel":
                     embed = build_select_embed(module, spec)
                     view = ChannelSelectView(cog, module_key, spec.key, guild)
@@ -1111,16 +1401,18 @@ class ModuleView(AdminOnlyView):
 class _BackToModuleButton(discord.ui.Button):
     def __init__(self, parent: ChannelSelectView | RoleSelectView):
         super().__init__(label="◀ Back", style=discord.ButtonStyle.secondary)
-        self._parent = parent
+        self._setup_view = parent
 
     async def callback(self, interaction: discord.Interaction) -> None:
         try:
-            cog = self._parent.cog
-            module_key = self._parent.module_key
+            cog = self._setup_view.cog
+            module_key = self._setup_view.module_key
             module = get_module(module_key)
             embed = build_module_embed(cog.store, interaction.guild, module)
             view = ModuleView(cog, module_key, interaction.guild)
             await interaction.response.edit_message(embed=embed, view=view)
+        except discord.NotFound:
+            return
         except Exception as e:  # noqa: BLE001 - UI boundary must report a user-facing error
             print(f"[setup_ui] Error in _BackToModuleButton: {type(e).__name__}: {e}")
             if not interaction.response.is_done():
@@ -1161,6 +1453,8 @@ class ChannelSelectView(AdminOnlyView):
             await interaction.followup.send(
                 f"✅ Set to {channel.mention}.", ephemeral=True
             )
+        except discord.NotFound:
+            return
         except Exception as e:  # noqa: BLE001 - UI boundary must report a user-facing error
             print(f"[setup_ui] Error in ChannelSelectView._on_select: {type(e).__name__}: {e}")
             if not interaction.response.is_done():

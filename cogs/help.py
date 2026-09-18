@@ -12,6 +12,7 @@ MODULE_KEY = "help"
 HELP_COLOR = discord.Color(0x96EDF1)
 SUPPORT_URL = "https://discord.gg/tccYb2XSxR"
 PREFIX = "!"
+COMMAND_NAME_PREFIX = ""
 
 
 class HelpView(discord.ui.View):
@@ -243,9 +244,10 @@ class HelpCog(commands.Cog):
         intro = (
             "**Welcome!**\n"
             "This bot supports both prefix and slash commands.\n\n"
-            f"• Prefix commands use `{self.prefix}`\n"
+            f"• Prefix commands use `{self.prefix}{COMMAND_NAME_PREFIX}`\n"
             "• Slash commands use `/`\n\n"
-            f"Use `{self.prefix}help <command>` or `/help command:<name>` "
+            f"Use `{self.prefix}{COMMAND_NAME_PREFIX}help <command>` or "
+            "`/help command:<name>` "
             "for prefix-command details."
         )
 
@@ -312,7 +314,9 @@ class HelpCog(commands.Cog):
                 inline=False,
             )
 
-        embed.set_footer(text=f"Prefix commands use: {self.prefix}")
+        embed.set_footer(
+            text=f"Prefix commands use: {self.prefix}{COMMAND_NAME_PREFIX}"
+        )
         return embed
 
     async def _is_allowed_channel(

@@ -79,6 +79,22 @@ def _get_conn() -> sqlite3.Connection:
 # ============================================================ Special level configuration
 
 SPECIAL_LEVELS = {
+    10: {
+        "title": "🎉 Level 10 Reached!",
+        "description": (
+            "{user} reached **Level 10**!"
+        ),
+        "color": discord.Color.from_rgb(
+            88,
+            101,
+            242,
+        ),
+        "footer": "Keep chatting to level up.",
+        "field_name": "🎁 Reward",
+        "field_value": (
+            "You have been granted permission to rename your voice channel"
+        ),
+    },
     69: {
         "title": "😏 Nice! Level 69",
         "description": (
@@ -1206,10 +1222,15 @@ class Leveling(commands.Cog):
                 f"{guild.name} • Keep chatting to level up"
             )
             field_name = "🎁 Reward"
-            field_value = (
-                "Your level reward has been applied if one "
-                "is configured."
-            )
+            if level == 10:
+                field_value = (
+                    "You have been granted permission to rename your voice channel"
+                )
+            else:
+                field_value = (
+                    "Your level reward has been applied if one "
+                    "is configured."
+                )
 
         embed = themed_embed(
             title=title,
@@ -2258,8 +2279,8 @@ class Leveling(commands.Cog):
 
     # ============================================================ Owner test command
 
-    @commands.command(name="test_levelup")
-    async def test_levelup(
+    @commands.command(name="levelup")
+    async def levelup(
         self,
         ctx: commands.Context,
         member: discord.Member | None = None,
@@ -2309,7 +2330,7 @@ class Leveling(commands.Cog):
             await ctx.send(
                 embed=error_embed(
                     "No valid level-up channel is configured. "
-                    "Use `/setup_ui` to set one up first.",
+                    "Use `/setup` to set one up first.",
                     ctx.guild,
                 ),
                 delete_after=8,

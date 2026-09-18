@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import sqlite3
 
 import discord
 from discord.ext import commands
 
 from cogs.setup_ui import DB_PATH, SetupConfigStore
+from database import connect_sqlite
 
 MODULE_KEY = "temporary_voice"
 
@@ -150,6 +152,43 @@ class TemporaryVoice(commands.Cog):
             self._creation_locks[guild_id] = lock
 
         return lock
+
+    async def _get_user_level(
+        self,
+        guild_id: int,
+        user_id: int,
+    ) -> int:
+        leveling_cog = self.bot.get_cog("Leveling")
+        if leveling_cog is not None and hasattr(leveling_cog, "_get_user_row"):
+            try:
+                row = await leveling_cog._get_user_row(guild_id, user_id)
+                if row is not None and "level" in row:
+                    return int(row["level"])
+            except (sqlite3.Error, AttributeError, KeyError, TypeError, ValueError):
+                pass
+
+        try:
+            conn = connect_sqlite(DB_PATH)
+            try:
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    SELECT level
+                    FROM users
+                    WHERE guild_id = ?
+                      AND user_id = ?
+                    """,
+                    (guild_id, user_id),
+                )
+                row = cur.fetchone()
+                if row is not None and row["level"] is not None:
+                    return int(row["level"])
+            finally:
+                conn.close()
+        except (sqlite3.Error, KeyError, TypeError, ValueError):
+            pass
+
+        return 0
 
     # ============================================================ Room helpers
 
@@ -310,7 +349,8 @@ class TemporaryVoice(commands.Cog):
             description=(
                 "Use the buttons below to control your room.\n\n"
                 "🔒 **Lock** prevents new users from joining.\n"
-                "👤 **Invite** lets a selected member join a locked room."
+                "👤 **Invite** lets a selected member join a locked room.\n"
+                "✏️ **Rename** allows Level 10+ users to rename the channel."
             ),
             color=discord.Color.blurple(),
         )
@@ -449,7 +489,7 @@ class TemporaryVoice(commands.Cog):
 
 
 class VoiceControlView(discord.ui.View):
-    """Persistent lock and invite controls for one temporary room."""
+    """Persistent lock, invite, and rename controls for one temporary room."""
 
     def __init__(
         self,
@@ -466,9 +506,11 @@ class VoiceControlView(discord.ui.View):
 
         self.lock_button = LockButton(self, locked=locked)
         self.invite_button = InviteButton(self)
+        self.rename_button = RenameButton(self)
 
         self.add_item(self.lock_button)
         self.add_item(self.invite_button)
+        self.add_item(self.rename_button)
 
     def update_lock_button(self, locked: bool) -> None:
         if locked:
@@ -669,6 +711,96 @@ class InviteUserSelect(discord.ui.UserSelect):
             ),
             view=view,
         )
+
+
+class RenameButton(discord.ui.Button):
+    def __init__(self, view: VoiceControlView):
+        super().__init__(
+            label="Rename",
+            emoji="✏️",
+            style=discord.ButtonStyle.secondary,
+            custom_id=f"vc_rename:{view.voice_channel_id}",
+        )
+        self.control_view = view
+
+    async def callback(
+        self,
+        interaction: discord.Interaction,
+    ) -> None:
+        view = self.control_view
+        voice_channel = await view.cog._owner_only(interaction)
+
+        if voice_channel is None or interaction.guild is None:
+            return
+
+        level = await view.cog._get_user_level(
+            interaction.guild.id,
+            interaction.user.id,
+        )
+
+        if level < 10:
+            await interaction.response.send_message(
+                "You must be level 10 or higher to rename your voice channel.",
+                ephemeral=True,
+            )
+            return
+
+        modal = RenameChannelModal(view, voice_channel)
+        await interaction.response.send_modal(modal)
+
+
+class RenameChannelModal(discord.ui.Modal):
+    def __init__(
+        self,
+        parent_view: VoiceControlView,
+        voice_channel: discord.VoiceChannel,
+    ):
+        super().__init__(title="Rename Voice Channel")
+        self.parent_view = parent_view
+        self.voice_channel = voice_channel
+
+        self.channel_name = discord.ui.TextInput(
+            label="New Channel Name",
+            placeholder="Enter new voice channel name...",
+            default=voice_channel.name,
+            min_length=1,
+            max_length=100,
+            required=True,
+        )
+        self.add_item(self.channel_name)
+
+    async def on_submit(
+        self,
+        interaction: discord.Interaction,
+    ) -> None:
+        new_name = self.channel_name.value.strip()
+
+        if not new_name:
+            await interaction.response.send_message(
+                "Channel name cannot be empty.",
+                ephemeral=True,
+            )
+            return
+
+        try:
+            await self.voice_channel.edit(
+                name=new_name,
+                reason=f"Temporary voice channel renamed by {interaction.user}",
+            )
+            await interaction.response.send_message(
+                f"Voice channel renamed to **{new_name}**.",
+                ephemeral=True,
+            )
+        except discord.Forbidden:
+            await interaction.response.send_message(
+                "I do not have permission to rename this channel.",
+                ephemeral=True,
+            )
+        except discord.HTTPException as error:
+            await interaction.response.send_message(
+                f"Discord returned an error while renaming channel: {error}",
+                ephemeral=True,
+            )
 
 
 # This helper is attached after the class definition to keep the main

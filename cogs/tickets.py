@@ -6,14 +6,88 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from cogs import setup_ui
 from cogs.setup_ui import (
     DB_PATH,
     SetupConfigStore,
+    get_ticket_reason_options,
     owner_or_has_permissions,
 )
 
 MODULE_KEY = "tickets"
 NO_MENTIONS = discord.AllowedMentions.none()
+class TicketOtherReasonModal(discord.ui.Modal):
+    def __init__(self, cog: TicketCog):
+        super().__init__(title="Other ticket reason")
+        self.cog = cog
+        self.reason = discord.ui.TextInput(
+            label="What do you need help with?",
+            placeholder="Describe the reason for your ticket...",
+            style=discord.TextStyle.paragraph,
+            min_length=3,
+            max_length=1000,
+            required=True,
+        )
+        self.add_item(self.reason)
+
+    async def on_submit(
+        self,
+        interaction: discord.Interaction,
+    ) -> None:
+        await self.cog.create_ticket(
+            interaction,
+            reason=self.reason.value.strip(),
+        )
+
+
+class TicketReasonSelect(discord.ui.Select):
+    def __init__(
+        self,
+        cog: TicketCog,
+        reasons: list[str],
+    ):
+        options = [
+            discord.SelectOption(
+                label=reason,
+                value=reason,
+            )
+            for reason in reasons
+        ]
+        options.append(
+            discord.SelectOption(
+                label="Other",
+                value="other",
+                description="Enter your own reason",
+            )
+        )
+        super().__init__(
+            placeholder="Choose a reason for your ticket",
+            min_values=1,
+            max_values=1,
+            options=options,
+        )
+        self.cog = cog
+
+    async def callback(
+        self,
+        interaction: discord.Interaction,
+    ) -> None:
+        if self.values[0] == "other":
+            await interaction.response.send_modal(
+                TicketOtherReasonModal(self.cog)
+            )
+            return
+
+        await self.cog.create_ticket(
+            interaction,
+            reason=self.values[0],
+        )
+
+
+class TicketReasonView(discord.ui.View):
+    def __init__(self, cog: TicketCog, guild_id: int):
+        super().__init__(timeout=300)
+        self.add_item(TicketReasonSelect(cog, cog._ticket_reasons(guild_id)))
 
 
 class TicketPanelView(discord.ui.View):
@@ -173,6 +247,18 @@ class TicketCog(commands.Cog):
             )
         )
 
+    def _ticket_reasons(self, guild_id: int) -> list[str]:
+        return get_ticket_reason_options(self.store, guild_id)
+
+    def _ticket_panel_text(self, guild_id: int, key: str) -> str:
+        return str(
+            self._get(
+                guild_id,
+                key,
+                default=setup_ui.TICKET_PANEL_DEFAULTS[key],
+            )
+        )
+
     def _get_support_role_notification(
         self,
         guild: discord.Guild,
@@ -320,19 +406,18 @@ class TicketCog(commands.Cog):
             return
 
         embed = discord.Embed(
-            title="Support Tickets",
-            description=(
-                "Need help?\n"
-                "Click the button below to open a private "
-                "support ticket."
+            title=self._ticket_panel_text(guild.id, "panel_title"),
+            description=self._ticket_panel_text(
+                guild.id,
+                "panel_description",
             ),
             color=discord.Color.yellow(),
         )
 
         embed.set_footer(
-            text=(
-                "Please do not open multiple tickets "
-                "for the same issue."
+            text=self._ticket_panel_text(
+                guild.id,
+                "panel_footer",
             )
         )
 
@@ -374,6 +459,8 @@ class TicketCog(commands.Cog):
     async def create_ticket(
         self,
         interaction: discord.Interaction,
+        *,
+        reason: str | None = None,
     ) -> None:
         guild = interaction.guild
         user = interaction.user
@@ -489,6 +576,14 @@ class TicketCog(commands.Cog):
             )
             return
 
+        if reason is None:
+            await interaction.response.send_message(
+                "Choose a reason for opening your ticket:",
+                view=TicketReasonView(self, guild.id),
+                ephemeral=True,
+            )
+            return
+
         await interaction.response.defer(ephemeral=True)
 
         overwrites: dict[
@@ -528,7 +623,7 @@ class TicketCog(commands.Cog):
                 overwrites=overwrites,
                 topic=f"Ticket owner ID: {user.id}",
                 reason=(
-                    f"Support ticket created by {user}"
+                    f"Support ticket created by {user}: {reason}"
                 ),
             )
 
@@ -546,6 +641,12 @@ class TicketCog(commands.Cog):
                 name="Ticket owner",
                 value=user.mention,
                 inline=True,
+            )
+
+            ticket_embed.add_field(
+                name="Reason",
+                value=reason,
+                inline=False,
             )
 
             ticket_embed.set_footer(
