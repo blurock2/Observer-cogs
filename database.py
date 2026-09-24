@@ -316,6 +316,95 @@ def migrate_old_primary_database(primary_path: str | Path) -> None:
     logger.info("Migrated old primary database %s into %s", legacy, primary)
 
 
+def migrate_setup_defaults(primary_path: str | Path) -> None:
+    """Create setup records for guilds that already have legacy data."""
+    with closing(connect_sqlite(primary_path, timeout=30)) as connection:
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS guild_setup_config (
+                guild_id INTEGER NOT NULL,
+                module TEXT NOT NULL,
+                key TEXT NOT NULL,
+                value TEXT NOT NULL,
+                PRIMARY KEY (guild_id, module, key)
+            )
+            """
+        )
+
+        guild_ids = {
+            row[0]
+            for row in connection.execute(
+                """
+                SELECT guild_id FROM guild_config
+                UNION
+                SELECT guild_id FROM guild_rules
+                UNION
+                SELECT guild_id FROM users
+                UNION
+                SELECT guild_id FROM reminders
+                UNION
+                SELECT guild_id FROM relay_links
+                """
+            ).fetchall()
+        }
+
+        for guild_id in guild_ids:
+            existing_modules = {
+                row[0]
+                for row in connection.execute(
+                    """
+                    SELECT DISTINCT module
+                    FROM guild_setup_config
+                    WHERE guild_id = ?
+                    """,
+                    (guild_id,),
+                ).fetchall()
+            }
+
+            defaults = {
+                "leveling": "leveling" in existing_modules
+                or connection.execute(
+                    "SELECT 1 FROM guild_config WHERE guild_id = ?",
+                    (guild_id,),
+                ).fetchone()
+                is not None,
+
+                "rules": connection.execute(
+                    "SELECT 1 FROM guild_rules WHERE guild_id = ?",
+                    (guild_id,),
+                ).fetchone()
+                is not None,
+
+                "reminder": connection.execute(
+                    "SELECT 1 FROM reminders WHERE guild_id = ? LIMIT 1",
+                    (guild_id,),
+                ).fetchone()
+                is not None,
+
+                "relay": connection.execute(
+                    """
+                    SELECT 1 FROM relay_links
+                    WHERE source_guild_id = ? OR target_guild_id = ?
+                    LIMIT 1
+                    """,
+                    (guild_id, guild_id),
+                ).fetchone()
+                is not None,
+            }
+
+            for module, enabled in defaults.items():
+                connection.execute(
+                    """
+                    INSERT OR IGNORE INTO guild_setup_config
+                        (guild_id, module, key, value)
+                    VALUES (?, ?, 'enabled', ?)
+                    """,
+                    (guild_id, module, "true" if enabled else "false"),
+                )
+
+        connection.commit()
+
+
 def init_database():
     DATA_DIR.mkdir(exist_ok=True)
 
@@ -341,6 +430,8 @@ def init_database():
 
     connection.commit()
     connection.close()
+
+    migrate_setup_defaults(DATABASE_PATH)
 
     logger.info("Reports database ready: %s", DATABASE_PATH)
 
