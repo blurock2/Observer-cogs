@@ -12,7 +12,8 @@ from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 
-from cogs.config import BOT_OWNER_ID, is_bot_owner
+from cogs.config import BOT_OWNER_ID, RESTRICTED_BOT_ID, is_bot_owner
+from cogs.setup_ui import DB_PATH, SetupConfigStore
 from database import cleanup_old_backups, migrate_legacy_databases
 from logging_config import configure_logging
 
@@ -42,9 +43,22 @@ intents.presences = True
 # ============================================================
 # Bot
 
+class RestrictedCommandTree(app_commands.CommandTree):
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if self.client.command_access_allowed(interaction.user, interaction.guild):
+            return True
+
+        if not interaction.response.is_done():
+            await interaction.response.send_message(
+                "This bot's commands are limited to configured staff and tester roles.",
+                ephemeral=True,
+            )
+        return False
+
 class MyBot(commands.Bot):
     EXTENSIONS = (
         "cogs.setup_ui",
+        "cogs.audit_log",
         "cogs.acc_link",
         "cogs.reaction_roles",
         "cogs.message_quoter",
@@ -57,6 +71,8 @@ class MyBot(commands.Bot):
         "cogs.reminder",
         "cogs.message_relay",
         "cogs.moderation",
+        "cogs.security",
+        "cogs.tags",
         "cogs.mentions",
         "cogs.member_commands",
         "cogs.help",
@@ -73,7 +89,9 @@ class MyBot(commands.Bot):
             help_command=None,
             member_cache_flags=discord.MemberCacheFlags.all(),
             owner_id=BOT_OWNER_ID,
+            tree_cls=RestrictedCommandTree,
         )
+        self.setup_store = SetupConfigStore(DB_PATH)
 
         # These are defaults inherited by commands which do not explicitly
         # define their own allowed contexts.
@@ -88,6 +106,40 @@ class MyBot(commands.Bot):
             guild=True,
             user=True,
         )
+
+    def command_access_allowed(self, user, guild: discord.Guild | None) -> bool:
+        if self.user is None or self.user.id != RESTRICTED_BOT_ID:
+            return True
+        if is_bot_owner(user):
+            return True
+        if guild is None:
+            return False
+        restricted_access = self.setup_store.get(
+            guild.id, "bot", "restricted_access", default=True
+        )
+        if isinstance(restricted_access, str):
+            restricted_access = restricted_access.strip().lower() not in {
+                "false", "0", "no", "off", ""
+            }
+        if not restricted_access:
+            return True
+
+        role_ids: set[int] = set()
+        for key in ("staff_role", "tester_role"):
+            value = self.setup_store.get(guild.id, "bot", key)
+            try:
+                if isinstance(value, str):
+                    value = value.strip().removeprefix("<@&").removesuffix(">")
+                role_ids.add(int(value))
+            except (TypeError, ValueError):
+                continue
+        return any(role.id in role_ids for role in getattr(user, "roles", []))
+
+    async def process_commands(self, message: discord.Message) -> None:
+        context = await self.get_context(message)
+        if not self.command_access_allowed(context.author, context.guild):
+            return
+        await self.invoke(context)
 
     async def setup_hook(self) -> None:
         """
@@ -111,6 +163,7 @@ class MyBot(commands.Bot):
         except discord.HTTPException:
             logger.exception("Failed to synchronize Observer application commands")
 
+
 bot = MyBot()
 
 
@@ -126,7 +179,7 @@ async def reload_cogs(ctx: commands.Context) -> None:
     Extensions that are configured but not currently loaded (e.g. they
     failed to load at startup because of a missing dependency) are
     loaded fresh instead of being skipped, so fixing the underlying
-    problem and running !reload_cogs is enough to bring them up
+    problem and running !test_reload_cogs is enough to bring them up
     without a full bot restart.
     """
 
@@ -187,6 +240,14 @@ async def reload_cogs(ctx: commands.Context) -> None:
             )
 
     response = "\n".join(results)
+
+    try:
+        synced_commands = await bot.tree.sync()
+        response += f"\n✅ Synchronized {len(synced_commands)} application command(s)."
+        logger.info("Synchronized %d application command(s) after cog reload", len(synced_commands))
+    except Exception as error:
+        response += f"\n❌ Application command sync failed: `{type(error).__name__}: {error}`"
+        logger.exception("Failed to synchronize application commands after cog reload")
 
     if len(response) <= 2000:
         await ctx.send(response)
