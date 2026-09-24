@@ -219,6 +219,103 @@ def migrate_legacy_databases(primary_path: str | Path) -> None:
     logger.info("Legacy database migration completed into %s", primary)
 
 
+def migrate_old_primary_database(primary_path: str | Path) -> None:
+    """One-time migration from the old root-level bot database."""
+    primary = Path(primary_path)
+    legacy = BASE_DIR.parent / "bot.20260918_144801.db"
+    migration_name = "root_bot_db_to_primary_v1"
+
+    if not legacy.exists() or legacy.resolve() == primary.resolve():
+        return
+
+    with closing(connect_sqlite(primary, timeout=30)) as connection:
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS database_migrations (
+                name TEXT PRIMARY KEY,
+                completed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+
+        done = connection.execute(
+            "SELECT 1 FROM database_migrations WHERE name = ?",
+            (migration_name,),
+        ).fetchone()
+        if done:
+            return
+
+        backup = primary.with_name(
+            f"{primary.stem}.before-root-db-migration-"
+            f"{datetime.now(timezone.utc):%Y%m%d_%H%M%S}.db"
+        )
+        shutil.copy2(primary, backup)
+
+        connection.execute("ATTACH DATABASE ? AS legacy", (str(legacy),))
+
+        try:
+            legacy_tables = {
+                row["name"]
+                for row in connection.execute(
+                    "SELECT name FROM legacy.sqlite_master WHERE type = 'table'"
+                ).fetchall()
+            }
+
+            shared_tables = (
+                "account_links",
+                "guild_config",
+                "guild_rules",
+                "message_stats",
+                "moderation_actions",
+                "moderation_stats",
+                "relay_links",
+                "relay_source_channels",
+                "relay_target_channels",
+                "role_rewards",
+                "users",
+                "weekly_posts",
+                "weekly_xp",
+            )
+
+            for table in shared_tables:
+                if table not in legacy_tables:
+                    continue
+
+                destination_columns = [
+                    row["name"]
+                    for row in connection.execute(
+                        f"PRAGMA table_info({table})"
+                    ).fetchall()
+                ]
+                source_columns = {
+                    row["name"]
+                    for row in connection.execute(
+                        f"PRAGMA legacy.table_info({table})"
+                    ).fetchall()
+                }
+
+                columns = [column for column in destination_columns if column in source_columns]
+                if not columns:
+                    continue
+
+                quoted = ", ".join(f'"{column}"' for column in columns)
+                connection.execute(
+                    f'INSERT OR IGNORE INTO "{table}" ({quoted}) '
+                    f'SELECT {quoted} FROM legacy."{table}"'
+                )
+
+            connection.execute(
+                "INSERT INTO database_migrations (name) VALUES (?)",
+                (migration_name,),
+            )
+            connection.commit()
+
+        finally:
+            connection.execute("DETACH DATABASE legacy")
+
+    logger.info("Migrated old primary database %s into %s", legacy, primary)
+
+
 def init_database():
     DATA_DIR.mkdir(exist_ok=True)
 
