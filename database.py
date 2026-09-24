@@ -10,7 +10,7 @@ from time import time
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 DATABASE_PATH = DATA_DIR / "bot.db"
-logger = logging.getLogger("observer.database")
+logger = logging.getLogger("aquila.database")
 
 BACKUP_RETENTION_DAYS = 5
 BACKUP_PATTERNS = (
@@ -246,6 +246,314 @@ def init_database():
     connection.close()
 
     logger.info("Reports database ready: %s", DATABASE_PATH)
+
+
+class ModerationCaseStore:
+    """Persistent moderation cases, notes, evidence, and report metadata."""
+
+    def __init__(self, db_path: str | Path = DATABASE_PATH):
+        self.db_path = str(db_path)
+        self._init()
+
+    @contextmanager
+    def _connect(self):
+        connection = connect_sqlite(self.db_path)
+        try:
+            yield connection
+        except Exception:
+            connection.rollback()
+            raise
+        else:
+            connection.commit()
+        finally:
+            connection.close()
+
+    def _init(self) -> None:
+        with self._connect() as connection:
+            connection.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS moderation_cases (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id INTEGER NOT NULL,
+                    case_number INTEGER NOT NULL,
+                    case_type TEXT NOT NULL,
+                    target_id INTEGER NOT NULL,
+                    moderator_id INTEGER,
+                    reason TEXT,
+                    status TEXT NOT NULL DEFAULT 'open',
+                    reporter_id INTEGER,
+                    source_message_id INTEGER,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    resolved_at TEXT,
+                    UNIQUE (guild_id, case_number)
+                );
+                CREATE INDEX IF NOT EXISTS idx_cases_target
+                    ON moderation_cases(guild_id, target_id, created_at);
+                CREATE TABLE IF NOT EXISTS staff_notes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id INTEGER NOT NULL,
+                    target_id INTEGER NOT NULL,
+                    author_id INTEGER NOT NULL,
+                    note TEXT NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE TABLE IF NOT EXISTS evidence_snapshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id INTEGER NOT NULL,
+                    case_id INTEGER,
+                    message_id INTEGER NOT NULL,
+                    author_id INTEGER NOT NULL,
+                    channel_id INTEGER NOT NULL,
+                    content TEXT,
+                    attachments TEXT,
+                    captured_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE (guild_id, message_id)
+                );
+                CREATE TABLE IF NOT EXISTS user_name_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    name TEXT NOT NULL,
+                    captured_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE (guild_id, user_id, name)
+                );
+                """
+            )
+
+    def create_case(
+        self,
+        guild_id: int,
+        case_type: str,
+        target_id: int,
+        moderator_id: int | None = None,
+        reason: str | None = None,
+        *,
+        reporter_id: int | None = None,
+        source_message_id: int | None = None,
+        status: str = "open",
+    ) -> int:
+        with self._connect() as connection:
+            next_number = connection.execute(
+                "SELECT COALESCE(MAX(case_number), 0) + 1 FROM moderation_cases "
+                "WHERE guild_id = ?",
+                (guild_id,),
+            ).fetchone()[0]
+            cursor = connection.execute(
+                """
+                INSERT INTO moderation_cases
+                    (guild_id, case_number, case_type, target_id, moderator_id,
+                     reason, status, reporter_id, source_message_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    guild_id, next_number, case_type, target_id, moderator_id,
+                    reason, status, reporter_id, source_message_id,
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def get_case(self, case_id: int) -> sqlite3.Row | None:
+        with self._connect() as connection:
+            return connection.execute(
+                "SELECT * FROM moderation_cases WHERE id = ?", (case_id,)
+            ).fetchone()
+
+    def list_user_history(self, guild_id: int, user_id: int) -> list[sqlite3.Row]:
+        with self._connect() as connection:
+            return connection.execute(
+                "SELECT * FROM moderation_cases WHERE guild_id = ? AND target_id = "
+                "? ORDER BY case_number DESC",
+                (guild_id, user_id),
+            ).fetchall()
+
+    def add_note(self, guild_id: int, target_id: int, author_id: int, note: str) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "INSERT INTO staff_notes (guild_id, target_id, author_id, note) "
+                "VALUES (?, ?, ?, ?)",
+                (guild_id, target_id, author_id, note),
+            )
+            return int(cursor.lastrowid)
+
+    def list_notes(self, guild_id: int, target_id: int) -> list[sqlite3.Row]:
+        with self._connect() as connection:
+            return connection.execute(
+                "SELECT * FROM staff_notes WHERE guild_id = ? AND target_id = ? "
+                "ORDER BY id DESC",
+                (guild_id, target_id),
+            ).fetchall()
+
+    def add_name(self, guild_id: int, user_id: int, name: str) -> None:
+        name = name.strip()
+        if not name:
+            return
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT OR IGNORE INTO user_name_history (guild_id, user_id, name) "
+                "VALUES (?, ?, ?)",
+                (guild_id, user_id, name),
+            )
+
+    def list_names(self, guild_id: int, user_id: int) -> list[str]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT name FROM user_name_history WHERE guild_id = ? AND user_id = ? "
+                "ORDER BY id DESC",
+                (guild_id, user_id),
+            ).fetchall()
+        return [str(row["name"]) for row in rows]
+
+    def add_evidence(
+        self,
+        guild_id: int,
+        message_id: int,
+        author_id: int,
+        channel_id: int,
+        content: str,
+        attachments: str = "",
+        case_id: int | None = None,
+    ) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO evidence_snapshots
+                    (guild_id, case_id, message_id, author_id, channel_id,
+                     content, attachments)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (guild_id, case_id, message_id, author_id, channel_id, content, attachments),
+            )
+
+    def find_open_report(self, guild_id: int, target_id: int, message_id: int) -> sqlite3.Row | None:
+        with self._connect() as connection:
+            return connection.execute(
+                "SELECT * FROM moderation_cases WHERE guild_id = ? AND case_type = 'report' "
+                "AND target_id = ? AND source_message_id = ? AND status = 'open'",
+                (guild_id, target_id, message_id),
+            ).fetchone()
+
+    def update_case_status(self, case_id: int, status: str, moderator_id: int) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE moderation_cases SET status = ?, moderator_id = ?, "
+                "resolved_at = CASE WHEN ? IN ('resolved', 'closed') "
+                "THEN CURRENT_TIMESTAMP ELSE resolved_at END WHERE id = ?",
+                (status, moderator_id, status, case_id),
+            )
+
+    def get_evidence(self, guild_id: int, message_id: int) -> sqlite3.Row | None:
+        with self._connect() as connection:
+            return connection.execute(
+                "SELECT * FROM evidence_snapshots WHERE guild_id = ? AND message_id = ?",
+                (guild_id, message_id),
+            ).fetchone()
+
+    def staff_summary(self, guild_id: int, moderator_id: int) -> dict[str, int]:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT COUNT(*) AS handled, "
+                "SUM(CASE WHEN status IN ('closed', 'resolved') AND moderator_id = ? THEN 1 ELSE 0 END) AS resolved, "
+                "SUM(CASE WHEN status = 'open' AND moderator_id = ? THEN 1 ELSE 0 END) AS open_assigned, "
+                "AVG(CASE WHEN status IN ('closed', 'resolved') "
+                "THEN (julianday(resolved_at) - julianday(created_at)) * 1440 END) AS response_minutes "
+                "FROM moderation_cases WHERE guild_id = ? AND moderator_id = ?",
+                (moderator_id, moderator_id, guild_id, moderator_id),
+            ).fetchone()
+            open_reports = connection.execute(
+                "SELECT COUNT(*) FROM moderation_cases WHERE guild_id = ? "
+                "AND case_type = 'report' AND status = 'open'",
+                (guild_id,),
+            ).fetchone()[0]
+        return {
+            "handled": int(row["resolved"] or 0),
+            "open_assigned": int(row["open_assigned"] or 0),
+            "open_reports": int(open_reports),
+            "response_minutes": round(float(row["response_minutes"] or 0), 1),
+        }
+
+
+class TagStore:
+    """Guild-scoped plain-text reusable moderation and support messages."""
+
+    def __init__(self, db_path: str | Path = DATABASE_PATH):
+        self.db_path = str(db_path)
+        self._init()
+
+    @contextmanager
+    def _connect(self):
+        connection = connect_sqlite(self.db_path)
+        try:
+            yield connection
+        except Exception:
+            connection.rollback()
+            raise
+        else:
+            connection.commit()
+        finally:
+            connection.close()
+
+    def _init(self) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS moderation_tags (
+                    guild_id INTEGER NOT NULL,
+                    name TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    created_by INTEGER NOT NULL,
+                    updated_by INTEGER NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (guild_id, name)
+                )
+                """
+            )
+
+    @staticmethod
+    def normalize_name(name: str) -> str:
+        return " ".join(name.strip().lower().split())
+
+    def create(self, guild_id: int, name: str, content: str, user_id: int) -> bool:
+        name = self.normalize_name(name)
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "INSERT OR IGNORE INTO moderation_tags "
+                "(guild_id, name, content, created_by, updated_by) VALUES (?, ?, ?, ?, ?)",
+                (guild_id, name, content, user_id, user_id),
+            )
+            return cursor.rowcount == 1
+
+    def get(self, guild_id: int, name: str) -> sqlite3.Row | None:
+        with self._connect() as connection:
+            return connection.execute(
+                "SELECT * FROM moderation_tags WHERE guild_id = ? AND name = ?",
+                (guild_id, self.normalize_name(name)),
+            ).fetchone()
+
+    def update(self, guild_id: int, name: str, content: str, user_id: int) -> bool:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "UPDATE moderation_tags SET content = ?, updated_by = ?, "
+                "updated_at = CURRENT_TIMESTAMP WHERE guild_id = ? AND name = ?",
+                (content, user_id, guild_id, self.normalize_name(name)),
+            )
+            return cursor.rowcount == 1
+
+    def delete(self, guild_id: int, name: str) -> bool:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM moderation_tags WHERE guild_id = ? AND name = ?",
+                (guild_id, self.normalize_name(name)),
+            )
+            return cursor.rowcount == 1
+
+    def list(self, guild_id: int) -> list[str]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT name FROM moderation_tags WHERE guild_id = ? ORDER BY name",
+                (guild_id,),
+            ).fetchall()
+        return [str(row["name"]) for row in rows]
 
 
 class ModerationActionStore:
