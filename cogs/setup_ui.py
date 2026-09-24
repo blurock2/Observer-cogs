@@ -12,7 +12,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from cogs.config import is_bot_owner
+from cogs.config import RESTRICTED_BOT_ID, is_bot_owner
 from database import connect_sqlite
 
 
@@ -301,6 +301,56 @@ MODULES: list[ModuleSpec] = [
                 "Bot log channel",
                 "channel",
                 description="Channel where the bot posts restart/maintenance notices.",
+            ),
+            SettingSpec(
+                "restricted_access",
+                "Staff/tester command access",
+                "toggle",
+                default=True,
+                description="For the designated bot identity, limit commands to the staff and tester roles.",
+            ),
+            SettingSpec("staff_role", "Command staff role", "role"),
+            SettingSpec("tester_role", "Command tester role", "role"),
+        ],
+    ),
+    ModuleSpec(
+        key="audit_log",
+        label="Audit Log",
+        emoji="🧾",
+        description="Configurable server event logging and permission warnings.",
+        settings=[
+            SettingSpec("enabled", "Enabled", "toggle", default=False),
+            SettingSpec("log_channel", "Log channel", "channel"),
+            SettingSpec("log_message_edits", "Message edits", "toggle", default=True),
+            SettingSpec("log_message_deletes", "Message deletes", "toggle", default=True),
+            SettingSpec("log_role_changes", "Role changes", "toggle", default=True),
+            SettingSpec("log_channel_changes", "Channel changes", "toggle", default=True),
+            SettingSpec("log_webhook_changes", "Webhook changes", "toggle", default=True),
+            SettingSpec("log_emoji_changes", "Emoji and sticker changes", "toggle", default=True),
+            SettingSpec("log_member_events", "Member events", "toggle", default=True),
+            SettingSpec("log_voice_moves", "Voice moves", "toggle", default=True),
+            SettingSpec("log_invites", "Invite changes", "toggle", default=True),
+            SettingSpec(
+                "log_permission_escalation",
+                "Permission escalation warnings",
+                "toggle",
+                default=True,
+            ),
+            SettingSpec("ignored_channel_1", "Ignored channel 1", "channel"),
+            SettingSpec("ignored_channel_2", "Ignored channel 2", "channel"),
+            SettingSpec("ignored_channel_3", "Ignored channel 3", "channel"),
+            SettingSpec("ignored_channel_4", "Ignored channel 4", "channel"),
+            SettingSpec("ignored_channel_5", "Ignored channel 5", "channel"),
+            SettingSpec("ignored_role_1", "Ignored role 1", "role"),
+            SettingSpec("ignored_role_2", "Ignored role 2", "role"),
+            SettingSpec("ignored_role_3", "Ignored role 3", "role"),
+            SettingSpec("ignored_role_4", "Ignored role 4", "role"),
+            SettingSpec("ignored_role_5", "Ignored role 5", "role"),
+            SettingSpec(
+                "ignored_user_ids",
+                "Ignored user IDs",
+                "text",
+                description="Comma-separated user IDs to exclude from audit logs.",
             ),
         ],
     ),
@@ -640,6 +690,59 @@ MODULES: list[ModuleSpec] = [
                 default=8,
                 description="Set to 0 to leave the warning message visible.",
             ),
+            SettingSpec(
+                "mention_threshold",
+                "Mention threshold",
+                "integer",
+                default=5,
+                description="Mentions per user in 30 seconds before abuse handling.",
+            ),
+            SettingSpec(
+                "announcement_channels",
+                "Mention-exempt announcement channels",
+                "text",
+                description="Comma-separated channel IDs exempt from threshold and repeated-ping detection.",
+            ),
+        ],
+    ),
+    ModuleSpec(
+        key="security",
+        label="Security and Anti-Raid",
+        emoji="🛡️",
+        description="Reversible lockdown, join-risk alerts, scam detection, and channel controls.",
+        settings=[
+            SettingSpec("enabled", "Enabled", "toggle", default=True,
+                        description="Enable anti-raid and scam detection listeners."),
+            SettingSpec("alert_channel", "Security alert channel", "channel"),
+            SettingSpec("lockdown_enabled", "Lockdown enabled", "toggle", default=False),
+            SettingSpec("new_account_days", "New-account age threshold (days)", "integer", default=7),
+            SettingSpec("rapid_join_window_seconds", "Rapid-join window (seconds)", "integer", default=60),
+            SettingSpec("rapid_join_threshold", "Rapid-join threshold", "integer", default=5),
+            SettingSpec("invite_use_threshold", "Invite-use alert threshold", "integer", default=2),
+            SettingSpec("lockdown_auto_timeout", "Auto-timeout new accounts during lockdown", "toggle", default=False),
+            SettingSpec("lockdown_new_account_timeout_minutes", "Lockdown new-account timeout (minutes)", "integer", default=30),
+            SettingSpec("scam_alert_cooldown_seconds", "Scam alert cooldown (seconds)", "integer", default=60),
+            SettingSpec("delete_scam_messages", "Delete flagged scam messages", "toggle", default=False),
+        ],
+    ),
+    ModuleSpec(
+        key="tags",
+        label="Tags",
+        emoji="🏷️",
+        description="Reusable plain-text messages for moderators and trusted staff.",
+        settings=[
+            SettingSpec(
+                "enabled",
+                "Enabled",
+                "toggle",
+                default=True,
+                description="Enable reusable tag commands.",
+            ),
+            SettingSpec("trusted_role_1", "Trusted role 1", "role"),
+            SettingSpec("trusted_role_2", "Trusted role 2", "role"),
+            SettingSpec("trusted_role_3", "Trusted role 3", "role"),
+            SettingSpec("trusted_role_4", "Trusted role 4", "role"),
+            SettingSpec("trusted_role_5", "Trusted role 5", "role"),
         ],
     ),
     ModuleSpec(
@@ -811,6 +914,18 @@ def format_value(guild: discord.Guild, value) -> str:
     if isinstance(value, int):
         return str(value)
     return str(value)
+
+
+def setting_as_bool(value, default: bool = False) -> bool:
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes", "on"}:
+            return True
+        if normalized in {"false", "0", "no", "off", ""}:
+            return False
+    if value is None:
+        return default
+    return bool(value)
 
 
 def format_channel(guild: discord.Guild | None, channel_id) -> str:
@@ -1013,15 +1128,12 @@ class AdminOnlyView(discord.ui.View):
             )
             return False
 
-        # Allow bot owner regardless of guild permissions
-        if is_bot_owner(interaction.user):
-            return True
-
-        if interaction.user.guild_permissions.manage_guild:
+        cog = getattr(self, "cog", None)
+        if cog is not None and cog.has_setup_access(interaction):
             return True
 
         await interaction.response.send_message(
-            "You need the **Manage Server** permission to configure the bot.",
+            "You need the **Manage Server** permission or a configured staff/tester role to configure the bot.",
             ephemeral=True,
         )
         return False
@@ -1315,7 +1427,7 @@ class ModuleView(AdminOnlyView):
         label = f"{spec.label}: {value_text}"[:80]
 
         if spec.kind == "toggle":
-            style = discord.ButtonStyle.success if bool(current) else discord.ButtonStyle.danger
+            style = discord.ButtonStyle.success if setting_as_bool(current, bool(spec.default)) else discord.ButtonStyle.danger
         else:
             style = discord.ButtonStyle.primary
 
@@ -1335,7 +1447,8 @@ class ModuleView(AdminOnlyView):
             try:
                 guild = interaction.guild
                 if spec.kind == "toggle":
-                    new_val = not cog.store.get(guild.id, module_key, spec.key, spec.default)
+                    current = cog.store.get(guild.id, module_key, spec.key, spec.default)
+                    new_val = not setting_as_bool(current, bool(spec.default))
                     cog.store.set(guild.id, module_key, spec.key, new_val)
                     await self._refresh(interaction)
                     await interaction.followup.send(
@@ -1583,11 +1696,44 @@ class SetupUICog(commands.Cog):
         description="Open the interactive bot setup dashboard.",
     )
     @app_commands.guild_only()
-    @owner_or_has_permissions(manage_guild=True)
     async def setup_dashboard(self, interaction: discord.Interaction) -> None:
+        if not self.has_setup_access(interaction):
+            await interaction.response.send_message(
+                "You need the **Manage Server** permission or a configured staff/tester role to use /setup.",
+                ephemeral=True,
+            )
+            return
         embed = build_main_embed(self.store, interaction.guild)
         view = MainView(self)
         await interaction.response.send_message(embed=embed, view=view)
+
+    def has_setup_access(self, interaction: discord.Interaction) -> bool:
+        if interaction.guild is None or interaction.user is None:
+            return False
+        if is_bot_owner(interaction.user):
+            return True
+        restricted = getattr(self.bot.user, "id", None) == RESTRICTED_BOT_ID
+        if not restricted:
+            return getattr(interaction.user.guild_permissions, "manage_guild", False)
+        restricted_access = self.store.get(
+            interaction.guild.id, "bot", "restricted_access", default=True
+        )
+        if isinstance(restricted_access, str):
+            restricted_access = restricted_access.strip().lower() not in {
+                "false", "0", "no", "off", ""
+            }
+        if not restricted_access:
+            return getattr(interaction.user.guild_permissions, "manage_guild", False)
+        role_ids = set()
+        for key in ("staff_role", "tester_role"):
+            value = self.store.get(interaction.guild.id, "bot", key)
+            try:
+                if isinstance(value, str):
+                    value = value.strip().removeprefix("<@&").removesuffix(">")
+                role_ids.add(int(value))
+            except (TypeError, ValueError):
+                continue
+        return any(role.id in role_ids for role in getattr(interaction.user, "roles", []))
 
     @setup_dashboard.error
     async def setup_dashboard_error(
