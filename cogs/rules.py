@@ -568,6 +568,7 @@ class RulesCommand(commands.Cog):
     @app_commands.describe(
         rule="Rule to send",
         format="Optional override: embed or text",
+        target="Optional user to mention on a new final line",
     )
     @app_commands.autocomplete(rule=rule_autocomplete)
     @app_commands.choices(
@@ -581,6 +582,7 @@ class RulesCommand(commands.Cog):
         interaction: discord.Interaction,
         rule: str,
         format: app_commands.Choice[str] | None = None,
+        target: discord.Member | None = None,
     ) -> None:
         if not await self._require_enabled(interaction):
             return
@@ -621,14 +623,27 @@ class RulesCommand(commands.Cog):
             embed.set_footer(text="Rules are to be followed.")
 
             await interaction.response.send_message(
+                content=target.mention if target is not None else None,
                 embed=embed,
-                allowed_mentions=discord.AllowedMentions.none(),
+                allowed_mentions=(
+                    discord.AllowedMentions(users=True)
+                    if target is not None
+                    else discord.AllowedMentions.none()
+                ),
             )
             return
 
+        content = f"**{selected_rule.title}**\n{selected_rule.content}"
+        if target is not None:
+            content = f"{content}\n{target.mention}"
+
         await interaction.response.send_message(
-            f"**{selected_rule.title}**\n{selected_rule.content}",
-            allowed_mentions=discord.AllowedMentions.none(),
+            content,
+            allowed_mentions=(
+                discord.AllowedMentions(users=True)
+                if target is not None
+                else discord.AllowedMentions.none()
+            ),
         )
 
     # ============================================================ Errors
