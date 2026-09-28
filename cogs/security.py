@@ -62,6 +62,7 @@ TRUSTED_BRAND_DOMAINS = {
     "microsoft.com", "live.com", "google.com", "roblox.com", "paypal.com",
     "binance.com", "coinbase.com", "metamask.io",
 }
+GIF_DOMAINS = {"tenor.com", "klipy.com", "kippy.com"}
 SUSPICIOUS_NAME_RE = re.compile(
     r"(?:free.?nitro|discord.?support|mod.?team|verify|gift|airdrop|admin)",
     re.IGNORECASE,
@@ -82,6 +83,9 @@ def detect_scam_signals(content: str) -> list[str]:
         parsed = urlsplit(raw_url)
         host = (parsed.hostname or "").lower().rstrip(".")
         decoded_url = unquote(raw_url)
+
+        if host in GIF_DOMAINS or any(host.endswith(f".{domain}") for domain in GIF_DOMAINS):
+            continue
 
         if host in SHORTENED_DOMAINS:
             signals.append(f"shortened link: {host}")
