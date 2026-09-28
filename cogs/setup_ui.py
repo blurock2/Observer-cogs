@@ -714,6 +714,8 @@ MODULES: list[ModuleSpec] = [
             SettingSpec("enabled", "Enabled", "toggle", default=True,
                         description="Enable anti-raid and scam detection listeners."),
             SettingSpec("alert_channel", "Security alert channel", "channel"),
+            SettingSpec("scam_bypass_role", "Scam detection bypass role", "role",
+                        description="Members with this role are excluded from scam message detection."),
             SettingSpec("lockdown_enabled", "Lockdown enabled", "toggle", default=False),
             SettingSpec("new_account_days", "New-account age threshold (days)", "integer", default=7),
             SettingSpec("rapid_join_window_seconds", "Rapid-join window (seconds)", "integer", default=60),

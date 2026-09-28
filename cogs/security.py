@@ -158,6 +158,19 @@ class SecurityCog(commands.Cog):
     def _enabled(self, guild_id: int) -> bool:
         return self._bool_setting(guild_id, "enabled", True)
 
+    def _get_role_id(self, guild_id: int, key: str) -> int | None:
+        value = self._get(guild_id, key)
+        try:
+            return int(value) if value is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    def _has_scam_bypass_role(self, message: discord.Message) -> bool:
+        role_id = self._get_role_id(message.guild.id, "scam_bypass_role")
+        return role_id is not None and any(
+            role.id == role_id for role in getattr(message.author, "roles", ())
+        )
+
     def _int_setting(self, guild_id: int, key: str, default: int, minimum: int, maximum: int) -> int:
         try:
             value = int(self._get(guild_id, key, default))
@@ -283,6 +296,8 @@ class SecurityCog(commands.Cog):
         if message.guild is None or message.author.bot:
             return
         if not self._enabled(message.guild.id):
+            return
+        if self._has_scam_bypass_role(message):
             return
         signals = detect_scam_signals(message.content)
         if not signals:
