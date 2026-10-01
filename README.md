@@ -1,173 +1,101 @@
 # Observer
 
-Observer is a modular Discord bot built with Python and `discord.py`. It provides configurable server-management, moderation, community, and utility features through independently loadable cogs.
+Observer is a modular Discord bot built with Python and [`discord.py`](https://discordpy.readthedocs.io/). It provides server management, moderation, security, community, utility, and automation features through independently loadable cogs.
 
-> **Project status:** Active development. Core functionality is implemented and the project includes automated tests, but features, commands, and configuration may still change.
+> **Project status:** Active development. Core functionality is implemented and tested, but commands, features, and configuration may continue to change.
 
 ## Features
 
-Observer currently includes modules for:
+Observer currently includes:
 
-- Server setup and persistent per-server configuration
-- Moderation tools and moderation statistics
-- Ticket systems and message reporting
-- Reaction roles, rules, mentions, and member commands
-- Temporary voice channels
-- Message quoting and message relaying
-- Leveling
-- Account linking
-- Server statistics
-- Weather and Spotify display features
-- In-Discord help and an application bridge
+- **Server configuration**
+  - Persistent per-server configuration
+  - In-Discord setup interface
+  - Configurable staff and tester roles
+  - Configurable bot access restrictions
 
-Features are organised as Discord.py extensions in the `cogs/` directory, making them easier to maintain and reload during development.
+- **Moderation**
+  - Moderation commands
+  - Moderation statistics
+  - Persistent moderation action records
+  - Moderation logging
+  - Undo/reversal support where available
 
-## Project structure
+- **Security & auditing**
+  - Audit logging
+  - Security-related server tools
+  - Configurable command access
+  - Role/permission-aware moderation controls
+
+- **Community tools**
+  - Reaction roles
+  - Rules
+  - Mentions
+  - Member commands
+  - Tags
+  - Leveling
+  - Temporary voice channels
+
+- **Tickets & reports**
+  - Ticket system
+  - Message reporting
+  - Configurable ticket/report channels and roles
+
+- **Messaging**
+  - Message quoting
+  - Message relaying
+  - Cross-channel/server relay functionality
+
+- **Utilities**
+  - Reminders
+  - Server statistics
+  - Weather information
+  - Spotify display features
+  - In-Discord help
+
+- **Integrations**
+  - Account linking
+  - Application bridge
+  - External-service integrations where configured
+
+Features are implemented as Discord.py extensions in the `cogs/` directory. This keeps individual features separated and allows them to be loaded, reloaded, and maintained independently.
+
+## Project Structure
 
 ```text
 Observer-cogs/
 ├── bot.py                 # Application entry point and bot lifecycle
-├── database.py            # Database helpers, migrations, and backups
-├── logging_config.py      # Logging configuration
-├── vps_manager.py         # VPS management utility
-├── cogs/                  # Feature modules / Discord.py cogs
-├── tests/                 # Pytest test suite
-├── deploy/                # systemd service and sudoers deployment files
-├── .env.example           # Required environment variable template
+├── database.py            # SQLite database, migrations, backups and helpers
+├── logging_config.py       # Logging configuration
+├── vps_manager.py         # VPS/deployment management utility
+├── cogs/
+│   ├── setup_ui.py        # Server setup and configuration
+│   ├── audit_log.py       # Audit logging
+│   ├── acc_link.py        # Account linking
+│   ├── reaction_roles.py  # Reaction roles
+│   ├── message_quoter.py  # Message quoting
+│   ├── utilities.py       # General utilities
+│   ├── report_msg.py      # Message reporting
+│   ├── server_stats.py    # Server statistics
+│   ├── temporary_voice.py # Temporary voice channels
+│   ├── rules.py           # Server rules
+│   ├── tickets.py         # Ticket system
+│   ├── reminder.py        # Reminders
+│   ├── message_relay.py   # Message relay
+│   ├── moderation.py      # Moderation
+│   ├── security.py        # Security features
+│   ├── tags.py            # Server tags
+│   ├── mentions.py        # Mention-related tools
+│   ├── member_commands.py # Member commands
+│   ├── help.py            # In-Discord help
+│   ├── leveling.py        # Leveling system
+│   ├── weather.py         # Weather features
+│   ├── spotify_show.py    # Spotify display features
+│   └── app_bridge.py      # Application bridge
+├── tests/                 # Automated test suite
+├── deploy/                # Deployment/systemd files
+├── data/                  # Local runtime database/backups
+├── .env.example           # Environment variable template
+├── .gitignore             # Git exclusions
 ├── requirements.txt       # Python dependencies
 └── VERSION                # Project version
-```
-
-## Requirements
-
-- Python 3.10 or newer
-- A Discord application and bot token
-- Required privileged gateway intents enabled in the Discord Developer Portal:
-  - Message Content Intent
-  - Server Members Intent
-  - Presence Intent
-
-## Installation
-
-1. Clone the repository:
-
-   ```bash
-   git clone https://github.com/blurock2/Observer-cogs.git
-   cd Observer-cogs
-   ```
-
-2. Create and activate a virtual environment:
-
-   **Windows PowerShell**
-
-   ```powershell
-   py -m venv .venv
-   .\.venv\Scripts\Activate.ps1
-   ```
-
-   **macOS / Linux**
-
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate
-   ```
-
-3. Install dependencies:
-
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. Create your local environment file:
-
-   **macOS / Linux**
-
-   ```bash
-   cp .env.example .env
-   ```
-
-   **Windows PowerShell**
-
-   ```powershell
-   Copy-Item .env.example .env
-   ```
-
-5. Update `.env` with your values:
-
-   ```env
-   DISCORD_TOKEN=your-bot-token
-   BOT_OWNER_ID=your-discord-user-id
-   ```
-
-6. Start the bot:
-
-   ```bash
-   python bot.py
-   ```
-
-## Configuration
-
-Observer uses:
-
-- `.env` for secrets and global bot-owner configuration
-- Local persistent storage for bot and guild configuration
-- In-Discord setup tools for configuring supported modules per server
-
-The bot creates and maintains local database data, including backups and migrations where required.
-
-Never commit your real `.env` file or Discord bot token.
-
-## Development
-
-Run the automated tests with:
-
-```bash
-pytest
-```
-
-The repository uses:
-
-- `pytest` and `pytest-asyncio` for tests
-- `ruff` for linting
-- Python logging for startup, extension loading, command synchronisation, and runtime error information
-
-Lint the code with:
-
-```bash
-ruff check .
-```
-
-## Owner commands
-
-The bot includes owner-only prefix commands for maintenance:
-
-- `!reload_cogs` — reload configured extensions; extensions that failed during startup are retried
-- `!sync_commands` — globally synchronise application commands after adding or changing slash commands
-- `!restart` — notify configured log channels and restart the bot process
-- `!debug_commands` — show locally registered and Discord-fetched application commands
-
-## Deployment
-
-The `deploy/` directory contains deployment-related files for Linux VPS hosting, including a systemd service configuration and sudoers configuration.
-
-Review and adapt these files for your server, paths, Python environment, and Linux user before enabling the service.
-
-## Notes
-
-- Slash commands are loaded locally when the bot starts. Run `!sync_commands` after adding or changing application commands to publish them globally.
-- Global Discord command updates can take time to propagate.
-- `!reload_cogs` reloads extensions but does not automatically synchronise slash commands.
-- Extensions that fail to load are logged, allowing the remaining bot features to continue starting.
-- Some features require specific Discord permissions, channel configuration, roles, or external service setup.
-- This project is primarily intended as a self-hosted bot; test changes in a development server before using them in a live community.
-
-## Contributing
-
-Issues, bug reports, feature suggestions, and pull requests are welcome.
-
-Please keep changes focused, run the test suite, and lint the code before opening a pull request:
-
-```bash
-pytest
-ruff check .
-```
