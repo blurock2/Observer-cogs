@@ -180,6 +180,17 @@ class SetupConfigStore:
         if cached is not None:
             cached[key] = value
 
+    def delete(self, guild_id: int, module: str, key: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "DELETE FROM guild_setup_config WHERE guild_id = ? AND module = ? AND key = ?",
+                (guild_id, module, key),
+            )
+
+        cached = self._module_cache.get((self.db_path, guild_id, module))
+        if cached is not None:
+            cached.pop(key, None)
+
     def get_module(self, guild_id: int, module: str) -> dict:
         cache_key = (self.db_path, guild_id, module)
         cached = self._module_cache.get(cache_key)
@@ -1552,7 +1563,19 @@ class ChannelSelectView(AdminOnlyView):
         )
         select.callback = self._on_select
         self.add_item(select)
+        clear = discord.ui.Button(label="Clear", style=discord.ButtonStyle.danger)
+        clear.callback = self._clear
+        self.add_item(clear)
         self.add_item(_BackToModuleButton(self))
+
+    async def _clear(self, interaction: discord.Interaction) -> None:
+        self.cog.store.delete(interaction.guild.id, self.module_key, self.setting_key)
+        module = get_module(self.module_key)
+        await interaction.response.edit_message(
+            embed=build_module_embed(self.cog.store, interaction.guild, module),
+            view=ModuleView(self.cog, self.module_key, interaction.guild),
+        )
+        await interaction.followup.send("✅ Setting cleared.", ephemeral=True)
 
     async def _on_select(self, interaction: discord.Interaction) -> None:
         try:
@@ -1594,7 +1617,19 @@ class RoleSelectView(AdminOnlyView):
         )
         select.callback = self._on_select
         self.add_item(select)
+        clear = discord.ui.Button(label="Clear", style=discord.ButtonStyle.danger)
+        clear.callback = self._clear
+        self.add_item(clear)
         self.add_item(_BackToModuleButton(self))
+
+    async def _clear(self, interaction: discord.Interaction) -> None:
+        self.cog.store.delete(interaction.guild.id, self.module_key, self.setting_key)
+        module = get_module(self.module_key)
+        await interaction.response.edit_message(
+            embed=build_module_embed(self.cog.store, interaction.guild, module),
+            view=ModuleView(self.cog, self.module_key, interaction.guild),
+        )
+        await interaction.followup.send("✅ Setting cleared.", ephemeral=True)
 
     async def _on_select(self, interaction: discord.Interaction) -> None:
         try:
