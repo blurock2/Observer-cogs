@@ -1,101 +1,358 @@
 # Observer
 
-Observer is a modular Discord bot built with Python and [`discord.py`](https://discordpy.readthedocs.io/). It provides server management, moderation, security, community, utility, and automation features through independently loadable cogs.
+> A modular, configurable Discord bot built for moderation, automation, community management, and server utilities.
 
-> **Project status:** Active development. Core functionality is implemented and tested, but commands, features, and configuration may continue to change.
+Observer is a multi-purpose Discord bot built with **Python** and **discord.py**.
+
+Instead of relying on one massive command system, Observer is split into independently maintained **cogs**, allowing features to stay modular while sharing persistent per-server configuration through SQLite.
+
+The goal is simple: provide the tools a Discord server actually needs without turning configuration into a mess.
+
+> **Status:** Observer is actively developed. Features, commands, and configuration may change between versions.
+
+---
 
 ## Features
 
-Observer currently includes:
+### Moderation
 
-- **Server configuration**
-  - Persistent per-server configuration
-  - In-Discord setup interface
-  - Configurable staff and tester roles
-  - Configurable bot access restrictions
+Tools for handling moderation while keeping actions organized and traceable.
 
-- **Moderation**
-  - Moderation commands
-  - Moderation statistics
-  - Persistent moderation action records
-  - Moderation logging
-  - Undo/reversal support where available
+- Ban, kick, timeout, and other moderation commands
+- Persistent moderation records
+- Moderation statistics
+- Mod logging
+- Permission and role-based command restrictions
+- Reversal / undo support where available
 
-- **Security & auditing**
-  - Audit logging
-  - Security-related server tools
-  - Configurable command access
-  - Role/permission-aware moderation controls
+### Security & Audit Logging
 
-- **Community tools**
-  - Reaction roles
-  - Rules
-  - Mentions
-  - Member commands
-  - Tags
-  - Leveling
-  - Temporary voice channels
+Observer can monitor important server activity and provide moderation teams with additional visibility.
 
-- **Tickets & reports**
-  - Ticket system
-  - Message reporting
-  - Configurable ticket/report channels and roles
+- Audit logging
+- Security-related server tools
+- Role and permission-aware protections
+- Configurable access restrictions
+- Server event tracking
 
-- **Messaging**
-  - Message quoting
-  - Message relaying
-  - Cross-channel/server relay functionality
+### Server Configuration
 
-- **Utilities**
-  - Reminders
-  - Server statistics
-  - Weather information
-  - Spotify display features
-  - In-Discord help
+Each server has its own persistent configuration.
 
-- **Integrations**
-  - Account linking
-  - Application bridge
-  - External-service integrations where configured
+- In-Discord setup interface
+- Per-server settings stored in SQLite
+- Configurable staff roles
+- Configurable tester roles
+- Module-specific configuration
+- Bot access restrictions
 
-Features are implemented as Discord.py extensions in the `cogs/` directory. This keeps individual features separated and allows them to be loaded, reloaded, and maintained independently.
+No configuration files need to be manually edited for normal server setup.
 
-## Project Structure
+### Tickets & Reports
+
+Built-in systems for communication between members and staff.
+
+- Ticket panels
+- Configurable support roles
+- Ticket channels
+- Message reporting
+- Anonymous reporting support
+- Report cooldowns
+- Configurable report destinations
+
+### Community Tools
+
+Features designed for everyday server management and member interaction.
+
+- Reaction roles
+- Server rules
+- Tags
+- Leveling
+- Member information commands
+- Mention tools and protection
+- Temporary voice channels
+
+### Messaging
+
+Tools for working with messages across Discord.
+
+- Message quoting
+- Message relaying
+- Multi-channel relay support
+- Cross-server relay support
+- Bot-message filtering
+- Word filtering
+
+### Utilities
+
+General-purpose functionality that does not require external AI services.
+
+- Reminders
+- Server statistics
+- Weather information
+- Spotify display features
+- In-Discord help system
+
+### Integrations
+
+Observer also contains infrastructure for features that communicate with external services.
+
+- Account linking
+- Application bridge
+- Optional external-service integrations
+
+---
+
+## Modular Architecture
+
+Observer uses Discord.py extensions located inside `cogs/`.
+
+Each major feature is separated into its own module:
 
 ```text
 Observer-cogs/
-├── bot.py                 # Application entry point and bot lifecycle
-├── database.py            # SQLite database, migrations, backups and helpers
-├── logging_config.py       # Logging configuration
-├── vps_manager.py         # VPS/deployment management utility
+├── bot.py
+├── database.py
+├── logging_config.py
+├── vps_manager.py
+│
 ├── cogs/
-│   ├── setup_ui.py        # Server setup and configuration
-│   ├── audit_log.py       # Audit logging
-│   ├── acc_link.py        # Account linking
-│   ├── reaction_roles.py  # Reaction roles
-│   ├── message_quoter.py  # Message quoting
-│   ├── utilities.py       # General utilities
-│   ├── report_msg.py      # Message reporting
-│   ├── server_stats.py    # Server statistics
-│   ├── temporary_voice.py # Temporary voice channels
-│   ├── rules.py           # Server rules
-│   ├── tickets.py         # Ticket system
-│   ├── reminder.py        # Reminders
-│   ├── message_relay.py   # Message relay
-│   ├── moderation.py      # Moderation
-│   ├── security.py        # Security features
-│   ├── tags.py            # Server tags
-│   ├── mentions.py        # Mention-related tools
-│   ├── member_commands.py # Member commands
-│   ├── help.py            # In-Discord help
-│   ├── leveling.py        # Leveling system
-│   ├── weather.py         # Weather features
-│   ├── spotify_show.py    # Spotify display features
-│   └── app_bridge.py      # Application bridge
-├── tests/                 # Automated test suite
-├── deploy/                # Deployment/systemd files
-├── data/                  # Local runtime database/backups
-├── .env.example           # Environment variable template
-├── .gitignore             # Git exclusions
-├── requirements.txt       # Python dependencies
-└── VERSION                # Project version
+│   ├── setup_ui.py
+│   ├── audit_log.py
+│   ├── acc_link.py
+│   ├── reaction_roles.py
+│   ├── message_quoter.py
+│   ├── utilities.py
+│   ├── report_msg.py
+│   ├── server_stats.py
+│   ├── temporary_voice.py
+│   ├── rules.py
+│   ├── tickets.py
+│   ├── reminder.py
+│   ├── message_relay.py
+│   ├── moderation.py
+│   ├── security.py
+│   ├── tags.py
+│   ├── mentions.py
+│   ├── member_commands.py
+│   ├── help.py
+│   ├── leveling.py
+│   ├── weather.py
+│   ├── spotify_show.py
+│   └── app_bridge.py
+│
+├── tests/
+├── deploy/
+├── data/
+├── .env.example
+├── requirements.txt
+└── VERSION
+```
+
+This structure keeps individual systems isolated and makes features easier to maintain, test, reload, and expand.
+
+---
+
+## Database
+
+Observer uses **SQLite** for persistent storage.
+
+The database layer handles data such as:
+
+- Guild configuration
+- Moderation records
+- Leveling data
+- Module settings
+- Persistent feature state
+- Database migrations
+- Backups
+
+Runtime database files are stored locally and should **not** be committed to the repository.
+
+---
+
+## Installation
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/blurock2/Observer-cogs.git
+cd Observer-cogs
+```
+
+### 2. Create a virtual environment
+
+```bash
+python -m venv .venv
+```
+
+Activate it.
+
+**Windows**
+
+```bash
+.venv\Scripts\activate
+```
+
+**Linux / macOS**
+
+```bash
+source .venv/bin/activate
+```
+
+### 3. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Configure environment variables
+
+Copy the included example:
+
+```bash
+cp .env.example .env
+```
+
+On Windows:
+
+```bash
+copy .env.example .env
+```
+
+Then configure:
+
+```env
+DISCORD_TOKEN=your-discord-bot-token
+BOT_OWNER_ID=your-discord-user-id
+```
+
+Never commit your real Discord token.
+
+### 5. Start Observer
+
+```bash
+python bot.py
+```
+
+---
+
+## Discord Bot Setup
+
+Before running Observer, create an application through the Discord Developer Portal and add a bot user.
+
+Observer requires the appropriate Discord permissions and gateway intents for the features you enable.
+
+Once the bot is running, configuration can primarily be handled through Observer's in-Discord setup system.
+
+---
+
+## Development
+
+Install the normal project dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+The repository includes automated tests using **pytest**.
+
+Run them with:
+
+```bash
+pytest
+```
+
+Code can also be checked with:
+
+```bash
+ruff check .
+```
+
+---
+
+## Adding a Cog
+
+Observer features are implemented as Discord.py extensions.
+
+A basic cog follows the usual Discord.py extension structure:
+
+```python
+import discord
+from discord.ext import commands
+
+
+class Example(commands.Cog):
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+
+
+async def setup(bot: commands.Bot):
+    await bot.add_cog(Example(bot))
+```
+
+Place new extensions inside:
+
+```text
+cogs/
+```
+
+Keep feature-specific logic inside its cog where possible and use the shared database layer for persistent data.
+
+---
+
+## Deployment
+
+The `deploy/` directory contains deployment-related files for running Observer on a server/VPS.
+
+Observer is designed to support persistent hosting where its SQLite databases and runtime data remain available between restarts.
+
+---
+
+## Project Goals
+
+Observer is built around a few core principles:
+
+- **Modular** — features should remain independently maintainable.
+- **Persistent** — server configuration should survive restarts.
+- **Configurable** — different servers should be able to use Observer differently.
+- **Practical** — features should solve actual Discord server management problems.
+- **Self-contained** — core functionality should not depend on paid AI APIs.
+- **Maintainable** — adding new systems should not require rewriting existing ones.
+
+---
+
+## Contributing
+
+Observer is still under active development.
+
+Bug reports, improvements, and feature suggestions are welcome through GitHub Issues or Pull Requests.
+
+When contributing:
+
+1. Keep features modular.
+2. Avoid unnecessary dependencies.
+3. Preserve existing per-server configuration behavior.
+4. Add or update tests where appropriate.
+5. Run the test suite before submitting changes.
+
+---
+
+## Disclaimer
+
+Observer is an independent Discord bot project and is not affiliated with or endorsed by Discord Inc.
+
+---
+
+## License
+
+No license is currently specified in this repository.
+
+If you intend for others to reuse or contribute to Observer, consider adding an open-source license such as MIT, Apache-2.0, or GPL-3.0.
+
+---
+
+<p align="center">
+  <strong>Observer</strong><br>
+  Moderation • Security • Automation • Community • Utilities
+</p>
