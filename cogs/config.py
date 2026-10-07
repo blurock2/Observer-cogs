@@ -1,5 +1,9 @@
 import os
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 # This is the single source of truth for owner configuration.
 BOT_OWNER_ID = int(os.getenv("BOT_OWNER_ID", "805687087784394773"))
 RESTRICTED_BOT_ID = 1533804830479355935

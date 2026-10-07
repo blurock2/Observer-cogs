@@ -447,11 +447,20 @@ class ModerationCog(commands.Cog):
             )
             return False
 
-        if member.guild_permissions >= interaction.user.guild_permissions:
+        if member.id == interaction.guild.owner_id:
+            await interaction.response.send_message(
+                f"You cannot {action} the server owner.", ephemeral=True
+            )
+            return False
+
+        if (
+            interaction.user.id != interaction.guild.owner_id
+            and member.top_role >= interaction.user.top_role
+        ):
             await interaction.response.send_message(
                 (
                     f"You cannot {action} someone with equal or "
-                    "higher permissions."
+                    "higher roles."
                 ),
                 ephemeral=True,
             )

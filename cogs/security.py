@@ -110,10 +110,13 @@ def detect_scam_signals(content: str) -> list[str]:
             host == domain or host.endswith(f".{domain}")
             for domain in TRUSTED_BRAND_DOMAINS
         )
-        # Trust real brand hosts, but still inspect credential/redirect tricks.
-        if trusted_host and not (
-            parsed.username or parsed.password or REDIRECT_PARAM_RE.search(parsed.query)
-        ):
+        # Official authentication/download paths are not impersonation.
+        # Redirects may still merit an alert, but are not deletion evidence alone.
+        if trusted_host:
+            if parsed.username or parsed.password:
+                signals.append("URL contains misleading credentials")
+            if REDIRECT_PARAM_RE.search(parsed.query):
+                signals.append(f"redirect or credential URL: {host}")
             continue
         decoded_url = unquote(raw_url)
 
@@ -122,7 +125,7 @@ def detect_scam_signals(content: str) -> list[str]:
 
         if host in SHORTENED_DOMAINS:
             signals.append(f"shortened link: {host}")
-        if LOOKALIKE_RE.search(host):
+        if LOOKALIKE_RE.search(host) and not trusted_host:
             signals.append(f"lookalike domain: {host}")
 
         if "@" in parsed.netloc:
@@ -175,8 +178,54 @@ class SecurityCog(commands.Cog):
         self.cases = ModerationCaseStore(DB_PATH)
         self.join_times: dict[int, deque[float]] = defaultdict(deque)
         self.lock_tasks: dict[tuple[int, int], asyncio.Task] = {}
-        self.channel_previous: dict[tuple[int, int], bool | None] = {}
+        self._recovery_task: asyncio.Task | None = None
+        self._permission_lock = asyncio.Lock()
         self.scam_alerts: dict[tuple[int, int], float] = {}
+
+    async def cog_load(self) -> None:
+        self._recovery_task = asyncio.create_task(self._recover_locks())
+
+    def cog_unload(self) -> None:
+        if self._recovery_task:
+            self._recovery_task.cancel()
+        for task in self.lock_tasks.values():
+            task.cancel()
+        self.lock_tasks.clear()
+
+    async def _recover_locks(self) -> None:
+        await self.bot.wait_until_ready()
+        for guild in self.bot.guilds:
+            records = self._get(guild.id, "channel_locks", {}) or {}
+            for channel_id, record in records.items():
+                if record.get("expires_at") is None:
+                    continue
+                channel = guild.get_channel(int(channel_id))
+                if isinstance(channel, discord.TextChannel):
+                    key = (guild.id, channel.id)
+                    if key not in self.lock_tasks:
+                        self.lock_tasks[key] = asyncio.create_task(
+                            self._unlock_after(channel, max(0, record["expires_at"] - time.time()))
+                        )
+
+    async def _restore_lock(self, channel: discord.TextChannel) -> None:
+        records = self._get(channel.guild.id, "channel_locks", {}) or {}
+        record = records.get(str(channel.id))
+        previous = record["send_messages"] if record else None
+        await self._set_send_permission(channel, previous, "Security channel unlock")
+        if record:
+            records.pop(str(channel.id))
+            self.store.set(channel.guild.id, MODULE_KEY, "channel_locks", records)
+
+    async def _set_send_permission(
+        self, channel: discord.TextChannel, value: bool | None, reason: str
+    ) -> None:
+        overwrite = channel.overwrites_for(channel.guild.default_role)
+        overwrite.send_messages = value
+        await channel.set_permissions(
+            channel.guild.default_role,
+            overwrite=None if overwrite.is_empty() else overwrite,
+            reason=reason,
+        )
 
     def _get(self, guild_id: int, key: str, default=None):
         return self.store.get(guild_id, MODULE_KEY, key, default)
@@ -360,8 +409,20 @@ class SecurityCog(commands.Cog):
                 source_message_id=message.id,
                 status="open",
             )
-        deletion_result = "Deletion disabled"
-        if self._bool_setting(message.guild.id, "delete_scam_messages", False):
+        deletion_result = "Deletion disabled or insufficient evidence"
+        strong_signal = any(
+            signal.startswith((
+                "lookalike domain:", "brand impersonation domain:",
+                "URL contains misleading credentials", "encoded credential bait:",
+                "suspicious scam webpage:", "suspicious scam path:",
+                "QR-code phishing bait",
+            )) for signal in signals
+        )
+        contextual_signal = any(signal in SCAM_PHRASES for signal in signals) and any(
+            signal.startswith(("shortened link:", "suspicious download link:", "raw IP address link:", "suspicious authorization link:"))
+            for signal in signals
+        )
+        if self._bool_setting(message.guild.id, "delete_scam_messages", False) and (strong_signal or contextual_signal):
             try:
                 try:
                     await message.delete(reason="Possible scam message flagged")
@@ -399,15 +460,15 @@ class SecurityCog(commands.Cog):
         )
 
     async def _set_channel_lock(self, channel: discord.TextChannel, locked: bool) -> None:
-        await channel.set_permissions(
-            channel.guild.default_role,
-            send_messages=False if locked else None,
-            reason="Security channel lock" if locked else "Security channel unlock",
+        await self._set_send_permission(
+            channel, False if locked else None,
+            "Security channel lock" if locked else "Security channel unlock",
         )
 
     @app_commands.command(name="slowmode", description="Set a channel's slowmode in seconds.")
     @app_commands.guild_only()
     @app_commands.default_permissions(manage_channels=True)
+    @app_commands.checks.has_permissions(manage_channels=True)
     async def slowmode(self, interaction: discord.Interaction, channel: discord.TextChannel, seconds: int) -> None:
         if seconds < 0 or seconds > 21600:
             await interaction.response.send_message("Seconds must be between 0 and 21600.", ephemeral=True)
@@ -418,57 +479,78 @@ class SecurityCog(commands.Cog):
     @app_commands.command(name="lock", description="Temporarily lock a channel.")
     @app_commands.guild_only()
     @app_commands.default_permissions(manage_channels=True)
+    @app_commands.checks.has_permissions(manage_channels=True)
     async def lock(self, interaction: discord.Interaction, channel: discord.TextChannel, seconds: int | None = None) -> None:
-        key = (channel.guild.id, channel.id)
-        self.channel_previous.setdefault(
-            key,
-            channel.overwrites_for(channel.guild.default_role).send_messages,
-        )
-        await self._set_channel_lock(channel, True)
-        if seconds is not None:
-            if seconds < 1 or seconds > 86400:
-                await interaction.response.send_message("The temporary lock must be 1 to 86400 seconds.", ephemeral=True)
+        if seconds is not None and not 1 <= seconds <= 86400:
+            await interaction.response.send_message("The temporary lock must be 1 to 86400 seconds.", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True)
+        async with self._permission_lock:
+            if self._get(channel.guild.id, "lockdown_previous"):
+                await interaction.followup.send("Disable lockdown before changing individual locks.", ephemeral=True)
                 return
+            key = (channel.guild.id, channel.id)
+            records = self._get(channel.guild.id, "channel_locks", {}) or {}
+            record = records.get(str(channel.id), {
+                "send_messages": channel.overwrites_for(channel.guild.default_role).send_messages,
+            })
+            record["expires_at"] = time.time() + seconds if seconds is not None else None
+            records[str(channel.id)] = record
+            # Save recovery state before making any Discord changes.
+            self.store.set(channel.guild.id, MODULE_KEY, "channel_locks", records)
             old_task = self.lock_tasks.pop(key, None)
             if old_task:
                 old_task.cancel()
-            self.lock_tasks[key] = asyncio.create_task(self._unlock_after(channel, seconds))
-        await interaction.response.send_message(f"Locked {channel.mention}." + (f" Unlocking in {seconds}s." if seconds else ""), ephemeral=True)
+            try:
+                await self._set_channel_lock(channel, True)
+            finally:
+                if seconds is not None:
+                    self.lock_tasks[key] = asyncio.create_task(self._unlock_after(channel, seconds))
+            await interaction.followup.send(f"Locked {channel.mention}." + (f" Unlocking in {seconds}s." if seconds else ""), ephemeral=True)
 
     async def _unlock_after(self, channel: discord.TextChannel, seconds: int) -> None:
-        await asyncio.sleep(seconds)
         try:
-            previous = self.channel_previous.pop(
-                (channel.guild.id, channel.id),
-            )
-            await channel.set_permissions(
-                channel.guild.default_role,
-                send_messages=previous,
-                reason="Temporary security channel lock expired",
-            )
-        except discord.HTTPException:
-            pass
-        self.lock_tasks.pop((channel.guild.id, channel.id), None)
+            await asyncio.sleep(seconds)
+            while True:
+                try:
+                    async with self._permission_lock:
+                        await self._restore_lock(channel)
+                    break
+                except discord.NotFound:
+                    records = self._get(channel.guild.id, "channel_locks", {}) or {}
+                    records.pop(str(channel.id), None)
+                    self.store.set(channel.guild.id, MODULE_KEY, "channel_locks", records)
+                    break
+                except discord.HTTPException:
+                    logger.exception("Temporary unlock failed for channel %s; retrying", channel.id)
+                    await asyncio.sleep(60)
+        finally:
+            key = (channel.guild.id, channel.id)
+            if self.lock_tasks.get(key) is asyncio.current_task():
+                self.lock_tasks.pop(key, None)
 
     @app_commands.command(name="unlock", description="Unlock a channel.")
     @app_commands.guild_only()
     @app_commands.default_permissions(manage_channels=True)
+    @app_commands.checks.has_permissions(manage_channels=True)
     async def unlock(self, interaction: discord.Interaction, channel: discord.TextChannel) -> None:
-        key = (channel.guild.id, channel.id)
-        task = self.lock_tasks.pop(key, None)
-        if task:
-            task.cancel()
-        previous = self.channel_previous.pop(key, None)
-        await channel.set_permissions(
-            channel.guild.default_role,
-            send_messages=previous,
-            reason="Security channel unlock",
-        )
-        await interaction.response.send_message(f"Unlocked {channel.mention}.", ephemeral=True)
+        await interaction.response.defer(ephemeral=True)
+        async with self._permission_lock:
+            if self._get(channel.guild.id, "lockdown_previous"):
+                await interaction.followup.send("Disable lockdown before changing individual locks.", ephemeral=True)
+                return
+            key = (channel.guild.id, channel.id)
+            await self._restore_lock(channel)
+            task = self.lock_tasks.pop(key, None)
+            if task:
+                task.cancel()
+            await interaction.followup.send(f"Unlocked {channel.mention}.", ephemeral=True)
+
 
     @app_commands.command(name="lockdown", description="Enable or disable temporary anti-raid lockdown.")
     @app_commands.guild_only()
     @app_commands.default_permissions(manage_guild=True)
+    @app_commands.checks.has_permissions(manage_guild=True)
     @app_commands.describe(action="Enable or disable lockdown.")
     @app_commands.choices(action=[
         app_commands.Choice(name="Enable", value="enable"),
@@ -478,40 +560,73 @@ class SecurityCog(commands.Cog):
         if interaction.guild is None:
             return
         guild = interaction.guild
-        if action.value == "enable":
-            if self._get(guild.id, "lockdown_enabled", False):
-                await interaction.response.send_message("Lockdown is already enabled.", ephemeral=True)
+        await interaction.response.defer(ephemeral=True)
+        async with self._permission_lock:
+            if action.value == "enable":
+                if self._get(guild.id, "lockdown_previous"):
+                    await interaction.followup.send("Lockdown already has recovery state. Disable it before enabling again.", ephemeral=True)
+                    return
+                if self._get(guild.id, "channel_locks", {}):
+                    await interaction.followup.send("Unlock individual channels before enabling lockdown.", ephemeral=True)
+                    return
+                channels = [
+                    channel for channel in guild.text_channels
+                    if channel.name.lower() not in {"rules", "announcements", "staff", "reports"}
+                ]
+                previous = {
+                    "verification": guild.verification_level.name,
+                    "channels": [
+                        {"id": channel.id, "send_messages": channel.overwrites_for(guild.default_role).send_messages}
+                        for channel in channels
+                    ],
+                }
+                # Persist the complete restoration plan before the first API call.
+                self.store.set(guild.id, MODULE_KEY, "lockdown_previous", previous)
+                self.store.set(guild.id, MODULE_KEY, "lockdown_enabled", True)
+                try:
+                    for channel in channels:
+                        await self._set_channel_lock(channel, True)
+                    if guild.verification_level < discord.VerificationLevel.high:
+                        await guild.edit(verification_level=discord.VerificationLevel.high)
+                except discord.DiscordException:
+                    logger.exception("Lockdown partially applied in guild %s", guild.id)
+                    await interaction.followup.send("Lockdown could not finish. Recovery data is saved; disable lockdown to restore permissions.", ephemeral=True)
+                    return
+                self.cases.create_case(guild.id, "lockdown", interaction.user.id, interaction.user.id, "Enabled", status="resolved")
+                await self._alert(guild, "Anti-raid lockdown enabled", f"Enabled by {interaction.user.mention}.")
+                await interaction.followup.send("Lockdown enabled; channels are locked and verification is at least High.", ephemeral=True)
                 return
-            previous = {"verification": guild.verification_level.name, "channels": []}
-            for channel in guild.text_channels:
-                if channel.name.lower() in {"rules", "announcements", "staff", "reports"}:
-                    continue
-                old = channel.overwrites_for(guild.default_role).send_messages
-                previous["channels"].append({"id": channel.id, "send_messages": old})
-                await self._set_channel_lock(channel, True)
-            self.store.set(guild.id, MODULE_KEY, "lockdown_enabled", True)
-            self.store.set(guild.id, MODULE_KEY, "lockdown_previous", previous)
+            previous = self._get(guild.id, "lockdown_previous", {}) or {}
+            if not previous:
+                await interaction.followup.send("There is no saved lockdown to restore.", ephemeral=True)
+                return
+            failed = []
+            for item in previous.get("channels", []):
+                channel = guild.get_channel(item.get("id"))
+                if isinstance(channel, discord.TextChannel):
+                    try:
+                        await self._set_send_permission(channel, item.get("send_messages"), "Anti-raid lockdown disabled")
+                    except discord.NotFound:
+                        continue
+                    except discord.HTTPException:
+                        logger.exception("Could not restore lockdown channel %s", channel.id)
+                        failed.append(item)
+            verification_failed = False
             try:
-                await guild.edit(verification_level=discord.VerificationLevel.high)
-            except discord.DiscordException:
-                pass
-            self.cases.create_case(guild.id, "lockdown", interaction.user.id, interaction.user.id, "Enabled", status="resolved")
-            await self._alert(guild, "Anti-raid lockdown enabled", f"Enabled by {interaction.user.mention}.")
-            await interaction.response.send_message("Lockdown enabled; risky channels are locked and verification was raised where possible.", ephemeral=True)
-            return
-        previous = self._get(guild.id, "lockdown_previous", {}) or {}
-        for item in previous.get("channels", []):
-            channel = guild.get_channel(item.get("id"))
-            if isinstance(channel, discord.TextChannel):
-                await channel.set_permissions(guild.default_role, send_messages=item.get("send_messages"), reason="Anti-raid lockdown disabled")
-        try:
-            await guild.edit(verification_level=discord.VerificationLevel[previous.get("verification", "none")])
-        except (discord.DiscordException, AttributeError):
-            pass
-        self.store.set(guild.id, MODULE_KEY, "lockdown_enabled", False)
-        self.cases.create_case(guild.id, "lockdown", interaction.user.id, interaction.user.id, "Disabled", status="resolved")
-        await self._alert(guild, "Anti-raid lockdown disabled", f"Disabled by {interaction.user.mention}.")
-        await interaction.response.send_message("Lockdown disabled and saved channel permissions restored.", ephemeral=True)
+                await guild.edit(verification_level=discord.VerificationLevel[previous["verification"]])
+            except (discord.DiscordException, KeyError):
+                logger.exception("Could not restore verification level for guild %s", guild.id)
+                verification_failed = True
+            if failed or verification_failed:
+                previous["channels"] = failed
+                self.store.set(guild.id, MODULE_KEY, "lockdown_previous", previous)
+                await interaction.followup.send("Some settings could not be restored. Recovery data was kept; fix bot permissions and disable lockdown again.", ephemeral=True)
+                return
+            self.store.delete(guild.id, MODULE_KEY, "lockdown_previous")
+            self.store.set(guild.id, MODULE_KEY, "lockdown_enabled", False)
+            self.cases.create_case(guild.id, "lockdown", interaction.user.id, interaction.user.id, "Disabled", status="resolved")
+            await self._alert(guild, "Anti-raid lockdown disabled", f"Disabled by {interaction.user.mention}.")
+            await interaction.followup.send("Lockdown disabled and saved channel permissions restored.", ephemeral=True)
 
 
 async def setup(bot: commands.Bot) -> None:
