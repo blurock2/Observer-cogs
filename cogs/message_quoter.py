@@ -374,7 +374,9 @@ class MessageQuoter(commands.Cog):
         seen_message_ids = set()
 
 
-        for _link_guild_id, channel_id_str, message_id_str in matches:
+        for link_guild_id, channel_id_str, message_id_str in matches:
+            if int(link_guild_id) != guild_id:
+                continue
             if message_id_str in seen_message_ids:
                 continue
 
@@ -396,6 +398,22 @@ class MessageQuoter(commands.Cog):
                 if not isinstance(channel, (discord.TextChannel, discord.Thread)):
                     continue
 
+
+                # Never use the bot's broader access to reveal private messages.
+                if channel.guild.id != guild_id:
+                    continue
+                permissions = channel.permissions_for(message.author)
+                if not (permissions.view_channel and permissions.read_message_history):
+                    continue
+                if (
+                    isinstance(channel, discord.Thread)
+                    and channel.is_private()
+                    and not permissions.manage_threads
+                ):
+                    try:
+                        await channel.fetch_member(message.author.id)
+                    except (discord.NotFound, discord.Forbidden):
+                        continue
 
                 try:
                     quoted = await channel.fetch_message(message_id)
