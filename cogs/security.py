@@ -31,10 +31,10 @@ SHORTENED_DOMAINS = {
 }
 SCAM_PHRASES = (
     "free nitro", "claim nitro", "nitro gift", "verify your account",
-    "verify to continue", "token", "discord gift", "free steam",
+    "verify to continue", "discord gift", "free steam",
     "claim your reward", "you have been selected", "exclusive giveaway",
     "scan to claim", "scan this qr", "connect your wallet", "sign this message",
-    "webhook", "discord moderator", "discord support", "account suspended",
+    "discord moderator", "discord support", "account suspended",
     "account will be deleted", "security alert", "unusual login",
     "package waiting", "delivery confirmation", "update your address",
     "parcel tracking", "invoice overdue", "payment document", "payment failed",
@@ -80,10 +80,16 @@ SUSPICIOUS_NAME_RE = re.compile(
 def detect_scam_signals(content: str) -> list[str]:
     """Return explainable scam indicators without deciding enforcement."""
     lowered = content.lower()
-    signals = [phrase for phrase in SCAM_PHRASES if phrase in lowered]
+    phrase_signals = [
+        phrase for phrase in SCAM_PHRASES
+        if re.search(r"(?<!\w)" + re.escape(phrase) + r"(?!\w)", lowered)
+    ]
     if "package is waiting" in lowered:
-        signals.append("package waiting")
-    if QR_PHRASE_RE.search(content):
+        phrase_signals.append("package waiting")
+    signals = []
+    if QR_PHRASE_RE.search(content) and re.search(
+        r"\b(?:claim|verify|reward|login|wallet|nitro)\b", lowered
+    ):
         signals.append("QR-code phishing bait")
 
     for raw_url in URL_RE.findall(content):
@@ -92,8 +98,23 @@ def detect_scam_signals(content: str) -> list[str]:
         if DISCORD_MESSAGE_RE.fullmatch(raw_url):
             continue
 
-        parsed = urlsplit(raw_url)
-        host = (parsed.hostname or "").lower().rstrip(".")
+        try:
+            parsed = urlsplit(raw_url)
+            host = (parsed.hostname or "").lower().rstrip(".")
+        except ValueError:
+            signals.append("malformed URL")
+            continue
+        if not host:
+            continue
+        trusted_host = any(
+            host == domain or host.endswith(f".{domain}")
+            for domain in TRUSTED_BRAND_DOMAINS
+        )
+        # Trust real brand hosts, but still inspect credential/redirect tricks.
+        if trusted_host and not (
+            parsed.username or parsed.password or REDIRECT_PARAM_RE.search(parsed.query)
+        ):
+            continue
         decoded_url = unquote(raw_url)
 
         if host in GIF_DOMAINS or any(host.endswith(f".{domain}") for domain in GIF_DOMAINS):
@@ -122,7 +143,7 @@ def detect_scam_signals(content: str) -> list[str]:
         if host.count(".") >= 4:
             signals.append(f"deeply nested domain: {host}")
 
-        if BRAND_HOST_RE.search(host) and host not in TRUSTED_BRAND_DOMAINS:
+        if BRAND_HOST_RE.search(host) and not trusted_host:
             signals.append(f"brand impersonation domain: {host}")
 
         if SUSPICIOUS_FILE_RE.search(parsed.path + (f"?{parsed.query}" if parsed.query else "")):
@@ -141,6 +162,9 @@ def detect_scam_signals(content: str) -> list[str]:
             phrase in decoded_url.lower() for phrase in ("login", "verify", "token", "password", "wallet")
         ):
             signals.append(f"encoded credential bait: {host}")
+    # Ordinary discussion of these phrases is not enough to flag a message.
+    if signals:
+        signals = phrase_signals + signals
     return list(dict.fromkeys(signals))
 
 
@@ -323,17 +347,19 @@ class SecurityCog(commands.Cog):
             3600,
         )
         alert_key = (message.guild.id, message.author.id)
-        if cooldown and now - self.scam_alerts.get(alert_key, 0) < cooldown:
-            return
-        self.scam_alerts[alert_key] = now
-        self.cases.create_case(
-            message.guild.id,
-            "scam_flag",
-            message.author.id,
-            reason="; ".join(signals),
-            source_message_id=message.id,
-            status="open",
-        )
+        alert_due = not cooldown or now - self.scam_alerts.get(
+            alert_key, float("-inf")
+        ) >= cooldown
+        if alert_due:
+            self.scam_alerts[alert_key] = now
+            self.cases.create_case(
+                message.guild.id,
+                "scam_flag",
+                message.author.id,
+                reason="; ".join(signals),
+                source_message_id=message.id,
+                status="open",
+            )
         deletion_result = "Deletion disabled"
         if self._bool_setting(message.guild.id, "delete_scam_messages", False):
             try:
@@ -362,6 +388,8 @@ class SecurityCog(commands.Cog):
                 )
             else:
                 deletion_result = "Message deleted"
+        if not alert_due:
+            return
         await self._alert(
             message.guild,
             "Possible scam message",
