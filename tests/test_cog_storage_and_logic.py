@@ -100,7 +100,14 @@ class CogStorageAndLogicTests(unittest.TestCase):
             self.assertEqual(config["enabled"], True)
             self.assertEqual(config["xp_cooldown"], 15)
 
-        asyncio.run(check())
+        from cogs import leveling
+
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.object(leveling, "DATABASE_PATH", Path(directory) / "leveling.db"),
+        ):
+            leveling._init_db()
+            asyncio.run(check())
 
     def test_relay_mappings_are_scoped_to_the_requested_guild(self):
         data = {

@@ -66,6 +66,30 @@ class SecurityDetectorTests(unittest.TestCase):
     def test_generic_html_link_remains_benign(self):
         self.assertEqual(detect_scam_signals("Read https://example.com/docs.html"), [])
 
+    def test_legitimate_brand_links_and_ordinary_discussion_are_not_flagged(self):
+        for content in (
+            "https://discord.com/developers/docs",
+            "https://support.discord.com/hc/en-us",
+            "https://steamcommunity.com/id/example",
+            "Password reset: https://accounts.google.com/password/reset",
+            "I need help with my token and webhook",
+            "How do I report free nitro scams to discord support?",
+            "Scan this QR code for the menu",
+            "https://discord.com/channels/1/2/3",
+        ):
+            with self.subTest(content=content):
+                self.assertEqual(detect_scam_signals(content), [])
+
+    def test_trusted_domain_names_do_not_allow_suffix_or_credential_tricks(self):
+        for content in (
+            "https://support.discord.com.evil.example/login",
+            "https://discord.com@evil.example/login",
+            "https://evil-discord.com/login",
+            "https://discord.com/?redirect=https://evil.example/login",
+        ):
+            with self.subTest(content=content):
+                self.assertTrue(detect_scam_signals(content))
+
 
 if __name__ == "__main__":
     unittest.main()

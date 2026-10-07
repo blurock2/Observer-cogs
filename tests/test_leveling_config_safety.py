@@ -1,5 +1,8 @@
 import asyncio
+import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
 from cogs.leveling import Leveling
 
@@ -37,7 +40,14 @@ class LevelingConfigSafetyTests(unittest.TestCase):
             self.assertIn("xp_cooldown", config)
             self.assertIn("level_up_message", config)
 
-        asyncio.run(run_check())
+        from cogs import leveling
+
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.object(leveling, "DATABASE_PATH", Path(directory) / "leveling.db"),
+        ):
+            leveling._init_db()
+            asyncio.run(run_check())
 
 
 if __name__ == "__main__":
