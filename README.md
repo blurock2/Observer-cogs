@@ -346,10 +346,7 @@ Observer is an independent Discord bot project and is not affiliated with or end
 
 ## License
 
-No license is currently specified in this repository.
-
-If you intend for others to reuse or contribute to Observer, consider adding an open-source license such as MIT, Apache-2.0, or GPL-3.0.
-
+Free use with credits to original creator.
 ---
 
 <p align="center">
