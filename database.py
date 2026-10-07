@@ -858,6 +858,7 @@ class RelayConfigStore:
     def __init__(self, db_path: str, legacy_path: Path):
         self.db_path = db_path
         self.legacy_path = legacy_path
+        Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         self._init()
         self._migrate_legacy()
 
