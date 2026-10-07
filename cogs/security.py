@@ -42,7 +42,15 @@ SCAM_PHRASES = (
     "tax refund", "customs fee", "job offer", "work from home",
     "claim your prize", "verify your identity", "password reset",
 )
+
 URL_RE = re.compile(r"https?://[^\s<>()[\]{}]+", re.IGNORECASE)
+
+DISCORD_MESSAGE_RE = re.compile(
+    r"^https?://(?:www\.)?(?:discord\.com|discordapp\.com)/channels/"
+    r"(?:@me|\d+)/\d+/\d+(?:[/?#].*)?$",
+    re.IGNORECASE,
+)
+
 LOOKALIKE_RE = re.compile(r"(?:disc[o0]rd|nitr[o0]|ste[a4]m|free-?nitro)", re.IGNORECASE)
 SUSPICIOUS_FILE_RE = re.compile(r"\.(?:exe|scr|bat|cmd|com|ps1|js|jse|vbs|vbe|hta|msi|dll|zip|rar|7z|iso)(?:$|[?#])", re.IGNORECASE)
 REDIRECT_PARAM_RE = re.compile(r"(?:^|[?&])(url|u|target|dest|destination|redirect|redirect_url|continue|return_to)=", re.IGNORECASE)
@@ -79,7 +87,11 @@ def detect_scam_signals(content: str) -> list[str]:
         signals.append("QR-code phishing bait")
 
     for raw_url in URL_RE.findall(content):
-        raw_url = raw_url.rstrip(".,!?;:)")
+        raw_url = raw_url.rstrip(".,!?;:")
+
+        if DISCORD_MESSAGE_RE.fullmatch(raw_url):
+            continue
+
         parsed = urlsplit(raw_url)
         host = (parsed.hostname or "").lower().rstrip(".")
         decoded_url = unquote(raw_url)
