@@ -31,6 +31,9 @@ async def test_reply_before_and_after_acknowledgement(done, caplog):
     assert 'private database details' not in sender.call_args.args[0]
     assert 'private database details' in caplog.text
     assert 'guild=2' in caplog.text
+    error_id = i.extras['observer_error_id']
+    assert error_id in sender.call_args.args[0]
+    assert any(getattr(r, 'error_id', None) == error_id for r in caplog.records)
     # Local/cog/tree dispatch must not duplicate a reply.
     await handle_interaction_error(i, error)
     sender.assert_awaited_once()

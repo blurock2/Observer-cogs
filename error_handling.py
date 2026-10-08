@@ -7,6 +7,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from error_reporting import new_error_id
+
 logger = logging.getLogger("observer.errors")
 
 
@@ -47,20 +49,24 @@ def error_message(error: Exception) -> str:
 
 
 def log_error(error: Exception, *, source: str, user_id=None, guild_id=None,
-              channel_id=None, reference=None) -> None:
+              channel_id=None, reference=None) -> str | None:
     original = unwrap(error)
     expected = isinstance(original, (commands.UserInputError, commands.CheckFailure,
                                      commands.CommandOnCooldown, commands.MaxConcurrencyReached,
                                      app_commands.CheckFailure, app_commands.TransformerError,
                                      app_commands.CommandOnCooldown))
-    # Wrapped invocation errors are unexpected, even though the wrapper is a CommandError.
-    if expected and original is error:
+    if expected:
         logger.warning("Rejected %s user=%s guild=%s channel=%s reference=%s: %s",
                        source, user_id, guild_id, channel_id, reference, type(original).__name__)
+        return None
     else:
+        error_id = new_error_id()
         logger.error("Failed %s user=%s guild=%s channel=%s reference=%s",
                      source, user_id, guild_id, channel_id, reference,
-                     exc_info=(type(original), original, original.__traceback__))
+                     exc_info=(type(original), original, original.__traceback__),
+                     extra={"error_id": error_id, "error_source": source,
+                            "error_guild_id": guild_id, "error_user_id": user_id})
+        return error_id
 
 
 async def handle_interaction_error(interaction: discord.Interaction, error: Exception,
@@ -69,10 +75,13 @@ async def handle_interaction_error(interaction: discord.Interaction, error: Exce
     if interaction.extras.get("observer_error_handled"):
         return
     interaction.extras["observer_error_handled"] = True
-    log_error(error, source=source or getattr(interaction.command, "qualified_name", "interaction"),
+    error_id = log_error(error, source=source or getattr(interaction.command, "qualified_name", "interaction"),
               user_id=interaction.user.id, guild_id=interaction.guild_id,
               channel_id=interaction.channel_id, reference=interaction.id)
     message = error_message(error)
+    if error_id:
+        interaction.extras["observer_error_id"] = error_id
+        message += f"\nError ID: `{error_id}` — share this with Observer Support."
     try:
         if not interaction.response.is_done():
             await interaction.response.send_message(message, ephemeral=True,
@@ -93,11 +102,14 @@ async def handle_prefix_error(ctx: commands.Context, error: Exception) -> None:
     if getattr(ctx, "observer_error_handled", False):
         return
     ctx.observer_error_handled = True
-    log_error(error, source=getattr(ctx.command, "qualified_name", "prefix command"),
+    error_id = log_error(error, source=getattr(ctx.command, "qualified_name", "prefix command"),
               user_id=ctx.author.id, guild_id=getattr(ctx.guild, "id", None),
               channel_id=ctx.channel.id, reference=ctx.message.id)
+    message = error_message(error)
+    if error_id:
+        message += f"\nError ID: `{error_id}` — share this with Observer Support."
     try:
-        await ctx.send(error_message(error), allowed_mentions=discord.AllowedMentions.none())
+        await ctx.send(message, allowed_mentions=discord.AllowedMentions.none())
     except discord.HTTPException:
         logger.exception("Could not report prefix error message=%s", ctx.message.id)
 

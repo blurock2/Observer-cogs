@@ -353,3 +353,12 @@ Free use with credits to original creator.
   <strong>Observer</strong><br>
   Moderation • Security • Automation • Community • Utilities
 </p>
+
+
+### Support error reports
+
+In **Observer Support** (server ID `1535974879554437210`), use `/setup` → **Bot System** → **Global error channel** and select a text channel. This setting is hidden and rejected in other servers. Clear the setting to disable reports. The bot needs View Channel, Send Messages, and Embed Links there.
+
+Unexpected failures give users an `OBS-…` error ID. The same ID appears in VPS logs and sanitized reports in the selected support channel. ERROR/CRITICAL logs from commands, UI callbacks, listeners, startup and background tasks are included; ordinary invalid input, cooldowns and permission checks are excluded. Reports contain identifiers, code locations, exception types and timestamps, without raw exception messages, message contents or full tracebacks. Use a staff channel for reports.
+
+Bursts are batched into at most one message every five seconds, with up to 15 errors per message and a bounded 200-item queue. Overflow and failed deliveries remain in VPS logs; reports are best effort, not a persistent audit trail.

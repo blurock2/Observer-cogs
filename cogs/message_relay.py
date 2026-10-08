@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from error_handling import ErrorHandledView, ObserverCog
+from error_handling import ErrorHandledView, ObserverCog, handle_interaction_error
 
 import io
 import logging
@@ -374,15 +374,8 @@ class MessageRelay(ObserverCog):
                 content="Where should this message be sent?",
                 view=DestinationView(self, message),
             )
-        except Exception:
-            logger.exception("Relay context menu failed in guild %s", interaction.guild_id)
-            try:
-                await interaction.edit_original_response(
-                   content="Relay failed unexpectedly. Check Observer's logs.",
-                    view=None,
-                )
-            except discord.HTTPException:
-                logger.exception("Could not report relay failure to Discord")
+        except Exception as error:
+            await handle_interaction_error(interaction, error, source="Relay message")
 
     # ============================================================ Cross-server setup
 

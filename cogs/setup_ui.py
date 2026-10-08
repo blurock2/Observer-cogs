@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from cogs.config import OBSERVER_SUPPORT_GUILD_ID
 from error_handling import ErrorHandledModal, ErrorHandledView, ObserverCog, handle_interaction_error
 
 import json
@@ -309,6 +310,12 @@ MODULES: list[ModuleSpec] = [
         emoji="🤖",
         description="Core bot behavior and logging.",
         settings=[
+            SettingSpec(
+                "error_channel",
+                "Global error channel",
+                "channel",
+                description="Observer Support only: sanitized errors from all servers, with IDs. Clear to disable.",
+            ),
             SettingSpec(
                 "log_channel",
                 "Bot log channel",
@@ -994,6 +1001,10 @@ def build_main_embed(store: SetupConfigStore, guild: discord.Guild) -> discord.E
     return embed
 
 
+def setting_visible(guild_id: int, module_key: str, setting_key: str) -> bool:
+    return (module_key, setting_key) != ("bot", "error_channel") or guild_id == OBSERVER_SUPPORT_GUILD_ID
+
+
 def build_module_embed(
     store: SetupConfigStore,
     guild: discord.Guild,
@@ -1049,6 +1060,8 @@ def build_module_embed(
         settings = module.settings
 
     for spec in settings:
+        if not setting_visible(guild.id, module.key, spec.key):
+            continue
         current = values.get(spec.key, spec.default)
 
         embed.add_field(
@@ -1425,6 +1438,8 @@ class ModuleView(AdminOnlyView):
             settings = module.settings
 
         for spec in settings:
+            if not setting_visible(guild.id, module.key, spec.key):
+                continue
             self.add_item(self._make_button(module, spec))
 
         back = discord.ui.Button(label="◀ Back to dashboard", style=discord.ButtonStyle.secondary)
@@ -1456,6 +1471,9 @@ class ModuleView(AdminOnlyView):
         async def callback(interaction: discord.Interaction) -> None:
             try:
                 guild = interaction.guild
+                if not setting_visible(guild.id, module_key, spec.key):
+                    await interaction.response.send_message("This setting is only available in Observer Support.", ephemeral=True)
+                    return
                 if spec.kind == "toggle":
                     current = cog.store.get(guild.id, module_key, spec.key, spec.default)
                     new_val = not setting_as_bool(current, bool(spec.default))
@@ -1537,6 +1555,7 @@ class ChannelSelectView(AdminOnlyView):
             placeholder="Select a channel…",
             min_values=1,
             max_values=1,
+            channel_types=[discord.ChannelType.text] if (module_key, setting_key) == ("bot", "error_channel") else None,
         )
         select.callback = self._on_select
         self.add_item(select)
@@ -1544,6 +1563,14 @@ class ChannelSelectView(AdminOnlyView):
         clear.callback = self._clear
         self.add_item(clear)
         self.add_item(_BackToModuleButton(self))
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if not await super().interaction_check(interaction):
+            return False
+        if not setting_visible(interaction.guild_id, self.module_key, self.setting_key):
+            await interaction.response.send_message("This setting is only available in Observer Support.", ephemeral=True)
+            return False
+        return True
 
     async def _clear(self, interaction: discord.Interaction) -> None:
         self.cog.store.delete(interaction.guild.id, self.module_key, self.setting_key)
@@ -1556,20 +1583,26 @@ class ChannelSelectView(AdminOnlyView):
 
     async def _on_select(self, interaction: discord.Interaction) -> None:
         try:
+            await interaction.response.defer()
             channel_id = interaction.data["values"][0]
             channel = await interaction.guild.fetch_channel(int(channel_id))
+            if (self.module_key, self.setting_key) == ("bot", "error_channel"):
+                permissions = channel.permissions_for(interaction.guild.me)
+                if not isinstance(channel, discord.TextChannel) or not (permissions.view_channel and permissions.send_messages and permissions.embed_links):
+                    await interaction.followup.send("Choose a text channel where I can View Channel, Send Messages, and Embed Links.", ephemeral=True)
+                    return
             self.cog.store.set(
                 interaction.guild.id, self.module_key, self.setting_key, channel.id
             )
             module = get_module(self.module_key)
             embed = build_module_embed(self.cog.store, interaction.guild, module)
             view = ModuleView(self.cog, self.module_key, interaction.guild)
-            await interaction.response.edit_message(embed=embed, view=view)
+            await interaction.edit_original_response(embed=embed, view=view)
             await interaction.followup.send(
                 f"✅ Set to {channel.mention}.", ephemeral=True
             )
         except discord.NotFound:
-            return
+            await interaction.followup.send("That channel is no longer available. Choose another channel.", ephemeral=True)
         except Exception as e:  # noqa: BLE001 - UI boundary must report a user-facing error
             await handle_interaction_error(interaction, e, source="setup_ui")
 

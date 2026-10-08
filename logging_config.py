@@ -4,6 +4,8 @@ import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+from error_reporting import ErrorIdFilter
+
 PROJECT_ROOT = Path(__file__).resolve().parent
 LOG_PATH = PROJECT_ROOT / "logs" / "aquila.log"
 
@@ -13,7 +15,7 @@ def configure_logging() -> None:
     LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 
     formatter = logging.Formatter(
-        "%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+        "%(asctime)s | %(levelname)s | %(name)s | %(error_id)s | %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
     file_handler = RotatingFileHandler(
@@ -23,9 +25,11 @@ def configure_logging() -> None:
         encoding="utf-8",
     )
     file_handler.setFormatter(formatter)
+    file_handler.addFilter(ErrorIdFilter())
 
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(formatter)
+    console_handler.addFilter(ErrorIdFilter())
 
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)

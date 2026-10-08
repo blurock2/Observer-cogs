@@ -12,10 +12,11 @@ from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 
-from cogs.config import BOT_OWNER_ID, RESTRICTED_BOT_ID, is_bot_owner
+from cogs.config import BOT_OWNER_ID, RESTRICTED_BOT_ID, OBSERVER_SUPPORT_GUILD_ID, is_bot_owner
 from cogs.setup_ui import DB_PATH, SetupConfigStore
 from database import cleanup_old_backups, migrate_legacy_databases
 from logging_config import configure_logging
+from error_reporting import ErrorReporter
 from error_handling import handle_interaction_error, handle_prefix_error
 
 load_dotenv()
@@ -93,6 +94,7 @@ class MyBot(commands.Bot):
             tree_cls=RestrictedCommandTree,
         )
         self.setup_store = SetupConfigStore(DB_PATH)
+        self.error_reporter = ErrorReporter(self, OBSERVER_SUPPORT_GUILD_ID)
 
         # These are defaults inherited by commands which do not explicitly
         # define their own allowed contexts.
@@ -136,6 +138,10 @@ class MyBot(commands.Bot):
                 continue
         return any(role.id in role_ids for role in getattr(user, "roles", []))
 
+    async def close(self) -> None:
+        await self.error_reporter.close()
+        await super().close()
+
     async def process_commands(self, message: discord.Message) -> None:
         context = await self.get_context(message)
         if not self.command_access_allowed(context.author, context.guild):
@@ -146,6 +152,8 @@ class MyBot(commands.Bot):
         """
         Load all cogs and synchronize the Observer command namespace.
         """
+
+        self.error_reporter.start()
 
         for extension in self.EXTENSIONS:
             try:
