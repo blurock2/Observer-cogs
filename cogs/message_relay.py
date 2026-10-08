@@ -293,93 +293,89 @@ class MessageRelay(commands.Cog):
         interaction: discord.Interaction,
         message: discord.Message,
     ) -> None:
-        if message.guild is None:
-            await interaction.response.send_message(
-                "This can only be used in servers.",
-                ephemeral=True,
+        await interaction.response.defer(ephemeral=True)
+
+        try:
+            if message.guild is None:
+                await interaction.edit_original_response(
+                    "This can only be used in servers.",            )
+                return
+
+            guild = message.guild
+
+            if not self._is_enabled(guild.id):
+                await interaction.edit_original_response(
+                    "Message Relay is disabled in this server. "
+                    "Enable it through `/setup` first.",            )
+                return
+
+            if not interaction.user.guild_permissions.manage_messages:
+                await interaction.edit_original_response(
+                    "You need the **Manage Messages** permission to relay messages.",            )
+                return
+
+            if message.author.bot and not self._relay_bots(guild.id):
+                await interaction.edit_original_response(
+                    "Relaying bot messages is disabled in `/setup`.",            )
+                return
+
+            if self._is_filtered(guild.id, message.content):
+                await interaction.edit_original_response(
+                    "This message contains a filtered word and cannot be relayed.",            )
+                return
+
+            data = load_config()
+            source_guild_id = guild.id
+
+            target_guilds = get_target_guilds_for_source(
+                data,
+                source_guild_id,
             )
-            return
 
-        guild = message.guild
+            if not target_guilds:
+                await interaction.edit_original_response(
+                    "This server is not configured as a relay source server.",            )
+                return
 
-        if not self._is_enabled(guild.id):
-            await interaction.response.send_message(
-                "Message Relay is disabled in this server. "
-                "Enable it through `/setup` first.",
-                ephemeral=True,
+            source_channels = data["sources"].get(
+                str(source_guild_id),
+                [],
             )
-            return
 
-        if not interaction.user.guild_permissions.manage_messages:
-            await interaction.response.send_message(
-                "You need the **Manage Messages** permission to relay messages.",
-                ephemeral=True,
+            source_channel_ids = {
+                int(channel_id)
+                for channel_id in source_channels
+            }
+
+            if message.channel.id not in source_channel_ids:
+                await interaction.edit_original_response(
+                    "This channel is not configured as a relay source channel.",            )
+                return
+
+            target_channel_ids = get_target_channel_ids_for_source(
+                data,
+                source_guild_id,
             )
-            return
 
-        if message.author.bot and not self._relay_bots(guild.id):
-            await interaction.response.send_message(
-                "Relaying bot messages is disabled in `/setup`.",
-                ephemeral=True,
+            if not target_channel_ids:
+                await interaction.edit_original_response(
+                    "No destination channels are configured for this server.",            )
+                return
+
+            await interaction.edit_original_response(
+                "Where should this message be sent?",
+                view=DestinationView(self, message),        )
+        except Exception:
+            logger.exception(
+                "Relay context menu failed in guild %s",
+                interaction.guild_id,
             )
-            return
-
-        if self._is_filtered(guild.id, message.content):
-            await interaction.response.send_message(
-                "This message contains a filtered word and cannot be relayed.",
-                ephemeral=True,
-            )
-            return
-
-        data = load_config()
-        source_guild_id = guild.id
-
-        target_guilds = get_target_guilds_for_source(
-            data,
-            source_guild_id,
-        )
-
-        if not target_guilds:
-            await interaction.response.send_message(
-                "This server is not configured as a relay source server.",
-                ephemeral=True,
-            )
-            return
-
-        source_channels = data["sources"].get(
-            str(source_guild_id),
-            [],
-        )
-
-        source_channel_ids = {
-            int(channel_id)
-            for channel_id in source_channels
-        }
-
-        if message.channel.id not in source_channel_ids:
-            await interaction.response.send_message(
-                "This channel is not configured as a relay source channel.",
-                ephemeral=True,
-            )
-            return
-
-        target_channel_ids = get_target_channel_ids_for_source(
-            data,
-            source_guild_id,
-        )
-
-        if not target_channel_ids:
-            await interaction.response.send_message(
-                "No destination channels are configured for this server.",
-                ephemeral=True,
-            )
-            return
-
-        await interaction.response.send_message(
-            "Where should this message be sent?",
-            view=DestinationView(self, message),
-            ephemeral=True,
-        )
+            try:
+                await interaction.edit_original_response(
+                    content="Relay failed unexpectedly. Check Observer's logs."
+                )
+            except discord.HTTPException:
+                logger.exception("Could not report relay failure to Discord")
 
     # ============================================================ Cross-server setup
 
