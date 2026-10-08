@@ -106,11 +106,17 @@ class DestinationSelect(discord.ui.Select):
 
         options: list[discord.SelectOption] = []
 
+        seen_channel_ids: set[int] = set()
+
         for raw_channel_id in target_channel_ids:
             try:
                 channel_id = int(raw_channel_id)
             except (TypeError, ValueError):
                 continue
+
+            if channel_id in seen_channel_ids:
+                continue
+            seen_channel_ids.add(channel_id)
 
             channel = cog.bot.get_channel(channel_id)
 
