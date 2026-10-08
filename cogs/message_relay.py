@@ -25,7 +25,6 @@ NO_MENTIONS = discord.AllowedMentions.none()
 MAX_ATTACHMENT_SIZE = 25 * 1024 * 1024
 logger = logging.getLogger("observer.relay")
 
-
 def load_config() -> dict:
     """
     Cross-server mappings, intentionally stored separately from generic
@@ -45,10 +44,8 @@ def load_config() -> dict:
     """
     return RELAY_STORE.load()
 
-
 def save_config(data: dict) -> None:
     RELAY_STORE.save(data)
-
 
 def get_source_guilds_for_target(
     data: dict,
@@ -61,7 +58,6 @@ def get_source_guilds_for_target(
             result.append(int(link["source_guild"]))
 
     return result
-
 
 def get_target_guilds_for_source(
     data: dict,
@@ -76,7 +72,6 @@ def get_target_guilds_for_source(
 
     return []
 
-
 def get_target_channel_ids_for_source(
     data: dict,
     source_guild_id: int,
@@ -87,7 +82,6 @@ def get_target_channel_ids_for_source(
         for target_guild_id in target_guild_ids
         for channel_id in data["targets"].get(str(target_guild_id), [])
     ]
-
 
 class DestinationSelect(discord.ui.Select):
     def __init__(
@@ -190,7 +184,6 @@ class DestinationSelect(discord.ui.Select):
                 view=None,
             )
 
-
 class DestinationView(discord.ui.View):
     def __init__(
         self,
@@ -199,7 +192,6 @@ class DestinationView(discord.ui.View):
     ):
         super().__init__(timeout=120)
         self.add_item(DestinationSelect(cog, message))
-
 
 class MessageRelay(commands.Cog):
     """
@@ -301,75 +293,75 @@ class MessageRelay(commands.Cog):
                     content="This can only be used in servers.",
                 )
                 return
-    
+
             guild = message.guild
-    
+
             if not self._is_enabled(guild.id):
                 await interaction.edit_original_response(
                     content="Message Relay is disabled in this server. "
                     "Enable it through `/setup` first.",
                 )
                 return
-    
+
             if not interaction.user.guild_permissions.manage_messages:
                 await interaction.edit_original_response(
                     content="You need the **Manage Messages** permission to relay messages.",
                 )
                 return
-    
+
             if message.author.bot and not self._relay_bots(guild.id):
                 await interaction.edit_original_response(
                     content="Relaying bot messages is disabled in `/setup`.",
                 )
                 return
-    
+
             if self._is_filtered(guild.id, message.content):
                 await interaction.edit_original_response(
                     content="This message contains a filtered word and cannot be relayed.",
                 )
                 return
-    
+
             data = load_config()
             source_guild_id = guild.id
-    
+
             target_guilds = get_target_guilds_for_source(
                 data,
                 source_guild_id,
             )
-    
+
             if not target_guilds:
                 await interaction.edit_original_response(
                     content="This server is not configured as a relay source server.",
                 )
                 return
-    
+
             source_channels = data["sources"].get(
                 str(source_guild_id),
                 [],
             )
-    
+
             source_channel_ids = {
                 int(channel_id)
                 for channel_id in source_channels
             }
-    
+
             if message.channel.id not in source_channel_ids:
                 await interaction.edit_original_response(
                     content="This channel is not configured as a relay source channel.",
                 )
                 return
-    
+
             target_channel_ids = get_target_channel_ids_for_source(
                 data,
                 source_guild_id,
             )
-    
+
             if not target_channel_ids:
                 await interaction.edit_original_response(
                     content="No destination channels are configured for this server.",
                 )
                 return
-    
+
             await interaction.edit_original_response(
                 content="Where should this message be sent?",
                 view=DestinationView(self, message),
@@ -378,7 +370,7 @@ class MessageRelay(commands.Cog):
             logger.exception("Relay context menu failed in guild %s", interaction.guild_id)
             try:
                 await interaction.edit_original_response(
-                   content= content="Relay failed unexpectedly. Check Observer's logs.",
+                   content="Relay failed unexpectedly. Check Observer's logs.",
                     view=None,
                 )
             except discord.HTTPException:
@@ -807,7 +799,6 @@ class MessageRelay(commands.Cog):
                 message,
                 ephemeral=True,
             )
-
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(MessageRelay(bot))
