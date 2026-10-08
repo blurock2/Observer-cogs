@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from error_handling import ErrorHandledModal, ErrorHandledView, ObserverCog
+
 import asyncio
 import sqlite3
 
@@ -15,7 +17,7 @@ ROOMS_KEY = "rooms"
 DEFAULT_ROOM_NAME = "{user}'s channel"
 
 
-class TemporaryVoice(commands.Cog):
+class TemporaryVoice(ObserverCog):
     """
     Join-to-create temporary voice rooms.
 
@@ -488,7 +490,7 @@ class TemporaryVoice(commands.Cog):
                 await self._delete_room(old_channel)
 
 
-class VoiceControlView(discord.ui.View):
+class VoiceControlView(ErrorHandledView):
     """Persistent lock, invite, and rename controls for one temporary room."""
 
     def __init__(
@@ -749,7 +751,7 @@ class RenameButton(discord.ui.Button):
         await interaction.response.send_modal(modal)
 
 
-class RenameChannelModal(discord.ui.Modal):
+class RenameChannelModal(ErrorHandledModal):
     def __init__(
         self,
         parent_view: VoiceControlView,

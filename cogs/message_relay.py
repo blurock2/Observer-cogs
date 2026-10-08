@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from error_handling import ErrorHandledView, ObserverCog
+
 import io
 import logging
 from pathlib import Path
@@ -190,7 +192,7 @@ class DestinationSelect(discord.ui.Select):
                 view=None,
             )
 
-class DestinationView(discord.ui.View):
+class DestinationView(ErrorHandledView):
     def __init__(
         self,
         cog: MessageRelay,
@@ -199,7 +201,7 @@ class DestinationView(discord.ui.View):
         super().__init__(timeout=120)
         self.add_item(DestinationSelect(cog, message))
 
-class MessageRelay(commands.Cog):
+class MessageRelay(ObserverCog):
     """
     Manual cross-server message relay.
 
@@ -779,32 +781,6 @@ class MessageRelay(commands.Cog):
 
     # ============================================================ Errors
 
-    async def cog_app_command_error(
-        self,
-        interaction: discord.Interaction,
-        error: app_commands.AppCommandError,
-    ) -> None:
-        if isinstance(error, app_commands.MissingPermissions):
-            message = (
-                "You need **Manage Server** permission to configure relay links."
-            )
-        else:
-            logger.error(
-                "Relay command failed",
-                exc_info=(type(error), error, error.__traceback__),
-            )
-            message = "An unexpected relay error occurred."
-
-        if interaction.response.is_done():
-            await interaction.followup.send(
-                message,
-                ephemeral=True,
-            )
-        else:
-            await interaction.response.send_message(
-                message,
-                ephemeral=True,
-            )
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(MessageRelay(bot))

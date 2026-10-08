@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from error_handling import ErrorHandledView, ObserverCog
+
 from collections import defaultdict
 
 import discord
@@ -15,7 +17,7 @@ PREFIX = "!"
 COMMAND_NAME_PREFIX = ""
 
 
-class HelpView(discord.ui.View):
+class HelpView(ErrorHandledView):
     def __init__(
         self,
         cog: HelpCog,
@@ -125,7 +127,7 @@ class HelpView(discord.ui.View):
                 child.disabled = True
 
 
-class HelpCog(commands.Cog):
+class HelpCog(ObserverCog):
     """
     Dynamic prefix and slash-command help.
 

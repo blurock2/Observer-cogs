@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from error_handling import ErrorHandledView, ObserverCog
+
 import asyncio
 
 import discord
@@ -18,7 +20,7 @@ MAX_INTERVAL_MINUTES = 60
 PRESENCE_REFRESH_DELAY_SECONDS = 60
 
 
-class ServerInfo(commands.Cog):
+class ServerInfo(ObserverCog):
     """
     Server-info command plus live voice-channel statistics.
 
@@ -661,7 +663,7 @@ class ServerInfo(commands.Cog):
         )
 
 
-class StickerView(discord.ui.View):
+class StickerView(ErrorHandledView):
     """View containing the custom-sticker button."""
 
     def __init__(self, guild: discord.Guild):

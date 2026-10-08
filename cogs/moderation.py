@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from error_handling import ErrorHandledView, ObserverCog
+
 import json
 import logging
 import os
@@ -50,7 +52,7 @@ async def mod_perms_check(interaction: discord.Interaction) -> bool:
     return await cog._check_mod_perms(interaction)
 
 
-class ModerationUndoView(discord.ui.View):
+class ModerationUndoView(ErrorHandledView):
     """Persistent view for moderation log messages."""
 
     def __init__(self, cog: ModerationCog):
@@ -138,7 +140,7 @@ class ModerationUndoView(discord.ui.View):
             pass
 
 
-class ModerationCog(commands.Cog):
+class ModerationCog(ObserverCog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.store = SetupConfigStore(DB_PATH)
@@ -1037,35 +1039,6 @@ class ModerationCog(commands.Cog):
 
     # ============================================================ Error handling
 
-    async def cog_app_command_error(
-        self,
-        interaction: discord.Interaction,
-        error: app_commands.AppCommandError,
-    ) -> None:
-        if isinstance(error, app_commands.CheckFailure):
-            message = (
-                "You need the configured Moderator or Head "
-                "Moderator role to use that command."
-            )
-        else:
-            logger.error(
-                "Moderation command failed",
-                exc_info=(type(error), error, error.__traceback__),
-            )
-            message = (
-                "An unexpected moderation error occurred."
-            )
-
-        if interaction.response.is_done():
-            await interaction.followup.send(
-                message,
-                ephemeral=True,
-            )
-        else:
-            await interaction.response.send_message(
-                message,
-                ephemeral=True,
-            )
 
 
 async def setup(bot: commands.Bot) -> None:

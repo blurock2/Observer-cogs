@@ -1,6 +1,8 @@
 # cogs/message_quoter.py
 from __future__ import annotations
 
+from error_handling import ObserverCog
+
 import json
 import re
 import sqlite3
@@ -105,7 +107,7 @@ class MessageQuoterConfig:
 
 
 
-class MessageQuoter(commands.Cog):
+class MessageQuoter(ObserverCog):
     COPIED_BUTTON_MESSAGE = (
         "This button was copied from the quoted message. "
         "To interact with it, you'll need to do so on the original!"

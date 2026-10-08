@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from error_handling import ObserverCog
+
 import logging
 from contextlib import contextmanager
 from pathlib import Path
@@ -18,7 +20,7 @@ MODULE_KEY = "member_commands"
 logger = logging.getLogger("observer.member_commands")
 
 
-class MemberCommands(commands.Cog):
+class MemberCommands(ObserverCog):
     """
     Member information commands.
 

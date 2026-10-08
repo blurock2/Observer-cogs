@@ -16,6 +16,7 @@ from cogs.config import BOT_OWNER_ID, RESTRICTED_BOT_ID, is_bot_owner
 from cogs.setup_ui import DB_PATH, SetupConfigStore
 from database import cleanup_old_backups, migrate_legacy_databases
 from logging_config import configure_logging
+from error_handling import handle_interaction_error, handle_prefix_error
 
 load_dotenv()
 configure_logging()
@@ -397,139 +398,15 @@ async def on_command_error(
     ctx: commands.Context,
     error: commands.CommandError,
 ) -> None:
-    """Handle prefix-command errors."""
-
-    if isinstance(error, commands.CommandNotFound):
-        return
-
-    if isinstance(error, commands.NotOwner):
-        await ctx.send("Only the bot owner can use that command.")
-        return
-
-    if isinstance(error, commands.MissingPermissions):
-        await ctx.send("You do not have permission to use that command.")
-        return
-
-    if isinstance(error, commands.BotMissingPermissions):
-        await ctx.send(
-            "The bot is missing the required permissions for that command."
-        )
-        return
-
-    if isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send("You are missing a required argument.")
-        return
-
-    if isinstance(error, commands.NoPrivateMessage):
-        await ctx.send(
-            "This command can only be used inside a server."
-        )
-        return
-
-    if isinstance(error, commands.CommandInvokeError):
-        original_error = error.original
-
-        logger.error(
-            "Prefix command failed",
-            exc_info=(
-                type(original_error),
-                original_error,
-                original_error.__traceback__,
-            ),
-        )
-
-        await ctx.send(
-            "The command encountered an error. "
-            "Check the bot console for details."
-        )
-        return
-
-    logger.error(
-        "Unhandled prefix-command error",
-        exc_info=(type(error), error, error.__traceback__),
-    )
+    await handle_prefix_error(ctx, error)
 
 
-@bot.event
+@bot.tree.error
 async def on_app_command_error(
     interaction: discord.Interaction,
     error: app_commands.AppCommandError,
 ) -> None:
-    """Handle slash-command errors."""
-
-    if isinstance(error, app_commands.BotMissingPermissions):
-        missing = getattr(error, "missing_permissions", None)
-
-        if missing and not is_bot_owner(interaction.user):
-            permission_names = ", ".join(
-                permission.replace("_", " ").title()
-                for permission in missing
-            )
-            message = (
-                "I am missing these Discord permissions: "
-                f"{permission_names}."
-            )
-        else:
-            message = (
-                "I am missing the required Discord permissions "
-                "for that command."
-            )
-
-    elif isinstance(error, app_commands.MissingPermissions):
-        if is_bot_owner(interaction.user):
-            message = (
-                "Command check failed. "
-                "If this persists, check the bot console."
-            )
-        else:
-            missing = getattr(error, "missing_permissions", None)
-
-            if missing:
-                permission_names = ", ".join(
-                    permission.replace("_", " ").title()
-                    for permission in missing
-                )
-                message = (
-                    "You are missing these permissions: "
-                    f"{permission_names}."
-                )
-            else:
-                message = (
-                    "You are missing the required permissions "
-                    "for that command."
-                )
-
-    elif isinstance(error, app_commands.CheckFailure):
-        message = (
-            "You need the configured moderator or head-moderator "
-            "role to use this command."
-        )
-
-    else:
-        logger.error(
-            "Application command failed",
-            exc_info=(type(error), error, error.__traceback__),
-        )
-
-        message = (
-            "An error occurred while running that slash command. "
-            "Check the bot console for details."
-        )
-
-    try:
-        if interaction.response.is_done():
-            await interaction.followup.send(
-                message,
-                ephemeral=True,
-            )
-        else:
-            await interaction.response.send_message(
-                message,
-                ephemeral=True,
-            )
-
-    except discord.HTTPException:
-        pass
+    await handle_interaction_error(interaction, error)
 
 
 # ============================================================

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from error_handling import ErrorHandledModal, ObserverCog
+
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -22,7 +24,7 @@ def _role_id(value: object) -> int | None:
     return role_id if role_id > 0 else None
 
 
-class TagContentModal(discord.ui.Modal):
+class TagContentModal(ErrorHandledModal):
     def __init__(self, cog: Tags, name: str, *, editing: bool):
         super().__init__(title=f"{'Edit' if editing else 'Create'} tag: {name}")
         self.cog = cog
@@ -85,7 +87,7 @@ class TagContentModal(discord.ui.Modal):
         )
 
 
-class Tags(commands.Cog):
+class Tags(ObserverCog):
     tag = app_commands.Group(name="tag", description="Create and use reusable plain-text messages.")
 
     def __init__(self, bot: commands.Bot):

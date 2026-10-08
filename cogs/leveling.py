@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from error_handling import ObserverCog
+
 import asyncio
 import logging
 import random
@@ -437,7 +439,7 @@ def progress_bar(
 
 # ============================================================ Leveling cog
 
-class Leveling(commands.Cog):
+class Leveling(ObserverCog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from error_handling import ObserverCog
+
 import json
 import os
 import tempfile
@@ -41,7 +43,7 @@ def write_json_atomic(path: Path, data: Any) -> None:
     os.replace(temp_path, path)
 
 
-class AppBridge(commands.Cog):
+class AppBridge(ObserverCog):
     """
     Local bridge between Observer Bot Manager and the running bot.
 

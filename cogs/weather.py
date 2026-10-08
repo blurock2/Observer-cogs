@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from error_handling import ObserverCog
+
 import asyncio
 import logging
 import re
@@ -64,7 +66,7 @@ WEATHER_CODES = {
 
 # ============================================================ Cog
 
-class Weather(commands.Cog):
+class Weather(ObserverCog):
     """
     Weather lookups through Open-Meteo.
 
@@ -712,37 +714,6 @@ class Weather(commands.Cog):
 
     # ======================================================== Cog-level application-command error handling
 
-    async def cog_app_command_error(
-        self,
-        interaction: discord.Interaction,
-        error: app_commands.AppCommandError,
-    ) -> None:
-        logger.exception(
-            "Weather application command failed.",
-            exc_info=error,
-        )
-
-        message = (
-            "The weather command encountered an error. "
-            "Check the bot console for details."
-        )
-
-        try:
-            if interaction.response.is_done():
-                await interaction.followup.send(
-                    message,
-                    ephemeral=True,
-                )
-            else:
-                await interaction.response.send_message(
-                    message,
-                    ephemeral=True,
-                )
-
-        except discord.HTTPException:
-            logger.exception(
-                "Could not send weather error response.",
-            )
 
 
 # ============================================================ Extension setup

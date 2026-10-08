@@ -1,4 +1,6 @@
 
+from error_handling import ObserverCog, handle_interaction_error
+
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -11,7 +13,7 @@ MODULE_KEY = "reaction_roles"
 
 
 
-class ReactionRoles(commands.Cog):
+class ReactionRoles(ObserverCog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.store = SetupConfigStore(DB_PATH)
@@ -299,16 +301,7 @@ class ReactionRoles(commands.Cog):
         interaction: discord.Interaction,
         error: app_commands.AppCommandError,
     ) -> None:
-        if isinstance(error, app_commands.MissingPermissions):
-            message = "You need the Manage Roles permission to use this command."
-        else:
-            print(f"[ReactionRoles] setup_reactions error: {error}")
-            message = "An error occurred while setting up reaction roles."
-
-        if interaction.response.is_done():
-            await interaction.followup.send(message, ephemeral=True)
-        else:
-            await interaction.response.send_message(message, ephemeral=True)
+        await handle_interaction_error(interaction, error)
 
 
     # --------------------------------------------------
@@ -464,16 +457,7 @@ class ReactionRoles(commands.Cog):
         interaction: discord.Interaction,
         error: app_commands.AppCommandError,
     ) -> None:
-        if isinstance(error, app_commands.MissingPermissions):
-            message = "You need the Manage Roles permission to manage reaction roles."
-        else:
-            print(f"[ReactionRoles] management error: {error}")
-            message = "An error occurred while updating reaction roles."
-
-        if interaction.response.is_done():
-            await interaction.followup.send(message, ephemeral=True)
-        else:
-            await interaction.response.send_message(message, ephemeral=True)
+        await handle_interaction_error(interaction, error)
 
 
 

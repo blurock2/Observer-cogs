@@ -1,6 +1,8 @@
   # ============================================================ No comments a bit lazy atm ill do it later
 from __future__ import annotations
 
+from error_handling import ErrorHandledModal, ErrorHandledView, ObserverCog
+
 import time
 
 import discord
@@ -16,7 +18,7 @@ MODERATION_MODULE_KEY = "moderation"
 NO_MENTIONS = discord.AllowedMentions.none()
 
 
-class ClaimReportView(discord.ui.View):
+class ClaimReportView(ErrorHandledView):
     """
     Report-claim controls.
 
@@ -216,7 +218,7 @@ class ClaimReportView(discord.ui.View):
         )
 
 
-class ReportModal(discord.ui.Modal):
+class ReportModal(ErrorHandledModal):
     def __init__(
         self,
         cog: ReportMessage,
@@ -441,7 +443,7 @@ class ReportModal(discord.ui.Modal):
         )
 
 
-class ReportMessage(commands.Cog):
+class ReportMessage(ObserverCog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.store = SetupConfigStore(DB_PATH)

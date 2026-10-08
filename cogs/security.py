@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from error_handling import ObserverCog
+
 import asyncio
 import ipaddress
 import logging
@@ -171,7 +173,7 @@ def detect_scam_signals(content: str) -> list[str]:
     return list(dict.fromkeys(signals))
 
 
-class SecurityCog(commands.Cog):
+class SecurityCog(ObserverCog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.store = SetupConfigStore(DB_PATH)

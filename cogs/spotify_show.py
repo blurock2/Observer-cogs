@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from error_handling import ObserverCog
+
 import asyncio
 import logging
 import re
@@ -62,7 +64,7 @@ COVER_COLOR_MAX_BRIGHTNESS = 235
 
 # ============================================================ Cog
 
-class SpotifyShow(commands.Cog):
+class SpotifyShow(ObserverCog):
     """
     Spotify track embed cog.
 
@@ -508,40 +510,6 @@ class SpotifyShow(commands.Cog):
 
     # ============================================================ Slash-command error handler
 
-    async def cog_app_command_error(
-        self,
-        interaction: discord.Interaction,
-        error: app_commands.AppCommandError,
-    ) -> None:
-        """
-        Handle errors raised by this cog's application command.
-        """
-        logger.exception(
-            "Spotify application command failed.",
-            exc_info=error,
-        )
-
-        message = (
-            "The Spotify command encountered an error. "
-            "Check the bot console for details."
-        )
-
-        try:
-            if interaction.response.is_done():
-                await interaction.followup.send(
-                    message,
-                    ephemeral=True,
-                )
-            else:
-                await interaction.response.send_message(
-                    message,
-                    ephemeral=True,
-                )
-
-        except discord.HTTPException:
-            logger.exception(
-                "Could not send Spotify error response."
-            )
 
 
 # ============================================================ Extension setup

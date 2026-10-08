@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from error_handling import ErrorHandledModal, ObserverCog
+
 import sqlite3
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -194,7 +196,7 @@ class RulesStore:
         )
 
 
-class RuleModal(discord.ui.Modal):
+class RuleModal(ErrorHandledModal):
     """Modal used for both adding and editing a rule."""
 
     def __init__(
@@ -301,7 +303,7 @@ class RuleModal(discord.ui.Modal):
         )
 
 
-class RulesCommand(commands.Cog):
+class RulesCommand(ObserverCog):
     """
     Per-server configurable rules.
 
@@ -648,23 +650,6 @@ class RulesCommand(commands.Cog):
 
     # ============================================================ Errors
 
-    async def cog_app_command_error(
-        self,
-        interaction: discord.Interaction,
-        error: app_commands.AppCommandError,
-    ) -> None:
-        if isinstance(error, app_commands.MissingPermissions):
-            message = (
-                "You need the required server permission to use that command."
-            )
-        else:
-            print(f"[rules] {type(error).__name__}: {error}")
-            message = "An unexpected rules error occurred."
-
-        if interaction.response.is_done():
-            await interaction.followup.send(message, ephemeral=True)
-        else:
-            await interaction.response.send_message(message, ephemeral=True)
 
 
 async def setup(bot: commands.Bot) -> None:

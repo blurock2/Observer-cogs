@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from error_handling import ErrorHandledView, ObserverCog
+
 import asyncio
 import logging
 import re
@@ -61,7 +63,7 @@ def parse_delay(value: str) -> float | None:
 	return delay
 
 
-class ReminderSeenView(discord.ui.View):
+class ReminderSeenView(ErrorHandledView):
 	def __init__(self, cog: Reminder, reminder_id: int):
 		super().__init__(timeout=None)
 		self.cog = cog
@@ -100,7 +102,7 @@ class ReminderSeenView(discord.ui.View):
 		await interaction.response.edit_message(view=self)
 
 
-class Reminder(commands.Cog):
+class Reminder(ObserverCog):
 	"""Create short-lived reminders from a message or inline text."""
 
 	def __init__(self, bot: commands.Bot):

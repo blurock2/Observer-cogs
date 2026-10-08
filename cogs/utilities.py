@@ -1,3 +1,5 @@
+
+from error_handling import ObserverCog
 import socket
 
 from discord.ext import commands
@@ -7,7 +9,7 @@ from cogs.setup_ui import DB_PATH, SetupConfigStore
 MODULE_KEY = "utilities"
 
 
-class Utilities(commands.Cog):
+class Utilities(ObserverCog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.store = SetupConfigStore(DB_PATH)

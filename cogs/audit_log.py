@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from error_handling import ObserverCog
+
 import asyncio
 import logging
 
@@ -43,7 +45,7 @@ def _truncate(text: str, limit: int = FIELD_LIMIT) -> str:
     return text[: limit - 1] + "…"
 
 
-class AuditLogCog(commands.Cog):
+class AuditLogCog(ObserverCog):
     """
     Passive server-event audit logging, separate from ModerationCog.
 

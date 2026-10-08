@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from error_handling import ErrorHandledModal, ErrorHandledView, ObserverCog, handle_interaction_error
+
 import json
 import os
 from collections.abc import Callable
@@ -1130,7 +1132,7 @@ def get_ticket_reason_options(
 
 # ============================================================ Views
 
-class AdminOnlyView(discord.ui.View):
+class AdminOnlyView(ErrorHandledView):
     """Base view that restricts interaction to Manage Server holders or bot owner."""
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
@@ -1192,15 +1194,10 @@ class MainView(AdminOnlyView):
             view = ModuleView(self.cog, module_key, interaction.guild)
             await interaction.response.edit_message(embed=embed, view=view)
         except Exception as e:  # noqa: BLE001 - UI boundary must report a user-facing error
-            print(f"[setup_ui] Error in MainView._on_select: {type(e).__name__}: {e}")
-            if not interaction.response.is_done():
-                await interaction.response.send_message(
-                    "An error occurred while opening the panel. Check the bot console.",
-                    ephemeral=True,
-                )
+            await handle_interaction_error(interaction, e, source="setup_ui")
 
 
-class TicketPanelTextModal(discord.ui.Modal):
+class TicketPanelTextModal(ErrorHandledModal):
     def __init__(self, parent: TicketPanelEditorView):
         super().__init__(title="Edit ticket panel text")
         self.parent_view = parent
@@ -1240,7 +1237,7 @@ class TicketPanelTextModal(discord.ui.Modal):
         await self.parent_view.refresh(interaction)
 
 
-class TicketReasonEditModal(discord.ui.Modal):
+class TicketReasonEditModal(ErrorHandledModal):
     def __init__(
         self,
         parent: TicketPanelEditorView,
@@ -1267,7 +1264,7 @@ class TicketReasonEditModal(discord.ui.Modal):
         await self.parent_view.refresh(interaction)
 
 
-class TicketReasonAddModal(discord.ui.Modal):
+class TicketReasonAddModal(ErrorHandledModal):
     def __init__(self, parent: TicketPanelEditorView):
         super().__init__(title="Add ticket reason")
         self.parent_view = parent
@@ -1487,12 +1484,7 @@ class ModuleView(AdminOnlyView):
                     view = RoleSelectView(cog, module_key, spec.key, guild)
                     await interaction.response.edit_message(embed=embed, view=view)
             except Exception as e:  # noqa: BLE001 - UI boundary must report a user-facing error
-                print(f"[setup_ui] Error in ModuleView callback: {type(e).__name__}: {e}")
-                if not interaction.response.is_done():
-                    await interaction.response.send_message(
-                        "An error occurred while applying that setting. Check the bot console.",
-                        ephemeral=True,
-                    )
+                await handle_interaction_error(interaction, e, source="setup_ui")
 
         return callback
 
@@ -1502,12 +1494,7 @@ class ModuleView(AdminOnlyView):
             view = MainView(self.cog)
             await interaction.response.edit_message(embed=embed, view=view)
         except Exception as e:  # noqa: BLE001 - UI boundary must report a user-facing error
-            print(f"[setup_ui] Error in ModuleView._on_back: {type(e).__name__}: {e}")
-            if not interaction.response.is_done():
-                await interaction.response.send_message(
-                    "An error occurred while going back. Check the bot console.",
-                    ephemeral=True,
-                )
+            await handle_interaction_error(interaction, e, source="setup_ui")
 
     async def _refresh(self, interaction: discord.Interaction) -> None:
         try:
@@ -1516,12 +1503,7 @@ class ModuleView(AdminOnlyView):
             view = ModuleView(self.cog, self.module_key, interaction.guild)
             await interaction.response.edit_message(embed=embed, view=view)
         except Exception as e:  # noqa: BLE001 - UI boundary must report a user-facing error
-            print(f"[setup_ui] Error in ModuleView._refresh: {type(e).__name__}: {e}")
-            if not interaction.response.is_done():
-                await interaction.response.send_message(
-                    "An error occurred while refreshing the panel. Check the bot console.",
-                    ephemeral=True,
-                )
+            await handle_interaction_error(interaction, e, source="setup_ui")
 
 
 class _BackToModuleButton(discord.ui.Button):
@@ -1540,12 +1522,7 @@ class _BackToModuleButton(discord.ui.Button):
         except discord.NotFound:
             return
         except Exception as e:  # noqa: BLE001 - UI boundary must report a user-facing error
-            print(f"[setup_ui] Error in _BackToModuleButton: {type(e).__name__}: {e}")
-            if not interaction.response.is_done():
-                await interaction.response.send_message(
-                    "An error occurred while going back. Check the bot console.",
-                    ephemeral=True,
-                )
+            await handle_interaction_error(interaction, e, source="setup_ui")
 
 
 class ChannelSelectView(AdminOnlyView):
@@ -1594,12 +1571,7 @@ class ChannelSelectView(AdminOnlyView):
         except discord.NotFound:
             return
         except Exception as e:  # noqa: BLE001 - UI boundary must report a user-facing error
-            print(f"[setup_ui] Error in ChannelSelectView._on_select: {type(e).__name__}: {e}")
-            if not interaction.response.is_done():
-                await interaction.response.send_message(
-                    "An error occurred while saving the channel. Check the bot console.",
-                    ephemeral=True,
-                )
+            await handle_interaction_error(interaction, e, source="setup_ui")
 
 
 class RoleSelectView(AdminOnlyView):
@@ -1652,15 +1624,10 @@ class RoleSelectView(AdminOnlyView):
                 f"✅ Set to {role.mention}.", ephemeral=True
             )
         except Exception as e:  # noqa: BLE001 - UI boundary must report a user-facing error
-            print(f"[setup_ui] Error in RoleSelectView._on_select: {type(e).__name__}: {e}")
-            if not interaction.response.is_done():
-                await interaction.response.send_message(
-                    "An error occurred while saving the role. Check the bot console.",
-                    ephemeral=True,
-                )
+            await handle_interaction_error(interaction, e, source="setup_ui")
 
 
-class TextModal(discord.ui.Modal):
+class TextModal(ErrorHandledModal):
     """Modal for `text` and `integer` settings."""
 
     def __init__(self, cog: SetupUICog, module_key: str, spec: SettingSpec, guild: discord.Guild):
@@ -1711,17 +1678,12 @@ class TextModal(discord.ui.Modal):
                 f"✅ {self.spec.label} updated.", ephemeral=True
             )
         except Exception as e:  # noqa: BLE001 - UI boundary must report a user-facing error
-            print(f"[setup_ui] Error in TextModal.on_submit: {type(e).__name__}: {e}")
-            if not interaction.response.is_done():
-                await interaction.response.send_message(
-                    "An error occurred while saving the value. Check the bot console.",
-                    ephemeral=True,
-                )
+            await handle_interaction_error(interaction, e, source="setup_ui")
 
 
 # ============================================================ Cog
 
-class SetupUICog(commands.Cog):
+class SetupUICog(ObserverCog):
     """Posts the interactive setup dashboard via /setup."""
 
     def __init__(self, bot: commands.Bot):
@@ -1777,28 +1739,8 @@ class SetupUICog(commands.Cog):
         self, interaction: discord.Interaction,
         error: app_commands.AppCommandError,
     ) -> None:
-        if isinstance(error, app_commands.MissingPermissions):
-            await interaction.response.send_message(
-                "You need the **Manage Server** permission to use /setup "
-                "(unless you are the bot owner).",
-                ephemeral=True,
-            )
-            return
-        print(f"[setup_ui] Unexpected error in /setup: {type(error).__name__}: {error}")
-        await interaction.response.send_message(
-            "An unexpected error occurred. Check the bot console.",
-            ephemeral=True,
-        )
+        await handle_interaction_error(interaction, error)
 
-    async def cog_app_command_error(
-        self,
-        interaction: discord.Interaction,
-        error: app_commands.AppCommandError,
-    ) -> None:
-        print(
-            f"[setup_ui] View/callback error: "
-            f"{type(error).__name__}: {error}"
-        )
 
 
 async def setup(bot: commands.Bot) -> None:

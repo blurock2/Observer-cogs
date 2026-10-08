@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from error_handling import ErrorHandledModal, ErrorHandledView, ObserverCog
+
 import asyncio
 
 import discord
@@ -16,7 +18,7 @@ from cogs.setup_ui import (
 
 MODULE_KEY = "tickets"
 NO_MENTIONS = discord.AllowedMentions.none()
-class TicketOtherReasonModal(discord.ui.Modal):
+class TicketOtherReasonModal(ErrorHandledModal):
     def __init__(self, cog: TicketCog):
         super().__init__(title="Other ticket reason")
         self.cog = cog
@@ -84,13 +86,13 @@ class TicketReasonSelect(discord.ui.Select):
         )
 
 
-class TicketReasonView(discord.ui.View):
+class TicketReasonView(ErrorHandledView):
     def __init__(self, cog: TicketCog, guild_id: int):
         super().__init__(timeout=300)
         self.add_item(TicketReasonSelect(cog, cog._ticket_reasons(guild_id)))
 
 
-class TicketPanelView(discord.ui.View):
+class TicketPanelView(ErrorHandledView):
     """Persistent Create Ticket button shown in panel channels."""
 
     def __init__(self, cog: TicketCog):
@@ -111,7 +113,7 @@ class TicketPanelView(discord.ui.View):
         await self.cog.create_ticket(interaction)
 
 
-class TicketCloseView(discord.ui.View):
+class TicketCloseView(ErrorHandledView):
     """Persistent Close Ticket button inside every ticket."""
 
     def __init__(self, cog: TicketCog):
@@ -132,7 +134,7 @@ class TicketCloseView(discord.ui.View):
         await self.cog.close_ticket(interaction)
 
 
-class TicketCog(commands.Cog):
+class TicketCog(ObserverCog):
     """
     Support ticket system.
 
@@ -835,38 +837,6 @@ class TicketCog(commands.Cog):
 
     # ============================================================ Errors
 
-    async def cog_app_command_error(
-        self,
-        interaction: discord.Interaction,
-        error: app_commands.AppCommandError,
-    ) -> None:
-        if isinstance(
-            error,
-            app_commands.MissingPermissions,
-        ):
-            message = (
-                "You need **Manage Server** permission to "
-                "post a ticket panel (unless you are the "
-                "bot owner)."
-            )
-        else:
-            print(
-                f"[tickets] {type(error).__name__}: {error}"
-            )
-            message = (
-                "An unexpected ticket-system error occurred."
-            )
-
-        if interaction.response.is_done():
-            await interaction.followup.send(
-                message,
-                ephemeral=True,
-            )
-        else:
-            await interaction.response.send_message(
-                message,
-                ephemeral=True,
-            )
 
 
 async def setup(bot: commands.Bot) -> None:

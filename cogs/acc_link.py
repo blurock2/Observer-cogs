@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from error_handling import ObserverCog
+
 import html
 import json
 import re
@@ -166,7 +168,7 @@ class AccountLinkStore:
         return None, None
 
 
-class AccountLink(commands.Cog):
+class AccountLink(ObserverCog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.store = AccountLinkStore()

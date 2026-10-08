@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from error_handling import ObserverCog
+
 from datetime import timedelta
 
 import discord
@@ -15,7 +17,7 @@ DEFAULT_WARNING_DELETE_DELAY = 8
 MAX_TIMEOUT_MINUTES = 40320
 
 
-class Mentions(commands.Cog):
+class Mentions(ObserverCog):
     """
     Mention-protection moderation system.
 
