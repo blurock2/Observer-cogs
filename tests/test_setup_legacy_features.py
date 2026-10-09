@@ -64,6 +64,7 @@ async def test_verification_panel_uses_dashboard_settings(tmp_path, monkeypatch)
     cog.store.set(123, 'verification', 'channel', 456)
     cog.store.set(123, 'verification', 'message', 'Custom verification text')
     cog.store.set(123, 'verification', 'enabled', False)
+    cog.validation_errors = lambda _: []
     await Autoroles.verify_setup.callback(cog, interaction)
     assert channel.send.call_args.args == ('Custom verification text',)
     assert cog._config(123)['enabled'] is True

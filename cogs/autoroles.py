@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import asyncio
+import time
+from datetime import timedelta
+
 import discord
 from discord import app_commands
 from discord.ext import commands
 
 from cogs.setup_ui import DB_PATH, SetupConfigStore, owner_or_has_guild_permissions
 from database import connect_sqlite
+from error_handling import handle_interaction_error, log_error
 
 verify_group = app_commands.Group(name="verify", description="Configure member verification")
 verified_role_group = app_commands.Group(name="verified-role", description="Manage verified roles", parent=verify_group)
@@ -19,28 +24,16 @@ class VerifyView(discord.ui.View):
 
 	@discord.ui.button(label="Verify", style=discord.ButtonStyle.success, custom_id="verification:verify")
 	async def verify(self, interaction: discord.Interaction, button: discord.ui.Button):
-		guild = interaction.guild
-		config = self.cog._config(guild.id)
-		if not config["enabled"]:
-			await interaction.response.send_message("Verification is not enabled.", ephemeral=True)
-			return
-		minimum = int(config["minimum_account_days"] or 0)
-		if (discord.utils.utcnow() - interaction.user.created_at).days < minimum:
-			await interaction.response.send_message(f"Your Discord account must be at least {minimum} days old to verify.", ephemeral=True)
-			return
-		verified, unverified = self.cog._roles(guild.id)
-		member = guild.get_member(interaction.user.id)
-		if member is None:
-			await interaction.response.send_message("Member not found.", ephemeral=True)
-			return
-		await member.remove_roles(*(role for role in (guild.get_role(r) for r in unverified) if role), reason="Verification")
-		await member.add_roles(*(role for role in (guild.get_role(r) for r in verified) if role), reason="Verification")
-		await interaction.response.send_message("You have successfully verified.", ephemeral=True)
+		await self.cog.verify_member(interaction)
+
+	async def on_error(self, interaction, error, item):
+		await handle_interaction_error(interaction, error, source="verification button")
 
 
 class Autoroles(commands.GroupCog, group_name="autorole", group_description="Configure join autoroles"):
 	def __init__(self, bot: commands.Bot):
 		self.bot = bot
+		self._verify_locks = {}
 		self.store = SetupConfigStore(DB_PATH)
 		with connect_sqlite(DB_PATH) as db:
 			db.execute("CREATE TABLE IF NOT EXISTS guild_autorole_config (guild_id INTEGER PRIMARY KEY, enabled INTEGER NOT NULL DEFAULT 0, bot_enabled INTEGER NOT NULL DEFAULT 0)")
@@ -48,6 +41,95 @@ class Autoroles(commands.GroupCog, group_name="autorole", group_description="Con
 			db.execute("CREATE TABLE IF NOT EXISTS guild_verification_config (guild_id INTEGER PRIMARY KEY, enabled INTEGER NOT NULL DEFAULT 0, channel_id INTEGER, message TEXT NOT NULL DEFAULT 'Click Verify to access the server.', minimum_account_days INTEGER NOT NULL DEFAULT 0)")
 			db.execute("CREATE TABLE IF NOT EXISTS guild_verified_roles (guild_id INTEGER NOT NULL, role_id INTEGER NOT NULL, PRIMARY KEY (guild_id, role_id))")
 			db.execute("CREATE TABLE IF NOT EXISTS guild_unverified_roles (guild_id INTEGER NOT NULL, role_id INTEGER NOT NULL, PRIMARY KEY (guild_id, role_id))")
+
+		with connect_sqlite(DB_PATH) as db:
+			db.execute("CREATE TABLE IF NOT EXISTS verification_attempts (guild_id INTEGER NOT NULL, user_id INTEGER NOT NULL, attempted_at REAL NOT NULL, outcome TEXT NOT NULL, PRIMARY KEY(guild_id, user_id))")
+
+	def _number(self, guild_id, key, default, maximum):
+		try:
+			return max(0, min(maximum, int(self.store.get(guild_id, "verification", key, default))))
+		except (TypeError, ValueError):
+			return default
+
+	def validation_errors(self, guild):
+		verified, unverified = self._roles(guild.id)
+		errors = []
+		if not verified:
+			errors.append("Configure at least one verified role.")
+		if set(verified) & set(unverified):
+			errors.append("Verified and unverified roles must be different.")
+		if not guild.me or not guild.me.guild_permissions.manage_roles:
+			errors.append("Observer needs Manage Roles.")
+		for role_id in set(verified + unverified):
+			role = guild.get_role(role_id)
+			if role is None or role.is_default() or role.managed or not guild.me or role >= guild.me.top_role:
+				errors.append(f"Role {role_id} is missing or cannot be assigned; place Observer above it.")
+		return errors
+
+	async def verify_member(self, interaction):
+		guild = interaction.guild
+		if guild is None:
+			await interaction.response.send_message("Verification only works in a server.", ephemeral=True)
+			return
+		await interaction.response.defer(ephemeral=True)
+		key = guild.id
+		lock = self._verify_locks.setdefault(key, asyncio.Lock())
+		async with lock:
+			await self._verify_locked(interaction)
+
+	async def _verify_locked(self, interaction):
+		guild = interaction.guild
+		member = guild.get_member(interaction.user.id)
+		if member is None or member.bot:
+			await interaction.followup.send("Member unavailable for verification.", ephemeral=True)
+			return
+		config = self._config(guild.id)
+		if not config["enabled"]:
+			await interaction.followup.send("Verification is not enabled.", ephemeral=True)
+			return
+		now = time.time()
+		with connect_sqlite(DB_PATH) as db:
+			db.execute("DELETE FROM verification_attempts WHERE attempted_at < ?", (now - 30 * 86400,))
+			previous = db.execute("SELECT attempted_at FROM verification_attempts WHERE guild_id=? AND user_id=?", (guild.id, member.id)).fetchone()
+		cooldown = self._number(guild.id, "attempt_cooldown_seconds", 30, 3600)
+		if previous and now - previous["attempted_at"] < cooldown:
+			await interaction.followup.send("Please wait before trying verification again.", ephemeral=True)
+			return
+		errors = self.validation_errors(guild)
+		verified, unverified = self._roles(guild.id)
+		held = float(self.store.get(guild.id, "anti_raid", "hold_until", 0) or 0) > now
+		minimum = self._number(guild.id, "minimum_account_days", 0, 3650)
+		if held:
+			outcome = "Verification is temporarily paused during a raid. Please try again later."
+		elif errors:
+			outcome = "Verification needs staff attention: " + " ".join(errors)
+		elif discord.utils.utcnow() - member.created_at < timedelta(days=minimum):
+			outcome = f"Your Discord account must be at least {minimum} days old to verify."
+		elif unverified and not any(r.id in unverified for r in member.roles):
+			outcome = "You do not have an unverified role; ask staff if you need access."
+		else:
+			# Grant access first: a failed add must never remove the holding role.
+			try:
+				await member.add_roles(*(guild.get_role(r) for r in verified), reason="Verification")
+				await member.remove_roles(*(guild.get_role(r) for r in unverified), reason="Verification")
+				outcome = "You have successfully verified."
+			except discord.HTTPException as error:
+				error_id = log_error(error, source="verification role assignment", guild_id=guild.id, user_id=member.id)
+				outcome = f"Verification could not finish; ask staff to check your roles. Error ID: {error_id}"
+		with connect_sqlite(DB_PATH) as db:
+			db.execute("INSERT OR REPLACE INTO verification_attempts VALUES (?, ?, ?, ?)", (guild.id, member.id, now, outcome))
+		await interaction.followup.send(outcome, ephemeral=True)
+		channel_id = self.store.get(guild.id, "verification", "log_channel")
+		channel = guild.get_channel(int(channel_id)) if channel_id else None
+		if isinstance(channel, discord.TextChannel):
+			await channel.send(f"Verification: <@{member.id}> (`{member.id}`) — {outcome}", allowed_mentions=discord.AllowedMentions.none())
+
+	@verify_group.command(name="check", description="Check verification roles and bot permissions.")
+	@app_commands.guild_only()
+	@owner_or_has_guild_permissions(manage_guild=True)
+	async def verify_check(self, interaction: discord.Interaction):
+		errors = self.validation_errors(interaction.guild)
+		await interaction.response.send_message("\n".join(errors) or "Verification roles and permissions are ready.", ephemeral=True)
 
 	def _config(self, guild_id: int):
 		with connect_sqlite(DB_PATH) as db:
@@ -132,14 +214,21 @@ class Autoroles(commands.GroupCog, group_name="autorole", group_description="Con
 		autorole_enabled = bool(self.store.get(member.guild.id, "autorole", "bot_enabled" if member.bot else "enabled", config["bot_enabled"] if config else False))
 		if autorole_enabled:
 			role_ids = self._autorole_ids(member.guild.id, member.bot, roles)
+			if verification["enabled"] and not member.bot:
+				verified, _ = self._roles(member.guild.id)
+				role_ids.difference_update(verified)
 			await member.add_roles(*(role for role in (member.guild.get_role(role_id) for role_id in role_ids) if role), reason="Join autorole")
-		if verification["enabled"]:
+		if verification["enabled"] and not member.bot:
 			await member.add_roles(*(role for role in (member.guild.get_role(role_id) for role_id in unverified) if role), reason="Unverified role")
 
 	@app_commands.command(name="setup", description="Post or update the verification button.")
 	@app_commands.guild_only()
 	@owner_or_has_guild_permissions(manage_guild=True)
 	async def verify_setup(self, interaction: discord.Interaction):
+		errors = self.validation_errors(interaction.guild)
+		if errors:
+			await interaction.response.send_message("\n".join(errors), ephemeral=True)
+			return
 		channel_id = self.store.get(interaction.guild.id, "verification", "channel")
 		channel = interaction.guild.get_channel(int(channel_id)) if channel_id else interaction.channel
 		if not isinstance(channel, discord.TextChannel):
