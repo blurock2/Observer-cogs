@@ -35,6 +35,12 @@ def _todo_line(row) -> str:
 
 
 class TodoPager(discord.ui.View):
+	async def interaction_check(self, interaction: discord.Interaction) -> bool:
+		if interaction.user.id != self.user_id:
+			await interaction.response.send_message("This todo list belongs to another user.", ephemeral=True)
+			return False
+		return True
+
 	def __init__(self, cog: Todo, user_id: int, page: int = 0):
 		super().__init__(timeout=300)
 		self.cog, self.user_id, self.page = cog, user_id, page
