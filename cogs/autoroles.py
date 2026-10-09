@@ -140,10 +140,18 @@ class Autoroles(commands.GroupCog, group_name="autorole", group_description="Con
 	@app_commands.guild_only()
 	@owner_or_has_guild_permissions(manage_guild=True)
 	async def verify_setup(self, interaction: discord.Interaction):
+		channel_id = self.store.get(interaction.guild.id, "verification", "channel")
+		channel = interaction.guild.get_channel(int(channel_id)) if channel_id else interaction.channel
+		if not isinstance(channel, discord.TextChannel):
+			await interaction.response.send_message("Choose an available text channel in /setup first.", ephemeral=True)
+			return
+		await interaction.response.defer(ephemeral=True)
+		message = self.store.get(interaction.guild.id, "verification", "message", "Click Verify to access the server.")
+		await channel.send(message or "Click Verify to access the server.", view=VerifyView(self), allowed_mentions=discord.AllowedMentions.none())
 		with connect_sqlite(DB_PATH) as db:
-			db.execute("INSERT INTO guild_verification_config (guild_id, enabled, channel_id) VALUES (?, 1, ?) ON CONFLICT(guild_id) DO UPDATE SET enabled=1, channel_id=excluded.channel_id", (interaction.guild.id, interaction.channel_id))
-		await interaction.channel.send("Click the button to verify.", view=VerifyView(self))
-		await interaction.response.send_message("Verification panel posted.", ephemeral=True)
+			db.execute("INSERT INTO guild_verification_config (guild_id, enabled, channel_id) VALUES (?, 1, ?) ON CONFLICT(guild_id) DO UPDATE SET enabled=1, channel_id=excluded.channel_id", (interaction.guild.id, channel.id))
+		self.store.set(interaction.guild.id, "verification", "enabled", True)
+		await interaction.followup.send(f"Verification panel posted in {channel.mention}.", ephemeral=True)
 
 	@verify_group.command(name="enable", description="Enable button verification.")
 	@app_commands.guild_only()

@@ -305,6 +305,67 @@ class ModuleSpec:
 
 MODULES: list[ModuleSpec] = [
     ModuleSpec(
+        key="afk",
+        label="AFK",
+        emoji="💤",
+        description="Per-server AFK status and optional nickname prefix.",
+        settings=[
+            SettingSpec("nickname_prefix", "AFK nickname prefix", "text", default="[AFK]"),
+            SettingSpec("ignored_channels", "Ignored channel IDs", "text", description="Comma-separated channel IDs."),
+        ],
+    ),
+    ModuleSpec(
+        key="autorole",
+        label="Join Autoroles",
+        emoji="🎭",
+        description="Independent roles assigned when members join.",
+        settings=[
+            SettingSpec("enabled", "Member autoroles", "toggle", default=False),
+            SettingSpec("bot_enabled", "Bot autoroles", "toggle", default=False),
+            SettingSpec("member_role_1", "Member autorole 1", "role"),
+            SettingSpec("member_role_2", "Member autorole 2", "role"),
+            SettingSpec("member_role_3", "Member autorole 3", "role"),
+            SettingSpec("member_role_4", "Member autorole 4", "role"),
+            SettingSpec("member_role_5", "Member autorole 5", "role"),
+            SettingSpec("bot_role_1", "Bot autorole 1", "role"),
+            SettingSpec("bot_role_2", "Bot autorole 2", "role"),
+            SettingSpec("bot_role_3", "Bot autorole 3", "role"),
+            SettingSpec("bot_role_4", "Bot autorole 4", "role"),
+            SettingSpec("bot_role_5", "Bot autorole 5", "role"),
+        ],
+    ),
+    ModuleSpec(
+        key="verification",
+        label="Verification",
+        emoji="✅",
+        description="Button verification and verified/unverified role settings.",
+        settings=[
+            SettingSpec("enabled", "Enabled", "toggle", default=False),
+            SettingSpec("channel", "Verification channel", "channel"),
+            SettingSpec("minimum_account_days", "Minimum account age (days)", "integer", default=0),
+            SettingSpec("message", "Verification message", "text", default="Click Verify to access the server."),
+            SettingSpec("verified_role_1", "Verified role 1", "role"),
+            SettingSpec("verified_role_2", "Verified role 2", "role"),
+            SettingSpec("verified_role_3", "Verified role 3", "role"),
+            SettingSpec("verified_role_4", "Verified role 4", "role"),
+            SettingSpec("verified_role_5", "Verified role 5", "role"),
+            SettingSpec("unverified_role_1", "Unverified role 1", "role"),
+            SettingSpec("unverified_role_2", "Unverified role 2", "role"),
+            SettingSpec("unverified_role_3", "Unverified role 3", "role"),
+            SettingSpec("unverified_role_4", "Unverified role 4", "role"),
+            SettingSpec("unverified_role_5", "Unverified role 5", "role"),
+        ],
+    ),
+    ModuleSpec(
+        key="reminders",
+        label="Reminders",
+        emoji="⏰",
+        description="Persistent personal reminders and delivery fallback.",
+        settings=[
+            SettingSpec("fallback_enabled", "Fallback to source channel", "toggle", default=False),
+        ],
+    ),
+    ModuleSpec(
         key="bot",
         label="Bot System",
         emoji="🤖",
@@ -1168,14 +1229,35 @@ class AdminOnlyView(ErrorHandledView):
 
 
 class MainView(AdminOnlyView):
-    """The dashboard root: a dropdown listing every module."""
+    """The dashboard root, paginated to Discord's 25-option select limit."""
 
-    def __init__(self, cog: SetupUICog):
+    def __init__(self, cog: SetupUICog, page: int = 0):
         super().__init__(timeout=600)
         self.cog = cog
+        self.page = max(0, min(page, self.page_count - 1))
         self.add_item(self._build_select())
+        if self.page_count > 1:
+            previous = discord.ui.Button(
+                label="Previous",
+                style=discord.ButtonStyle.secondary,
+                disabled=self.page == 0,
+            )
+            previous.callback = self._previous_page
+            next_button = discord.ui.Button(
+                label="Next",
+                style=discord.ButtonStyle.secondary,
+                disabled=self.page == self.page_count - 1,
+            )
+            next_button.callback = self._next_page
+            self.add_item(previous)
+            self.add_item(next_button)
+
+    @property
+    def page_count(self) -> int:
+        return max(1, (len(MODULES) + 24) // 25)
 
     def _build_select(self) -> discord.ui.Select:
+        start = self.page * 25
         options = [
             discord.SelectOption(
                 label=module.label,
@@ -1183,7 +1265,7 @@ class MainView(AdminOnlyView):
                 emoji=module.emoji or None,  # Convert empty string to None
                 value=module.key,
             )
-            for module in MODULES
+            for module in MODULES[start:start + 25]
         ]
         select = discord.ui.Select(
             placeholder="Select a feature to configure…",
@@ -1193,6 +1275,22 @@ class MainView(AdminOnlyView):
         )
         select.callback = self._on_select
         return select
+
+    async def _change_page(
+        self,
+        interaction: discord.Interaction,
+        page: int,
+    ) -> None:
+        await interaction.response.edit_message(
+            embed=build_main_embed(self.cog.store, interaction.guild),
+            view=MainView(self.cog, page),
+        )
+
+    async def _previous_page(self, interaction: discord.Interaction) -> None:
+        await self._change_page(interaction, self.page - 1)
+
+    async def _next_page(self, interaction: discord.Interaction) -> None:
+        await self._change_page(interaction, self.page + 1)
 
     async def _on_select(self, interaction: discord.Interaction) -> None:
         try:

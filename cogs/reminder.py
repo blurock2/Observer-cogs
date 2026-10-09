@@ -12,7 +12,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from cogs.setup_ui import DB_PATH
+from cogs.setup_ui import DB_PATH, SetupConfigStore
 from database import connect_sqlite
 
 
@@ -190,7 +190,7 @@ class Reminder(ObserverCog):
 		with connect_sqlite(self._database_path) as connection:
 			return connection.execute(
 				"""
-				SELECT id, user_id, content
+				SELECT id, user_id, content, guild_id, channel_id
 				FROM reminders
 				WHERE acknowledged = 0 AND next_send_at <= ?
 				""",
@@ -302,6 +302,9 @@ class Reminder(ObserverCog):
 				reminder["user_id"],
 				error,
 			)
+			if await self._send_fallback(reminder):
+				self._set_next_send(reminder_id, time.time() + REMINDER_REPEAT_SECONDS)
+				return
 			self._set_next_send(
 				reminder_id,
 				time.time() + REMINDER_RETRY_SECONDS,
@@ -312,6 +315,30 @@ class Reminder(ObserverCog):
 			reminder_id,
 			time.time() + REMINDER_REPEAT_SECONDS,
 		)
+
+	async def _send_fallback(self, reminder) -> bool:
+		guild_id, channel_id = reminder["guild_id"], reminder["channel_id"]
+		if not guild_id or not channel_id:
+			return False
+		store = SetupConfigStore(self._database_path)
+		if not store.get(guild_id, "reminders", "fallback_enabled", False):
+			return False
+		guild = self.bot.get_guild(guild_id)
+		channel = guild.get_channel_or_thread(channel_id) if guild else None
+		if channel is None:
+			return False
+		try:
+			member = guild.get_member(reminder["user_id"]) or await guild.fetch_member(reminder["user_id"])
+			if not channel.permissions_for(member).view_channel:
+				return False
+			await channel.send(
+				f"{member.mention} reminder: {reminder['content']}",
+				allowed_mentions=discord.AllowedMentions(users=[member], roles=False, everyone=False),
+				view=ReminderSeenView(self, int(reminder["id"])),
+			)
+		except (discord.Forbidden, discord.HTTPException):
+			return False
+		return True
 
 	def _schedule_reminder(
 		self,
