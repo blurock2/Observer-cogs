@@ -46,7 +46,6 @@ MAX_DELAY_SECONDS = 31 * 24 * 60 * 60
 REMINDER_REPEAT_SECONDS = 60 * 60
 REMINDER_POLL_SECONDS = 10
 REMINDER_RETRY_SECONDS = 5 * 60
-reminder_group = app_commands.Group(name="reminder", description="Manage your reminders")
 logger = logging.getLogger("observer.reminder")
 
 
@@ -564,14 +563,6 @@ class Reminder(ObserverCog):
 			ephemeral=True,
 		)
 
-	@reminder_group.command(name="delete", description="Delete one of your pending reminders.")
-	async def reminder_delete_subcommand(self, interaction: discord.Interaction, id: int):
-		await self.reminder_delete.callback(self, interaction, id)
-
-	@reminder_group.command(name="reschedule", description="Reschedule one of your pending reminders.")
-	async def reminder_reschedule_subcommand(self, interaction: discord.Interaction, id: int, delay: str):
-		await self.reminder_reschedule.callback(self, interaction, id, delay)
-
 	async def reminder_context(
 		self,
 		interaction: discord.Interaction,
@@ -600,4 +591,4 @@ async def setup(bot: commands.Bot) -> None:
 	cog = Reminder(bot)
 	await bot.add_cog(cog)
 	bot.tree.add_command(app_commands.ContextMenu(name="Remind Me", callback=cog.reminder_context))
-	bot.tree.add_command(reminder_group)
+	# /reminder remains the existing top-level command; management uses /reminder-delete and /reminder-reschedule.
