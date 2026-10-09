@@ -304,6 +304,22 @@ class ModuleSpec:
 
 
 MODULES: list[ModuleSpec] = [
+    ModuleSpec(key="anti_raid", label="Anti-Raid and Honeypot", emoji="🍯",
+        description="Join-burst verification holds, temporary restrictions, and an opt-in trap channel.",
+        settings=[
+            SettingSpec("enabled", "Automatic anti-raid", "toggle", default=False),
+            SettingSpec("join_threshold", "Joins to trigger raid hold", "integer", default=10),
+            SettingSpec("join_window_seconds", "Join window (seconds)", "integer", default=30),
+            SettingSpec("hold_seconds", "Raid hold duration (seconds)", "integer", default=300),
+            SettingSpec("timeout_minutes", "Raid timeout (minutes; 0 disables)", "integer", default=10),
+            SettingSpec("alert_channel", "Anti-raid alerts", "channel"),
+            SettingSpec("bypass_role", "Trusted bypass role", "role"),
+            SettingSpec("honeypot_enabled", "Honeypot enabled", "toggle", default=False),
+            SettingSpec("honeypot_channel", "Honeypot channel", "channel",
+                description="Dedicated trap channel. Warn members not to post here."),
+            SettingSpec("honeypot_ban", "Ban honeypot posters", "toggle", default=False,
+                description="Off: timeout for 1 hour. On: ban. Staff and bots are excluded."),
+        ]),
     ModuleSpec(
         key="afk",
         label="AFK",
@@ -342,6 +358,8 @@ MODULES: list[ModuleSpec] = [
         settings=[
             SettingSpec("enabled", "Enabled", "toggle", default=False),
             SettingSpec("channel", "Verification channel", "channel"),
+            SettingSpec("attempt_cooldown_seconds", "Verification retry cooldown (seconds)", "integer", default=30),
+            SettingSpec("log_channel", "Verification attempt log", "channel"),
             SettingSpec("minimum_account_days", "Minimum account age (days)", "integer", default=0),
             SettingSpec("message", "Verification message", "text", default="Click Verify to access the server."),
             SettingSpec("verified_role_1", "Verified role 1", "role"),

@@ -79,6 +79,7 @@ class MyBot(commands.Bot):
         "cogs.message_relay",
         "cogs.moderation",
         "cogs.security",
+        "cogs.anti_raid",
         "cogs.tags",
         "cogs.mentions",
         "cogs.member_commands",
