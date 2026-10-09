@@ -60,6 +60,9 @@ class RestrictedCommandTree(app_commands.CommandTree):
 class MyBot(commands.Bot):
     EXTENSIONS = (
         "cogs.setup_ui",
+        "cogs.todo",
+        "cogs.Bookmarks",
+        "cogs.temproles",
         "cogs.audit_log",
         "cogs.acc_link",
         "cogs.reaction_roles",
