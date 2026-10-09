@@ -46,6 +46,7 @@ MAX_DELAY_SECONDS = 31 * 24 * 60 * 60
 REMINDER_REPEAT_SECONDS = 60 * 60
 REMINDER_POLL_SECONDS = 10
 REMINDER_RETRY_SECONDS = 5 * 60
+reminder_group = app_commands.Group(name="reminder", description="Manage your reminders")
 logger = logging.getLogger("observer.reminder")
 
 
@@ -500,5 +501,100 @@ class Reminder(ObserverCog):
 		else:
 			await interaction.response.send_message(confirmation)
 
+	@app_commands.command(
+		name="reminders",
+		description="List your pending reminders privately.",
+	)
+	async def reminders(self, interaction: discord.Interaction) -> None:
+		with connect_sqlite(self._database_path) as connection:
+			rows = connection.execute(
+				"SELECT id, content, next_send_at FROM reminders "
+				"WHERE user_id = ? AND acknowledged = 0 ORDER BY next_send_at LIMIT 25",
+				(interaction.user.id,),
+			).fetchall()
+		if not rows:
+			await interaction.response.send_message("You have no pending reminders.", ephemeral=True)
+			return
+		text = "\n\n".join(
+			f"#{row['id']} — {row['content']}\nIn <t:{int(row['next_send_at'])}:R>"
+			for row in rows
+		)
+		await interaction.response.send_message(text, ephemeral=True)
+
+	@app_commands.command(
+		name="reminder-delete",
+		description="Delete one of your pending reminders.",
+	)
+	async def reminder_delete(self, interaction: discord.Interaction, id: int) -> None:
+		with connect_sqlite(self._database_path) as connection:
+			result = connection.execute(
+				"DELETE FROM reminders WHERE id = ? AND user_id = ?",
+				(id, interaction.user.id),
+			).rowcount
+		await interaction.response.send_message(
+			"Reminder deleted." if result else "Reminder not found.",
+			ephemeral=True,
+		)
+
+	@app_commands.command(
+		name="reminder-reschedule",
+		description="Reschedule one of your pending reminders.",
+	)
+	async def reminder_reschedule(
+		self,
+		interaction: discord.Interaction,
+		id: int,
+		delay: str,
+	) -> None:
+		parsed_delay = parse_delay(delay)
+		if parsed_delay is None:
+			await interaction.response.send_message("Use a delay such as `20m` or `2h`.", ephemeral=True)
+			return
+		with connect_sqlite(self._database_path) as connection:
+			result = connection.execute(
+				"UPDATE reminders SET next_send_at = ?, acknowledged = 0, acknowledged_at = NULL "
+				"WHERE id = ? AND user_id = ?",
+				(time.time() + parsed_delay, id, interaction.user.id),
+			).rowcount
+		await interaction.response.send_message(
+			"Reminder rescheduled." if result else "Reminder not found.",
+			ephemeral=True,
+		)
+
+	@reminder_group.command(name="delete", description="Delete one of your pending reminders.")
+	async def reminder_delete_subcommand(self, interaction: discord.Interaction, id: int):
+		await self.reminder_delete(interaction, id)
+
+	@reminder_group.command(name="reschedule", description="Reschedule one of your pending reminders.")
+	async def reminder_reschedule_subcommand(self, interaction: discord.Interaction, id: int, delay: str):
+		await self.reminder_reschedule(interaction, id, delay)
+
+	async def reminder_context(
+		self,
+		interaction: discord.Interaction,
+		message: discord.Message,
+	) -> None:
+		class ReminderModal(discord.ui.Modal, title="Remind me"):
+			when = discord.ui.TextInput(label="When?", placeholder="2h")
+			note = discord.ui.TextInput(label="Extra note", required=False, style=discord.TextStyle.paragraph)
+
+			async def on_submit(modal_self, modal_interaction: discord.Interaction):
+				delay = parse_delay(str(modal_self.when.value))
+				if delay is None:
+					await modal_interaction.response.send_message("Use a delay such as `20m` or `2h`.", ephemeral=True)
+					return
+				with connect_sqlite(self._database_path) as connection:
+					cursor = connection.execute(
+						"INSERT INTO reminders (user_id, content, next_send_at, created_at, guild_id, channel_id, source_url, source_content, source_author_id, source_channel_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+						(modal_interaction.user.id, str(modal_self.note.value).strip() or message.content or "Saved message", time.time() + delay, time.time(), message.guild.id if message.guild else None, message.channel.id, message.jump_url, message.content, message.author.id, message.channel.id),
+					)
+				self.bot.add_view(ReminderSeenView(self, int(cursor.lastrowid)))
+				await modal_interaction.response.send_message("Reminder set.", ephemeral=True)
+
+		await interaction.response.send_modal(ReminderModal())
+
 async def setup(bot: commands.Bot) -> None:
-	await bot.add_cog(Reminder(bot))
+	cog = Reminder(bot)
+	await bot.add_cog(cog)
+	bot.tree.add_command(app_commands.ContextMenu(name="Remind Me", callback=cog.reminder_context))
+	bot.tree.add_command(reminder_group)
