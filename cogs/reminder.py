@@ -146,6 +146,9 @@ class Reminder(ObserverCog):
 					"PRAGMA table_info(reminders)"
 				)
 			}
+			for column, definition in (("guild_id", "INTEGER"), ("channel_id", "INTEGER"), ("source_url", "TEXT"), ("source_content", "TEXT"), ("source_author_id", "INTEGER"), ("source_channel_id", "INTEGER")):
+				if column not in columns:
+					connection.execute(f"ALTER TABLE reminders ADD COLUMN {column} {definition}")
 			if "acknowledged_at" not in columns:
 				connection.execute(
 					"ALTER TABLE reminders ADD COLUMN acknowledged_at REAL"
@@ -563,11 +566,11 @@ class Reminder(ObserverCog):
 
 	@reminder_group.command(name="delete", description="Delete one of your pending reminders.")
 	async def reminder_delete_subcommand(self, interaction: discord.Interaction, id: int):
-		await self.reminder_delete(interaction, id)
+		await self.reminder_delete.callback(self, interaction, id)
 
 	@reminder_group.command(name="reschedule", description="Reschedule one of your pending reminders.")
 	async def reminder_reschedule_subcommand(self, interaction: discord.Interaction, id: int, delay: str):
-		await self.reminder_reschedule(interaction, id, delay)
+		await self.reminder_reschedule.callback(self, interaction, id, delay)
 
 	async def reminder_context(
 		self,
