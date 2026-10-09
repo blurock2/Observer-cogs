@@ -710,10 +710,10 @@ class MessageRelay(ObserverCog):
     ) -> None:
         """Forward text and eligible attachments as a non-pinging embed."""
         embed = discord.Embed(
-            description=message.content[:4096] or "*No text content*",
             colour=EMBED_COLOR,
             timestamp=message.created_at,
         )
+        embed.description = message.content[:4096] or "*No text content*"
         embed.set_author(
             name=str(message.author),
             icon_url=message.author.display_avatar.url,
@@ -727,7 +727,7 @@ class MessageRelay(ObserverCog):
         )
 
         files: list[discord.File] = []
-        first_image_filename: str | None = None
+        image_filenames: list[str] = []
 
         timeout = aiohttp.ClientTimeout(total=30)
 
@@ -755,19 +755,36 @@ class MessageRelay(ObserverCog):
                 )
 
                 if (
-                    first_image_filename is None
-                    and attachment.content_type
+                    attachment.content_type
                     and attachment.content_type.startswith("image/")
                 ):
-                    first_image_filename = filename
+                    image_filenames.append(filename)
 
-        if first_image_filename is not None:
-            embed.set_image(
-                url=f"attachment://{first_image_filename}"
-            )
+        embeds = [embed]
+        for image_index, filename in enumerate(image_filenames[:10]):
+            if image_index == 0:
+                image_embed = embed
+            else:
+                image_embed = discord.Embed(
+                    colour=EMBED_COLOR,
+                    timestamp=message.created_at,
+                )
+                image_embed.set_author(
+                    name=str(message.author),
+                    icon_url=message.author.display_avatar.url,
+                    url=message.jump_url,
+                )
+                image_embed.set_footer(
+                    text=(
+                        f"Relayed from {message.guild.name} "
+                        f"• #{message.channel.name}"
+                    )
+                )
+                embeds.append(image_embed)
+            image_embed.set_image(url=f"attachment://{filename}")
 
         await destination.send(
-            embed=embed,
+            embeds=embeds,
             files=files,
             allowed_mentions=NO_MENTIONS,
         )
