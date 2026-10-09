@@ -13,6 +13,12 @@ bookmark_group = app_commands.Group(name="bookmark", description="Manage your pr
 
 
 class BookmarkView(discord.ui.View):
+	async def interaction_check(self, interaction: discord.Interaction) -> bool:
+		if interaction.user.id != self.user_id:
+			await interaction.response.send_message("These bookmarks belong to another user.", ephemeral=True)
+			return False
+		return True
+
 	def __init__(self, cog: Bookmarks, user_id: int, bookmark_id: int):
 		super().__init__(timeout=300)
 		self.cog, self.user_id, self.bookmark_id = cog, user_id, bookmark_id
