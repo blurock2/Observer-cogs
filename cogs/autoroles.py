@@ -213,6 +213,13 @@ class Autoroles(commands.GroupCog, group_name="autorole", group_description="Con
 async def setup(bot: commands.Bot):
 	cog = Autoroles(bot)
 	await bot.add_cog(cog)
+
+	# Verification commands are declared on a standalone group, so bind
+	# their callbacks to this cog instance before registering the group.
+	for command in verify_group.walk_commands():
+		if isinstance(command, app_commands.Command):
+			command.binding = cog
+
 	bot.tree.remove_command("verify")
 	bot.tree.add_command(verify_group)
 	bot.add_view(VerifyView(cog))
