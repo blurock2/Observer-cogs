@@ -32,7 +32,9 @@ class AFK(commands.Cog):
 		prefix = str(self.store.get(interaction.guild.id, "afk", "nickname_prefix", "[AFK]") or "").strip()
 		if prefix and isinstance(member, discord.Member):
 			try:
-				await member.edit(nick=f"{prefix} {member.display_name}"[:32], reason="AFK status")
+				base_name = member.nick or member.name
+				if not base_name.startswith(f"{prefix} "):
+					await member.edit(nick=f"{prefix} {base_name}"[:32], reason="AFK status")
 			except discord.HTTPException:
 				pass
 		await interaction.response.send_message(f"You are now AFK: {reason.strip() or 'AFK'}", ephemeral=True)
