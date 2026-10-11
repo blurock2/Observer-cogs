@@ -28,8 +28,7 @@ migrate_legacy_databases(
 cleanup_old_backups()
 
 
-# ============================================================
-# Intents
+# ============================================================ Intents
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -42,8 +41,7 @@ intents.voice_states = True
 intents.presences = True
 
 
-# ============================================================
-# Bot
+# ============================================================ Bot
 
 class RestrictedCommandTree(app_commands.CommandTree):
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
@@ -56,6 +54,7 @@ class RestrictedCommandTree(app_commands.CommandTree):
                 ephemeral=True,
             )
         return False
+
 
 class MyBot(commands.Bot):
     EXTENSIONS = (
@@ -149,8 +148,22 @@ class MyBot(commands.Bot):
 
     async def process_commands(self, message: discord.Message) -> None:
         context = await self.get_context(message)
-        if not self.command_access_allowed(context.author, context.guild):
+
+        if context.command is None:
             return
+
+        if not self.command_access_allowed(context.author, context.guild):
+            await context.send(
+                embed=discord.Embed(
+                    description=(
+                        "⚠️ This bot's commands are limited to configured "
+                        "staff and tester roles."
+                    ),
+                    color=0x96EDF1,
+                )
+            )
+            return
+
         await self.invoke(context)
 
     async def setup_hook(self) -> None:
@@ -181,8 +194,7 @@ class MyBot(commands.Bot):
 bot = MyBot()
 
 
-# ============================================================
-# Prefix command: reload cogs
+# ============================================================ Prefix command: reload cogs
 
 @bot.command(name="reload_cogs")
 @commands.is_owner()
@@ -247,11 +259,7 @@ async def reload_cogs(ctx: commands.Context) -> None:
                 f"`{type(error).__name__}: {error}`"
             )
 
-            logger.exception(
-                "Failed to reload extension %s from %s",
-                extension,
-                module_path,
-            )
+            logger.exception("Failed to reload extension %s", extension)
 
     response = "\n".join(results)
 
@@ -288,8 +296,7 @@ async def sync_commands(ctx: commands.Context) -> None:
         )
 
 
-# ============================================================
-# Prefix command: restart
+# ============================================================ Prefix command: restart
 
 @bot.command(name="restart")
 @commands.is_owner()
@@ -339,8 +346,7 @@ async def restart_bot(ctx: commands.Context) -> None:
     )
 
 
-# ============================================================
-# Prefix command: inspect commands
+# ============================================================ Prefix command: inspect commands
 
 @bot.command(name="debug_commands")
 @commands.is_owner()
@@ -395,8 +401,7 @@ async def debug_commands(ctx: commands.Context) -> None:
             await ctx.send(response[start:start + 1900])
 
 
-# ============================================================
-# Events
+# ============================================================ Events
 
 @bot.event
 async def on_ready() -> None:
@@ -422,8 +427,7 @@ async def on_app_command_error(
     await handle_interaction_error(interaction, error)
 
 
-# ============================================================
-# Main
+# ============================================================ Main
 
 async def main() -> None:
     token = os.getenv("DISCORD_TOKEN")
