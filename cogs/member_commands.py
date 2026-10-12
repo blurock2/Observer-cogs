@@ -225,8 +225,10 @@ class MemberCommands(ObserverCog):
     ) -> None:
         target = member or ctx.author
 
-        if not isinstance(target, DiscordUser):
-            logger.warning("Rejected invalid prefix avatar target: %s", type(target).__name__)
+        if isinstance(target, Discord.User):
+             target = guild.get_member(target.id)
+        if not isinstance(target, discord.Member):
+            await ctx.send("User must be a member of this server.")
             return
 
         display_name = getattr(target, "display_name", target.name)
