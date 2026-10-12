@@ -202,7 +202,7 @@ class MemberCommands(ObserverCog):
     ) -> None:
         target = member or interaction.user
 
-        if not isinstance(target, DiscordUser):
+        if not isinstance(target, discord.User):
             logger.warning("Rejected invalid slash avatar target: %s", type(target).__name__)
             return
 
@@ -225,7 +225,7 @@ class MemberCommands(ObserverCog):
     ) -> None:
         target = member or ctx.author
 
-        if isinstance(target, Discord.User):
+        if isinstance(target, discord.User):
              target = guild.get_member(target.id)
         if not isinstance(target, discord.Member):
             await ctx.send("User must be a member of this server.")
