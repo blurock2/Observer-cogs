@@ -7,7 +7,6 @@ import ipaddress
 import logging
 import re
 import time
-from collections import defaultdict, deque
 from datetime import timedelta
 from urllib.parse import unquote, urlsplit
 
@@ -20,9 +19,7 @@ from database import ModerationCaseStore
 
 MODULE_KEY = "security"
 logger = logging.getLogger("observer.security")
-RISK_WINDOW_SECONDS = 60
 NEW_ACCOUNT_DAYS = 7
-RAPID_JOIN_THRESHOLD = 5
 INVITE_USE_THRESHOLD = 2
 LOCKDOWN_TIMEOUT_MINUTES = 30
 SCAM_ALERT_COOLDOWN_SECONDS = 60
@@ -178,7 +175,6 @@ class SecurityCog(ObserverCog):
         self.bot = bot
         self.store = SetupConfigStore(DB_PATH)
         self.cases = ModerationCaseStore(DB_PATH)
-        self.join_times: dict[int, deque[float]] = defaultdict(deque)
         self.lock_tasks: dict[tuple[int, int], asyncio.Task] = {}
         self._recovery_task: asyncio.Task | None = None
         self._permission_lock = asyncio.Lock()
@@ -309,28 +305,7 @@ class SecurityCog(ObserverCog):
     async def on_member_join(self, member: discord.Member) -> None:
         if not self._enabled(member.guild.id):
             return
-        now = time.monotonic()
-        joins = self.join_times[member.guild.id]
-        joins.append(now)
-        join_window = self._int_setting(
-            member.guild.id,
-            "rapid_join_window_seconds",
-            RISK_WINDOW_SECONDS,
-            10,
-            3600,
-        )
-        while joins and now - joins[0] > join_window:
-            joins.popleft()
         reasons = self._risk_reasons(member)
-        join_threshold = self._int_setting(
-            member.guild.id,
-            "rapid_join_threshold",
-            RAPID_JOIN_THRESHOLD,
-            2,
-            100,
-        )
-        if len(joins) >= join_threshold:
-            reasons.append(f"{len(joins)} joins in {join_window} seconds")
         invite_threshold = self._int_setting(
             member.guild.id,
             "invite_use_threshold",
@@ -367,7 +342,7 @@ class SecurityCog(ObserverCog):
                     40320,
                 )
                 if timeout_minutes > 0:
-                    await member.timeout(timedelta(minutes=timeout_minutes), reason="Temporary anti-raid new-account restriction")
+                    await member.timeout(timedelta(minutes=timeout_minutes), reason="Temporary lockdown new-account restriction")
                 reasons.append("lockdown restriction applied")
             except discord.DiscordException:
                 reasons.append("lockdown restriction could not be applied")
@@ -549,7 +524,7 @@ class SecurityCog(ObserverCog):
             await interaction.followup.send(f"Unlocked {channel.mention}.", ephemeral=True)
 
 
-    @app_commands.command(name="lockdown", description="Enable or disable temporary anti-raid lockdown.")
+    @app_commands.command(name="lockdown", description="Enable or disable temporary security lockdown.")
     @app_commands.guild_only()
     @app_commands.default_permissions(manage_guild=True)
     @app_commands.checks.has_permissions(manage_guild=True)
@@ -595,7 +570,7 @@ class SecurityCog(ObserverCog):
                     await interaction.followup.send("Lockdown could not finish. Recovery data is saved; disable lockdown to restore permissions.", ephemeral=True)
                     return
                 self.cases.create_case(guild.id, "lockdown", interaction.user.id, interaction.user.id, "Enabled", status="resolved")
-                await self._alert(guild, "Anti-raid lockdown enabled", f"Enabled by {interaction.user.mention}.")
+                await self._alert(guild, "Security lockdown enabled", f"Enabled by {interaction.user.mention}.")
                 await interaction.followup.send("Lockdown enabled; channels are locked and verification is at least High.", ephemeral=True)
                 return
             previous = self._get(guild.id, "lockdown_previous", {}) or {}
@@ -607,7 +582,7 @@ class SecurityCog(ObserverCog):
                 channel = guild.get_channel(item.get("id"))
                 if isinstance(channel, discord.TextChannel):
                     try:
-                        await self._set_send_permission(channel, item.get("send_messages"), "Anti-raid lockdown disabled")
+                        await self._set_send_permission(channel, item.get("send_messages"), "Security lockdown disabled")
                     except discord.NotFound:
                         continue
                     except discord.HTTPException:
