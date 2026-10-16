@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from collections import defaultdict, deque
 from datetime import timedelta
@@ -13,6 +14,9 @@ from discord.ext import commands
 from cogs.setup_ui import DB_PATH, SetupConfigStore, owner_or_has_guild_permissions
 from database import ModerationCaseStore
 from error_handling import ObserverCog, log_error
+
+
+logger = logging.getLogger("observer.anti_raid")
 
 
 class AntiRaid(ObserverCog):
@@ -109,29 +113,90 @@ class AntiRaid(ObserverCog):
                              + (f"Detected {len(joins)} joins in {window}s.\n" if triggered else "New arrival during hold.\n")
                              + "\n".join(results))
 
+    def honeypot_exemption_reason(self, member):
+        """Explain an exemption without changing the existing anti-raid policy."""
+        if member.bot:
+            return "bot account"
+        if member.id == member.guild.owner_id:
+            return "server owner"
+        permissions = member.guild_permissions
+        for permission in ("administrator", "manage_guild", "moderate_members",
+                           "ban_members", "manage_messages", "kick_members"):
+            if getattr(permissions, permission, False):
+                return f"permission: {permission}"
+        bypass = self.get(member.guild.id, "bypass_role")
+        if bypass and any(str(role.id) == str(bypass) for role in member.roles):
+            return "configured bypass role"
+        return None
+
     @commands.Cog.listener()
     async def on_message(self, message):
-        if message.guild is None or message.webhook_id or not isinstance(message.author, discord.Member):
+        if message.guild is None:
             return
         guild = message.guild
-        if (not self.get(guild.id, "honeypot_enabled", False)
-                or str(message.channel.id) != str(self.get(guild.id, "honeypot_channel"))
-                or self.exempt(message.author)):
-            return
-        key = (guild.id, message.author.id)
-        if key in self.trapped:
-            return
-        self.trapped.add(key)
         try:
-            result = await self.restrict(message.author, "Posted in the configured do-not-post honeypot channel",
-                                         ban=bool(self.get(guild.id, "honeypot_ban", False)), minutes=60)
+            if not self.get(guild.id, "honeypot_enabled", False):
+                return
+            channel_id = self.get(guild.id, "honeypot_channel")
+            if str(message.channel.id) != str(channel_id):
+                # Debug only: normal messages must not flood production logs.
+                logger.debug("Honeypot channel mismatch guild=%s channel=%s configured=%s",
+                             guild.id, message.channel.id, channel_id)
+                return
+            if message.webhook_id:
+                logger.info("Honeypot skipped webhook guild=%s channel=%s",
+                            guild.id, message.channel.id)
+                return
+            if not isinstance(message.author, discord.Member):
+                logger.warning("Honeypot skipped non-member author guild=%s channel=%s author=%s",
+                               guild.id, message.channel.id, message.author.id)
+                return
+
+            member = message.author
+            exemption = self.honeypot_exemption_reason(member)
+            if exemption:
+                logger.info("Honeypot exempt guild=%s channel=%s user=%s reason=%s",
+                            guild.id, message.channel.id, member.id, exemption)
+                return
+
+            key = (guild.id, member.id)
+            if key in self.trapped:
+                logger.info("Honeypot duplicate in-flight guild=%s user=%s", guild.id, member.id)
+                return
+            self.trapped.add(key)
             try:
-                await message.delete()
-            except discord.HTTPException as error:
-                log_error(error, source="honeypot delete", guild_id=guild.id, user_id=message.author.id)
-            await self.alert(guild, f"**Honeypot triggered**\nMember: {message.author.id}\nChannel: {message.channel.id}\nAction: {result}")
-        finally:
-            self.trapped.discard(key)
+                ban = self.get(guild.id, "honeypot_ban", False)
+                if isinstance(ban, str):
+                    ban = ban.strip().lower() in {"true", "1", "yes", "on"}
+                logger.warning("Honeypot triggered guild=%s channel=%s user=%s message=%s action=%s",
+                               guild.id, message.channel.id, member.id, message.id,
+                               "ban" if ban else "timeout")
+                result = await self.restrict(
+                    member, "Posted in the configured do-not-post honeypot channel",
+                    ban=bool(ban), minutes=60
+                )
+                logger.warning("Honeypot enforcement guild=%s user=%s result=%s",
+                               guild.id, member.id, result)
+                try:
+                    await message.delete()
+                    logger.info("Honeypot deleted message guild=%s channel=%s message=%s",
+                                guild.id, message.channel.id, message.id)
+                except discord.HTTPException as error:
+                    error_id = log_error(error, source="honeypot delete",
+                                         guild_id=guild.id, user_id=member.id)
+                    logger.warning("Honeypot message deletion failed guild=%s user=%s error_id=%s",
+                                   guild.id, member.id, error_id)
+                await self.alert(
+                    guild, f"**Honeypot triggered**\nMember: {member.id}\\n"
+                           f"Channel: {message.channel.id}\\nAction: {result}"
+                )
+            finally:
+                self.trapped.discard(key)
+        except Exception as error:
+            logger.exception("Honeypot handler failed guild=%s channel=%s user=%s",
+                             guild.id, message.channel.id, getattr(message.author, "id", None))
+            log_error(error, source="honeypot handler", guild_id=guild.id,
+                      user_id=getattr(message.author, "id", None))
 
     @app_commands.command(name="raid-status", description="Show raid hold and honeypot status, or release the hold.")
     @app_commands.guild_only()
