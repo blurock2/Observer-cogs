@@ -187,7 +187,7 @@ class AntiRaid(ObserverCog):
                     logger.warning("Honeypot message deletion failed guild=%s user=%s error_id=%s",
                                    guild.id, member.id, error_id)
                 await self.alert(
-                    guild, f"**Honeypot triggered**\nMember: {member.id}\\n"
+                    guild, f"**Honeypot triggered**\\nMember: {member.id}\\n"
                            f"Channel: {message.channel.id}\\nAction: {result}"
                 )
             finally:
