@@ -7,7 +7,6 @@ import ipaddress
 import logging
 import re
 import time
-from collections import defaultdict, deque
 from datetime import timedelta
 from urllib.parse import unquote, urlsplit
 
@@ -20,9 +19,7 @@ from database import ModerationCaseStore
 
 MODULE_KEY = "security"
 logger = logging.getLogger("observer.security")
-RISK_WINDOW_SECONDS = 60
 NEW_ACCOUNT_DAYS = 7
-RAPID_JOIN_THRESHOLD = 5
 INVITE_USE_THRESHOLD = 2
 LOCKDOWN_TIMEOUT_MINUTES = 30
 SCAM_ALERT_COOLDOWN_SECONDS = 60
