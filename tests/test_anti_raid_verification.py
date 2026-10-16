@@ -112,3 +112,47 @@ async def test_honeypot_defaults_off_and_timeout_then_opt_in_ban(protection):
     raid.store.set(1, 'anti_raid', 'honeypot_ban', True)
     await raid.on_message(message)
     m.ban.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_honeypot_logs_exemption_reason_and_does_not_enforce(protection, caplog):
+    raid, _ = protection
+    m = member()
+    m.guild_permissions.manage_messages = True
+    from unittest.mock import Mock
+    actual = Mock(spec=discord.Member)
+    for name, value in vars(m).items():
+        setattr(actual, name, value)
+    message = NS(guild=m.guild, author=actual, webhook_id=None, channel=NS(id=50),
+                 delete=AsyncMock(), id=100)
+    raid.store.set(1, 'anti_raid', 'honeypot_enabled', True)
+    raid.store.set(1, 'anti_raid', 'honeypot_channel', 50)
+    raid.alert = AsyncMock()
+    with caplog.at_level('INFO', logger='observer.anti_raid'):
+        await raid.on_message(message)
+    assert 'reason=permission: manage_messages' in caplog.text
+    m.ban.assert_not_awaited()
+    message.delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_honeypot_logs_failed_enforcement_and_clears_inflight(protection, caplog):
+    raid, _ = protection
+    m = member()
+    m.guild.me.guild_permissions.ban_members = False
+    from unittest.mock import Mock
+    actual = Mock(spec=discord.Member)
+    for name, value in vars(m).items():
+        setattr(actual, name, value)
+    message = NS(guild=m.guild, author=actual, webhook_id=None, channel=NS(id=50),
+                 delete=AsyncMock(), id=100)
+    raid.store.set(1, 'anti_raid', 'honeypot_enabled', True)
+    raid.store.set(1, 'anti_raid', 'honeypot_channel', 50)
+    raid.store.set(1, 'anti_raid', 'honeypot_ban', True)
+    raid.alert = AsyncMock()
+    with caplog.at_level('WARNING', logger='observer.anti_raid'):
+        await raid.on_message(message)
+    assert 'action=ban' in caplog.text
+    assert 'not applied: missing ban_members' in caplog.text
+    assert (1, m.id) not in raid.trapped
+    m.ban.assert_not_awaited()
