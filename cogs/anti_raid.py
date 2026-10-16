@@ -169,7 +169,7 @@ class AntiRaid(ObserverCog):
                 if isinstance(ban, str):
                     ban = ban.strip().lower() in {"true", "1", "yes", "on"}
                 logger.warning("Honeypot triggered guild=%s channel=%s user=%s message=%s action=%s",
-                               guild.id, message.channel.id, member.id, message.id,
+                               guild.id, message.channel.id, member.id, getattr(message, "id", None),
                                "ban" if ban else "timeout")
                 result = await self.restrict(
                     member, "Posted in the configured do-not-post honeypot channel",
@@ -180,7 +180,7 @@ class AntiRaid(ObserverCog):
                 try:
                     await message.delete()
                     logger.info("Honeypot deleted message guild=%s channel=%s message=%s",
-                                guild.id, message.channel.id, message.id)
+                                guild.id, message.channel.id, getattr(message, "id", None))
                 except discord.HTTPException as error:
                     error_id = log_error(error, source="honeypot delete",
                                          guild_id=guild.id, user_id=member.id)
