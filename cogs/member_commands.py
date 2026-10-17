@@ -204,7 +204,7 @@ class MemberCommands(ObserverCog):
 
         # Discord resolves guild users as Members even when the option is
         # annotated as User. Both expose display_avatar.
-        if not isinstance(target, (discord.User, discord.Member)):
+        if not isinstance(target, discord.abc.User):
             logger.warning(
                 "Invalid slash avatar target type=%s guild=%s",
                 type(target).__name__,
@@ -236,7 +236,7 @@ class MemberCommands(ObserverCog):
 
         # A prefix converter can return User or Member. Neither requires a
         # guild lookup to access the display avatar.
-        if not isinstance(target, (discord.User, discord.Member)):
+        if not isinstance(target, discord.abc.User):
             logger.warning(
                 "Invalid prefix avatar target type=%s guild=%s",
                 type(target).__name__,
