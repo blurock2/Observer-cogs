@@ -197,6 +197,16 @@ bot = MyBot()
 
 # ============================================================ Prefix command: reload cogs
 
+async def require_bot_mention(ctx: commands.Context) -> bool:
+    """Require owner commands to explicitly mention this bot."""
+    if bot.user is not None and any(
+        user.id == bot.user.id for user in ctx.message.mentions
+    ):
+        return True
+
+    await ctx.send("Mention me to run this owner command.")
+    return False
+
 @bot.command(name="reload_cogs")
 @commands.is_owner()
 async def reload_cogs(ctx: commands.Context) -> None:
@@ -209,6 +219,9 @@ async def reload_cogs(ctx: commands.Context) -> None:
     problem and running !test_reload_cogs is enough to bring them up
     without a full bot restart.
     """
+
+    if not await require_bot_mention(ctx):
+        return
 
     importlib.invalidate_caches()
 
@@ -283,6 +296,9 @@ async def reload_cogs(ctx: commands.Context) -> None:
 @commands.is_owner()
 async def sync_commands(ctx: commands.Context) -> None:
     """Explicitly synchronize global application commands after changes."""
+    if not await require_bot_mention(ctx):
+        return
+
     try:
         synced_commands = await bot.tree.sync()
         await ctx.send(
@@ -303,6 +319,8 @@ async def sync_commands(ctx: commands.Context) -> None:
 @commands.is_owner()
 async def restart_bot(ctx: commands.Context) -> None:
     """Notify configured channels and restart the bot."""
+    if not await require_bot_mention(ctx):
+        return
 
     from cogs.setup_ui import DB_PATH, SetupConfigStore
 
@@ -353,6 +371,8 @@ async def restart_bot(ctx: commands.Context) -> None:
 @commands.is_owner()
 async def debug_commands(ctx: commands.Context) -> None:
     """Display locally registered application commands."""
+    if not await require_bot_mention(ctx):
+        return
 
     local_commands = bot.tree.walk_commands()
     lines = [
