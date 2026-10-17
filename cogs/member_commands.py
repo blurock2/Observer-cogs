@@ -202,19 +202,28 @@ class MemberCommands(ObserverCog):
     ) -> None:
         target = member or interaction.user
 
-        if not isinstance(target, discord.User):
-            logger.warning("Rejected invalid slash avatar target: %s", type(target).__name__)
+        # Discord resolves guild users as Members even when the option is
+        # annotated as User. Both expose display_avatar.
+        if not isinstance(target, (discord.User, discord.Member)):
+            logger.warning(
+                "Invalid slash avatar target type=%s guild=%s",
+                type(target).__name__,
+                interaction.guild_id,
+            )
+            await interaction.response.send_message(
+                "Could not resolve that user's avatar.", ephemeral=True
+            )
             return
 
         display_name = getattr(target, "display_name", target.name)
-
         embed = discord.Embed(
             title=f"{display_name}'s Avatar",
             color=EMBED_COLOR,
         )
-        embed.set_image(url=self._avatar_url(target))
+        avatar_url = self._avatar_url(target)
+        if avatar_url:
+            embed.set_image(url=avatar_url)
         embed.set_footer(text=f"User ID: {target.id}")
-
         await interaction.response.send_message(embed=embed)
 
     @commands.command(name="avatar")
@@ -225,21 +234,26 @@ class MemberCommands(ObserverCog):
     ) -> None:
         target = member or ctx.author
 
-        if isinstance(target, discord.User):
-             target = guild.get_member(target.id)
-        if not isinstance(target, discord.Member):
-            await ctx.send("User must be a member of this server.")
+        # A prefix converter can return User or Member. Neither requires a
+        # guild lookup to access the display avatar.
+        if not isinstance(target, (discord.User, discord.Member)):
+            logger.warning(
+                "Invalid prefix avatar target type=%s guild=%s",
+                type(target).__name__,
+                getattr(ctx.guild, "id", None),
+            )
+            await ctx.send("Could not resolve that user's avatar.")
             return
 
         display_name = getattr(target, "display_name", target.name)
-
         embed = discord.Embed(
             title=f"{display_name}'s Avatar",
             color=EMBED_COLOR,
         )
-        embed.set_image(url=self._avatar_url(target))
+        avatar_url = self._avatar_url(target)
+        if avatar_url:
+            embed.set_image(url=avatar_url)
         embed.set_footer(text=f"User ID: {target.id}")
-
         await ctx.send(embed=embed)
 
     # ============================================================ Profile
