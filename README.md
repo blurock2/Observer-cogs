@@ -27,13 +27,11 @@ Tools for handling moderation while keeping actions organized and traceable.
 
 ### Security & Audit Logging
 
-Observer can monitor important server activity and provide moderation teams with additional visibility.
-
-- Audit logging
-- Security-related server tools
-- Role and permission-aware protections
-- Configurable access restrictions
-- Server event tracking
+- Configurable server event and audit logs
+- Anti-raid detection, raid holds, and honeypot protection
+- Channel locks, unlocks, slowmode, and lockdown controls
+- Scam and suspicious-link protection
+- Protected-mention enforcement and permission-aware restrictions
 
 ### Server Configuration
 
@@ -54,22 +52,21 @@ Built-in systems for communication between members and staff.
 
 - Ticket panels
 - Configurable support roles
-- Ticket channels
-- Message reporting
+- Ticket channels and staff ticket management
+- Message reporting and staff workflows
 - Anonymous reporting support
 - Report cooldowns
 - Configurable report destinations
 
 ### Community Tools
 
-Features designed for everyday server management and member interaction.
-
-- Reaction roles
-- Server rules
-- Tags
-- Leveling
-- Member information commands
-- Mention tools and protection
+- Reaction roles and customizable server rules
+- Join autoroles and button-based verification, configured separately
+- Leveling, rankings, leaderboards, and role rewards
+- AFK status with automatic return detection
+- Private bookmarks and to-do lists
+- Temporary roles with expiration
+- Tags, member profiles, and avatar commands
 - Temporary voice channels
 
 ### Messaging
@@ -85,21 +82,16 @@ Tools for working with messages across Discord.
 
 ### Utilities
 
-General-purpose functionality that does not require external AI services.
-
-- Reminders
-- Server statistics
+- Reminders and reminder management
+- Server statistics and counters
 - Weather information
 - Spotify display features
-- In-Discord help system
+- Built-in help and setup interfaces
 
 ### Integrations
 
-Observer also contains infrastructure for features that communicate with external services.
-
-- Account linking
-- Application bridge
-- Optional external-service integrations
+- GitHub, Steam, and Spotify account linking
+- Application bridge infrastructure and optional external-service integrations
 
 ---
 
@@ -118,6 +110,12 @@ Observer-cogs/
 │
 ├── cogs/
 │   ├── setup_ui.py
+│   ├── afk.py
+│   ├── Bookmarks.py
+│   ├── todo.py
+│   ├── temproles.py
+│   ├── autoroles.py
+│   ├── anti_raid.py
 │   ├── audit_log.py
 │   ├── acc_link.py
 │   ├── reaction_roles.py
@@ -354,11 +352,3 @@ Free use with credits to original creator.
   Moderation • Security • Automation • Community • Utilities
 </p>
 
-
-### Support error reports
-
-In **Observer Support** (server ID `1535974879554437210`), use `/setup` → **Bot System** → **Global error channel** and select a text channel. This setting is hidden and rejected in other servers. Clear the setting to disable reports. The bot needs View Channel, Send Messages, and Embed Links there.
-
-Unexpected failures give users an `OBS-…` error ID. The same ID appears in VPS logs and sanitized reports in the selected support channel. ERROR/CRITICAL logs from commands, UI callbacks, listeners, startup and background tasks are included; ordinary invalid input, cooldowns and permission checks are excluded. Reports contain identifiers, code locations, exception types and timestamps, without raw exception messages, message contents or full tracebacks. Use a staff channel for reports.
-
-Bursts are batched into at most one message every five seconds, with up to 15 errors per message and a bounded 200-item queue. Overflow and failed deliveries remain in VPS logs; reports are best effort, not a persistent audit trail.
