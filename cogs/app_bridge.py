@@ -3,6 +3,8 @@ from __future__ import annotations
 from error_handling import ObserverCog
 
 import json
+import logging
+import math
 import os
 import tempfile
 from datetime import UTC, datetime
@@ -14,6 +16,7 @@ from discord.ext import commands, tasks
 
 from cogs.setup_ui import DB_PATH, SetupConfigStore
 
+logger = logging.getLogger("observer.app_bridge")
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 APP_GUILDS_FILE = DATA_DIR / "app_guilds.json"
@@ -129,10 +132,13 @@ class AppBridge(ObserverCog):
                 }
             )
 
+        latency = self.bot.latency
+        latency_ms = round(latency * 1000) if math.isfinite(latency) and latency >= 0 else None
+
         payload = {
             "updated_at": datetime.now(UTC).isoformat(),
             "started_at": self.started_at.isoformat(),
-            "latency_ms": round(self.bot.latency * 1000),
+            "latency_ms": latency_ms,
             "bot_user": (
                 {
                     "id": self.bot.user.id,
@@ -178,7 +184,10 @@ class AppBridge(ObserverCog):
 
     @tasks.loop(seconds=10)
     async def refresh_guild_data(self) -> None:
-        self.write_guild_data()
+        try:
+            self.write_guild_data()
+        except Exception:
+            logger.exception("App bridge guild refresh failed; will retry next cycle")
 
     @commands.Cog.listener()
     async def on_command_completion(self, context: commands.Context) -> None:

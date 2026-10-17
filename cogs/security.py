@@ -472,17 +472,32 @@ class SecurityCog(ObserverCog):
                 "send_messages": channel.overwrites_for(channel.guild.default_role).send_messages,
             })
             record["expires_at"] = time.time() + seconds if seconds is not None else None
+            try:
+                await self._set_channel_lock(channel, True)
+            except discord.HTTPException as exc:
+                if exc.code == 350005:
+                    logger.info("Discord onboarding rejected lock guild=%s channel=%s", channel.guild.id, channel.id)
+                    message = (
+                        "Discord Onboarding requires at least one channel where "
+                        "@everyone can view and send messages. Leave another "
+                        "eligible public channel available before locking this one."
+                    )
+                else:
+                    logger.warning(
+                        "Channel lock rejected guild=%s channel=%s status=%s code=%s",
+                        channel.guild.id, channel.id, exc.status, exc.code,
+                    )
+                    message = "Discord rejected this lock. Check channel permissions and try again."
+                await interaction.followup.send(message, ephemeral=True)
+                return
+            # Only successful locks become recovery records or timed tasks.
             records[str(channel.id)] = record
-            # Save recovery state before making any Discord changes.
             self.store.set(channel.guild.id, MODULE_KEY, "channel_locks", records)
             old_task = self.lock_tasks.pop(key, None)
             if old_task:
                 old_task.cancel()
-            try:
-                await self._set_channel_lock(channel, True)
-            finally:
-                if seconds is not None:
-                    self.lock_tasks[key] = asyncio.create_task(self._unlock_after(channel, seconds))
+            if seconds is not None:
+                self.lock_tasks[key] = asyncio.create_task(self._unlock_after(channel, seconds))
             await interaction.followup.send(f"Locked {channel.mention}." + (f" Unlocking in {seconds}s." if seconds else ""), ephemeral=True)
 
     async def _unlock_after(self, channel: discord.TextChannel, seconds: int) -> None:
