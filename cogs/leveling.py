@@ -7,6 +7,7 @@ import logging
 import random
 import shutil
 import sqlite3
+from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -152,7 +153,7 @@ def _backup_database() -> Path | None:
     # SQLite's online backup API includes committed WAL transactions.
     source = _get_conn()
     try:
-        with sqlite3.connect(backup_path) as destination:
+        with closing(sqlite3.connect(backup_path)) as destination:
             source.backup(destination)
     finally:
         source.close()
