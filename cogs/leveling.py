@@ -1393,7 +1393,7 @@ class Leveling(ObserverCog):
         # Master switch: if leveling is disabled in /setup, earn no XP.
         # Defaults to on so existing behavior is preserved.
         guild_id = message.guild.id
-        stored = self.store.get_module(guild_id, MODULE_KEY)
+        stored = await asyncio.to_thread(self.store.get_module, guild_id, MODULE_KEY)
 
         if not bool(stored.get("enabled", True)):
             return
