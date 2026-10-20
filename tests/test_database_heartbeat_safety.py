@@ -142,6 +142,59 @@ class DatabaseBackupTests(unittest.TestCase):
                         25,
                     )
 
+class LevelingReadLockTests(unittest.TestCase):
+    def test_missing_config_and_user_reads_do_not_write_or_wait_for_writer(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "bot.db"
+            with patch.object(leveling, "DATABASE_PATH", path):
+                leveling._init_db()
+                writer = connect_sqlite(path)
+                try:
+                    writer.execute("BEGIN IMMEDIATE")
+                    # A second writer would hit SQLITE_BUSY; ordinary reads
+                    # must work while a different connection is writing.
+                    legacy, rewards = Leveling._read_guild_config_sync(99)
+                    user = Leveling._read_user_row_sync(99, 123)
+                    state = Leveling._load_user_state(99, 123)
+                    self.assertIsNone(legacy["weekly_channel"])
+                    self.assertEqual(legacy["weekly_day"], 0)
+                    self.assertEqual(rewards, [])
+                    self.assertEqual(user["xp"], 0)
+                    self.assertEqual(state, (0, 0, 0))
+                finally:
+                    writer.rollback()
+                    writer.close()
+
+                with sqlite3.connect(path) as conn:
+                    # Reading a missing row must not create it.
+                    self.assertEqual(
+                        conn.execute("SELECT COUNT(*) FROM guild_config").fetchone()[0], 0
+                    )
+                    self.assertEqual(
+                        conn.execute("SELECT COUNT(*) FROM users").fetchone()[0], 0
+                    )
+
+    def test_existing_legacy_config_and_rewards_are_preserved(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "bot.db"
+            with patch.object(leveling, "DATABASE_PATH", path):
+                leveling._init_db()
+                with connect_sqlite(path) as conn:
+                    conn.execute(
+                        "INSERT INTO guild_config "
+                        "(guild_id, weekly_channel, weekly_day, weekly_hour) "
+                        "VALUES (42, 12345, 2, 17)"
+                    )
+                    conn.execute(
+                        "INSERT INTO role_rewards (guild_id, level, role_id) "
+                        "VALUES (42, 10, 98765)"
+                    )
+                legacy, rewards = Leveling._read_guild_config_sync(42)
+                self.assertEqual(legacy["weekly_channel"], 12345)
+                self.assertEqual(legacy["weekly_day"], 2)
+                self.assertEqual(legacy["weekly_hour"], 17)
+                self.assertEqual(rewards, [(10, 98765)])
+
 
 if __name__ == "__main__":
     unittest.main()

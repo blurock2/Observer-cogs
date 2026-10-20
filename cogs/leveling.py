@@ -492,24 +492,17 @@ class Leveling(ObserverCog):
     # ============================================================ User database operations
 
     @staticmethod
-    def _read_user_row_sync(guild_id: int, user_id: int) -> sqlite3.Row:
+    def _read_user_row_sync(guild_id: int, user_id: int) -> sqlite3.Row | dict[str, int]:
+        # Looking at a rank must not acquire SQLite's single-writer lock.
+        # The XP flush upserts users when they first earn XP.
         conn = _get_conn()
         try:
-            conn.execute(
-                "INSERT INTO users (guild_id,user_id) VALUES (?,?) "
-                "ON CONFLICT(guild_id,user_id) DO NOTHING",
-                (guild_id, user_id),
-            )
             row = conn.execute(
                 "SELECT xp, level, messages FROM users "
                 "WHERE guild_id = ? AND user_id = ?",
                 (guild_id, user_id),
             ).fetchone()
-            conn.commit()
-            return row
-        except Exception:
-            conn.rollback()
-            raise
+            return row if row is not None else {"xp": 0, "level": 0, "messages": 0}
         finally:
             conn.close()
 
@@ -527,39 +520,43 @@ class Leveling(ObserverCog):
     # ============================================================ Guild configuration operations
 
     @staticmethod
-    def _read_guild_config_sync(guild_id: int):
+    def _read_guild_config_sync(guild_id: int) -> tuple[dict[str, Any], list[tuple[int, int]]]:
+        # SQLite permits many WAL readers but only one writer. A read used to
+        # INSERT a default guild row on *every* weekly loop iteration, causing
+        # SQLITE_BUSY under concurrent moderation, XP, or setup writes.
+        legacy = {
+            "level_up_channel": None,
+            "level_up_message": "🎉 {user} just reached level {level}!",
+            "weekly_channel": None,
+            "weekly_day": 0,
+            "weekly_hour": 0,
+            "weekly_minute": 0,
+        }
         conn = _get_conn()
         try:
-            conn.execute(
-                "INSERT INTO guild_config (guild_id) VALUES (?) "
-                "ON CONFLICT(guild_id) DO NOTHING",
-                (guild_id,),
-            )
             row = conn.execute(
                 "SELECT level_up_channel, level_up_message, weekly_channel, "
                 "weekly_day, weekly_hour, weekly_minute "
                 "FROM guild_config WHERE guild_id = ?",
                 (guild_id,),
             ).fetchone()
+            if row is not None:
+                legacy.update(dict(row))
             rewards = conn.execute(
                 "SELECT level, role_id FROM role_rewards WHERE guild_id = ? "
                 "ORDER BY level ASC",
                 (guild_id,),
             ).fetchall()
-            conn.commit()
-            return dict(row), [(reward["level"], reward["role_id"]) for reward in rewards]
-        except Exception:
-            conn.rollback()
-            raise
+            return legacy, [(reward["level"], reward["role_id"]) for reward in rewards]
         finally:
             conn.close()
 
     async def _get_guild_config(self, guild_id: int) -> dict[str, Any]:
-        async with self._db_lock:
-            legacy, rewards = await asyncio.to_thread(
-                self._read_guild_config_sync, guild_id
-            )
-
+        # Independent SELECTs do not need to hold the XP writer's asyncio lock.
+        # Keep all SQLite work in worker threads so Discord heartbeats proceed.
+        legacy, rewards = await asyncio.to_thread(
+            self._read_guild_config_sync, guild_id
+        )
         stored = await asyncio.to_thread(self.store.get_module, guild_id, MODULE_KEY)
 
         def overlay(key: str, legacy_key: str):
@@ -722,16 +719,11 @@ class Leveling(ObserverCog):
     def _load_user_state(guild_id: int, user_id: int) -> tuple[int, int, int]:
         conn = _get_conn()
         try:
-            conn.execute(
-                "INSERT INTO users (guild_id, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING",
-                (guild_id, user_id),
-            )
             row = conn.execute(
                 "SELECT xp, level, messages FROM users WHERE guild_id = ? AND user_id = ?",
                 (guild_id, user_id),
             ).fetchone()
-            conn.commit()
-            return tuple(row)
+            return tuple(row) if row is not None else (0, 0, 0)
         finally:
             conn.close()
 
@@ -1159,96 +1151,65 @@ class Leveling(ObserverCog):
 
     # ============================================================ Weekly leaderboard operations
 
+    @staticmethod
+    def _select_rows_sync(query: str, params: tuple[Any, ...]) -> list[sqlite3.Row]:
+        conn = _get_conn()
+        try:
+            return conn.execute(query, params).fetchall()
+        finally:
+            conn.close()
+
+    @staticmethod
+    def _execute_sql_sync(query: str, params: tuple[Any, ...]) -> None:
+        conn = _get_conn()
+        try:
+            conn.execute(query, params)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
     async def _get_weekly_rows(
         self,
         guild_id: int,
         week_start: str,
     ) -> list[sqlite3.Row]:
-        async with self._db_lock:
-            conn = _get_conn()
-
-            try:
-                cur = conn.cursor()
-
-                cur.execute(
-                    """
-                    SELECT user_id, xp
-                    FROM weekly_xp
-                    WHERE guild_id = ?
-                      AND week_start = ?
-                    ORDER BY xp DESC
-                    LIMIT 10
-                    """,
-                    (
-                        guild_id,
-                        week_start,
-                    ),
-                )
-
-                return cur.fetchall()
-
-            finally:
-                conn.close()
+        return await asyncio.to_thread(
+            self._select_rows_sync,
+            """
+            SELECT user_id, xp FROM weekly_xp
+            WHERE guild_id = ? AND week_start = ?
+            ORDER BY xp DESC LIMIT 10
+            """,
+            (guild_id, week_start),
+        )
 
     async def _was_weekly_post_sent(
-        self,
-        guild_id: int,
-        week_start: str,
+        self, guild_id: int, week_start: str,
     ) -> bool:
-        async with self._db_lock:
-            conn = _get_conn()
-
-            try:
-                cur = conn.cursor()
-
-                cur.execute(
-                    """
-                    SELECT week_start
-                    FROM weekly_posts
-                    WHERE guild_id = ?
-                    """,
-                    (guild_id,),
-                )
-
-                row = cur.fetchone()
-
-                return (
-                    row is not None
-                    and row["week_start"] == week_start
-                )
-
-            finally:
-                conn.close()
+        rows = await asyncio.to_thread(
+            self._select_rows_sync,
+            "SELECT week_start FROM weekly_posts WHERE guild_id = ?",
+            (guild_id,),
+        )
+        return bool(rows and rows[0]["week_start"] == week_start)
 
     async def _mark_weekly_post_sent(
-        self,
-        guild_id: int,
-        week_start: str,
+        self, guild_id: int, week_start: str,
     ) -> None:
         async with self._db_lock:
-            conn = _get_conn()
-
-            try:
-                cur = conn.cursor()
-
-                cur.execute(
-                    """
-                    INSERT INTO weekly_posts
-                        (guild_id, week_start)
-                    VALUES (?, ?)
-                    ON CONFLICT(guild_id)
-                    DO UPDATE SET week_start = excluded.week_start
-                    """,
-                    (
-                        guild_id,
-                        week_start,
-                    ),
-                )
-
-                conn.commit()
-
-            finally:
-                conn.close()
+            await asyncio.to_thread(
+                self._execute_sql_sync,
+                """
+                INSERT INTO weekly_posts (guild_id, week_start)
+                VALUES (?, ?)
+                ON CONFLICT(guild_id) DO UPDATE SET
+                    week_start = excluded.week_start
+                """,
+                (guild_id, week_start),
+            )
 
     async def _post_weekly_leaderboard(
         self,
@@ -1432,7 +1393,7 @@ class Leveling(ObserverCog):
         # Master switch: if leveling is disabled in /setup, earn no XP.
         # Defaults to on so existing behavior is preserved.
         guild_id = message.guild.id
-        stored = self.store.get_module(guild_id, MODULE_KEY)
+        stored = await asyncio.to_thread(self.store.get_module, guild_id, MODULE_KEY)
 
         if not bool(stored.get("enabled", True)):
             return
@@ -1566,32 +1527,17 @@ class Leveling(ObserverCog):
     # ============================================================ Leaderboard commands
 
     async def _get_leaderboard_rows(
-        self,
-        guild_id: int,
+        self, guild_id: int,
     ) -> list[sqlite3.Row]:
         await self._flush_pending_xp()
-
-        async with self._db_lock:
-            conn = _get_conn()
-
-            try:
-                cur = conn.cursor()
-
-                cur.execute(
-                    """
-                    SELECT user_id, xp, level, messages
-                    FROM users
-                    WHERE guild_id = ?
-                    ORDER BY level DESC, xp DESC
-                    LIMIT 10
-                    """,
-                    (guild_id,),
-                )
-
-                return cur.fetchall()
-
-            finally:
-                conn.close()
+        return await asyncio.to_thread(
+            self._select_rows_sync,
+            """
+            SELECT user_id, xp, level, messages FROM users
+            WHERE guild_id = ? ORDER BY level DESC, xp DESC LIMIT 10
+            """,
+            (guild_id,),
+        )
 
     @app_commands.command(name="leaderboard")
     async def leaderboard_slash(
@@ -1672,62 +1618,34 @@ class Leveling(ObserverCog):
 
     # ============================================================ Weekly rank commands
 
-    async def _get_weekly_rank(
-        self,
-        guild_id: int,
-        user_id: int,
+    @staticmethod
+    def _read_weekly_rank_sync(
+        guild_id: int, user_id: int, week_start: str,
     ) -> tuple[str, int, int]:
-        week_start = _current_week_start(
-            datetime.now(timezone.utc)
+        conn = _get_conn()
+        try:
+            row = conn.execute(
+                "SELECT xp FROM weekly_xp "
+                "WHERE guild_id = ? AND user_id = ? AND week_start = ?",
+                (guild_id, user_id, week_start),
+            ).fetchone()
+            xp = row["xp"] if row else 0
+            better = conn.execute(
+                "SELECT COUNT(*) AS better_users FROM weekly_xp "
+                "WHERE guild_id = ? AND week_start = ? AND xp > ?",
+                (guild_id, week_start, xp),
+            ).fetchone()
+            return week_start, xp, int(better["better_users"]) + 1
+        finally:
+            conn.close()
+
+    async def _get_weekly_rank(
+        self, guild_id: int, user_id: int,
+    ) -> tuple[str, int, int]:
+        week_start = _current_week_start(datetime.now(timezone.utc))
+        return await asyncio.to_thread(
+            self._read_weekly_rank_sync, guild_id, user_id, week_start
         )
-
-        async with self._db_lock:
-            conn = _get_conn()
-
-            try:
-                cur = conn.cursor()
-
-                cur.execute(
-                    """
-                    SELECT xp
-                    FROM weekly_xp
-                    WHERE guild_id = ?
-                      AND user_id = ?
-                      AND week_start = ?
-                    """,
-                    (
-                        guild_id,
-                        user_id,
-                        week_start,
-                    ),
-                )
-
-                row = cur.fetchone()
-                xp = row["xp"] if row else 0
-
-                cur.execute(
-                    """
-                    SELECT COUNT(*) AS better_users
-                    FROM weekly_xp
-                    WHERE guild_id = ?
-                      AND week_start = ?
-                      AND xp > ?
-                    """,
-                    (
-                        guild_id,
-                        week_start,
-                        xp,
-                    ),
-                )
-
-                rank = int(
-                    cur.fetchone()["better_users"]
-                ) + 1
-
-                return week_start, xp, rank
-
-            finally:
-                conn.close()
 
     @app_commands.command(name="weekly_rank")
     @app_commands.describe(
