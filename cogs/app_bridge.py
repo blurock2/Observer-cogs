@@ -60,6 +60,9 @@ class AppBridge(ObserverCog):
         self.bot = bot
         self.started_at = datetime.now(UTC)
         self.commands_run = 0
+        # Serialize writes per file so a stale payload cannot replace a newer one.
+        self._guild_write_lock = asyncio.Lock()
+        self._stats_write_lock = asyncio.Lock()
 
         DATA_DIR.mkdir(exist_ok=True)
 
@@ -85,7 +88,10 @@ class AppBridge(ObserverCog):
         write_json_atomic(APP_STATS_FILE, self._stats_payload())
 
     async def write_stats_async(self) -> None:
-        await asyncio.to_thread(write_json_atomic, APP_STATS_FILE, self._stats_payload())
+        async with self._stats_write_lock:
+            await asyncio.to_thread(
+                write_json_atomic, APP_STATS_FILE, self._stats_payload()
+            )
 
     def _guild_data_payload(self) -> dict[str, Any]:
         guilds: list[dict[str, Any]] = []
@@ -154,7 +160,10 @@ class AppBridge(ObserverCog):
         write_json_atomic(APP_GUILDS_FILE, self._guild_data_payload())
 
     async def write_guild_data_async(self) -> None:
-        await asyncio.to_thread(write_json_atomic, APP_GUILDS_FILE, self._guild_data_payload())
+        async with self._guild_write_lock:
+            await asyncio.to_thread(
+                write_json_atomic, APP_GUILDS_FILE, self._guild_data_payload()
+            )
 
     @commands.Cog.listener()
     async def on_ready(self) -> None:
