@@ -451,7 +451,7 @@ class Leveling(ObserverCog):
         self.bot = bot
 
         # Shared config store (read by this cog, written by /setup).
-        self.store = SetupConfigStore(DB_PATH)
+        self.store: SetupConfigStore  # initialized in cog_load off the event loop
 
         self._xp_cooldowns: dict[
             tuple[int, int],
@@ -468,30 +468,25 @@ class Leveling(ObserverCog):
         self._pending_weekly_xp: dict[tuple[int, int, str], int] = {}
         self._xp_flush_task: asyncio.Task[None] | None = None
 
-        backup_path = _backup_database()
-
+    async def cog_load(self) -> None:
+        self.store = await asyncio.to_thread(SetupConfigStore, DB_PATH)
+        backup_path = await asyncio.to_thread(_backup_database)
         if backup_path is not None:
-            logger.info(
-                "Created leveling database backup at %s",
-                backup_path,
-            )
-
-        _init_db()
-
+            logger.info("Created leveling database backup at %s", backup_path)
+        await asyncio.to_thread(_init_db)
         self._weekly_loop.start()
-
 
     # ============================================================ Cog lifecycle
 
-    def cog_unload(self) -> None:
+    async def cog_unload(self) -> None:
         self._weekly_loop.cancel()
-
         if self._xp_flush_task is not None:
             self._xp_flush_task.cancel()
-
         if self._pending_xp:
-            asyncio.create_task(self._flush_pending_xp())
-
+            try:
+                await self._flush_pending_xp()
+            except Exception:
+                logger.exception("Could not flush XP while unloading leveling cog")
 
     # ============================================================ User database operations
 
@@ -879,11 +874,18 @@ class Leveling(ObserverCog):
     async def _delayed_xp_flush(self) -> None:
         try:
             await asyncio.sleep(XP_FLUSH_DELAY_SECONDS)
-            await self._flush_pending_xp()
+            backoff = XP_FLUSH_DELAY_SECONDS
+            while self._pending_xp:
+                try:
+                    await self._flush_pending_xp()
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    logger.exception("Failed to flush pending leveling XP; retrying")
+                    await asyncio.sleep(backoff)
+                    backoff = min(backoff * 2, 60)
         except asyncio.CancelledError:
             raise
-        except Exception:
-            logger.exception("Failed to flush pending leveling XP")
         finally:
             if self._xp_flush_task is asyncio.current_task():
                 self._xp_flush_task = None
