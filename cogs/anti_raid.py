@@ -78,7 +78,7 @@ class AntiRaid(ObserverCog):
         except discord.HTTPException as error:
             error_id = log_error(error, source="anti-raid enforcement", guild_id=member.guild.id, user_id=member.id)
             return f"failed; error {error_id}"
-        self.cases.create_case(member.guild.id, "ban" if ban else "timeout", member.id,
+        await asyncio.to_thread(self.cases.create_case, member.guild.id, "ban" if ban else "timeout", member.id,
                                self.bot.user.id, reason, status="resolved")
         return "banned" if ban else f"timed out for {minutes} minutes"
 
@@ -99,7 +99,7 @@ class AntiRaid(ObserverCog):
             if triggered:
                 hold = self.number(member.guild.id, "hold_seconds", 300, 10, 86400)
                 # Persist before awaiting Discord: verification sees the hold immediately.
-                self.store.set(member.guild.id, "anti_raid", "hold_until", now + hold)
+                await asyncio.to_thread(self.store.set, member.guild.id, "anti_raid", "hold_until", now + hold)
             if not active and not triggered:
                 return
             ids = [uid for _, uid in joins] if triggered else [member.id]
@@ -205,7 +205,7 @@ class AntiRaid(ObserverCog):
         if release:
             await interaction.response.defer(ephemeral=True)
             async with self.locks[interaction.guild.id]:
-                self.store.set(interaction.guild.id, "anti_raid", "hold_until", 0)
+                await asyncio.to_thread(self.store.set, interaction.guild.id, "anti_raid", "hold_until", 0)
                 self.joins.pop(interaction.guild.id, None)
         remaining = max(0, int(float(self.get(interaction.guild.id, "hold_until", 0) or 0) - time.time()))
         send = interaction.followup.send if release else interaction.response.send_message

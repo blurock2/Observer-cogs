@@ -212,7 +212,7 @@ class SecurityCog(ObserverCog):
         await self._set_send_permission(channel, previous, "Security channel unlock")
         if record:
             records.pop(str(channel.id))
-            self.store.set(channel.guild.id, MODULE_KEY, "channel_locks", records)
+            await asyncio.to_thread(self.store.set, channel.guild.id, MODULE_KEY, "channel_locks", records)
 
     async def _set_send_permission(
         self, channel: discord.TextChannel, value: bool | None, reason: str
@@ -378,7 +378,7 @@ class SecurityCog(ObserverCog):
         ) >= cooldown
         if alert_due:
             self.scam_alerts[alert_key] = now
-            self.cases.create_case(
+            await asyncio.to_thread(self.cases.create_case, 
                 message.guild.id,
                 "scam_flag",
                 message.author.id,
@@ -492,7 +492,7 @@ class SecurityCog(ObserverCog):
                 return
             # Only successful locks become recovery records or timed tasks.
             records[str(channel.id)] = record
-            self.store.set(channel.guild.id, MODULE_KEY, "channel_locks", records)
+            await asyncio.to_thread(self.store.set, channel.guild.id, MODULE_KEY, "channel_locks", records)
             old_task = self.lock_tasks.pop(key, None)
             if old_task:
                 old_task.cancel()
@@ -511,7 +511,7 @@ class SecurityCog(ObserverCog):
                 except discord.NotFound:
                     records = self._get(channel.guild.id, "channel_locks", {}) or {}
                     records.pop(str(channel.id), None)
-                    self.store.set(channel.guild.id, MODULE_KEY, "channel_locks", records)
+                    await asyncio.to_thread(self.store.set, channel.guild.id, MODULE_KEY, "channel_locks", records)
                     break
                 except discord.HTTPException:
                     logger.exception("Temporary unlock failed for channel %s; retrying", channel.id)
@@ -573,8 +573,8 @@ class SecurityCog(ObserverCog):
                     ],
                 }
                 # Persist the complete restoration plan before the first API call.
-                self.store.set(guild.id, MODULE_KEY, "lockdown_previous", previous)
-                self.store.set(guild.id, MODULE_KEY, "lockdown_enabled", True)
+                await asyncio.to_thread(self.store.set, guild.id, MODULE_KEY, "lockdown_previous", previous)
+                await asyncio.to_thread(self.store.set, guild.id, MODULE_KEY, "lockdown_enabled", True)
                 try:
                     for channel in channels:
                         await self._set_channel_lock(channel, True)
@@ -584,7 +584,7 @@ class SecurityCog(ObserverCog):
                     logger.exception("Lockdown partially applied in guild %s", guild.id)
                     await interaction.followup.send("Lockdown could not finish. Recovery data is saved; disable lockdown to restore permissions.", ephemeral=True)
                     return
-                self.cases.create_case(guild.id, "lockdown", interaction.user.id, interaction.user.id, "Enabled", status="resolved")
+                await asyncio.to_thread(self.cases.create_case, guild.id, "lockdown", interaction.user.id, interaction.user.id, "Enabled", status="resolved")
                 await self._alert(guild, "Security lockdown enabled", f"Enabled by {interaction.user.mention}.")
                 await interaction.followup.send("Lockdown enabled; channels are locked and verification is at least High.", ephemeral=True)
                 return
@@ -611,12 +611,12 @@ class SecurityCog(ObserverCog):
                 verification_failed = True
             if failed or verification_failed:
                 previous["channels"] = failed
-                self.store.set(guild.id, MODULE_KEY, "lockdown_previous", previous)
+                await asyncio.to_thread(self.store.set, guild.id, MODULE_KEY, "lockdown_previous", previous)
                 await interaction.followup.send("Some settings could not be restored. Recovery data was kept; fix bot permissions and disable lockdown again.", ephemeral=True)
                 return
-            self.store.delete(guild.id, MODULE_KEY, "lockdown_previous")
-            self.store.set(guild.id, MODULE_KEY, "lockdown_enabled", False)
-            self.cases.create_case(guild.id, "lockdown", interaction.user.id, interaction.user.id, "Disabled", status="resolved")
+            await asyncio.to_thread(self.store.delete, guild.id, MODULE_KEY, "lockdown_previous")
+            await asyncio.to_thread(self.store.set, guild.id, MODULE_KEY, "lockdown_enabled", False)
+            await asyncio.to_thread(self.cases.create_case, guild.id, "lockdown", interaction.user.id, interaction.user.id, "Disabled", status="resolved")
             await self._alert(guild, "Anti-raid lockdown disabled", f"Disabled by {interaction.user.mention}.")
             await interaction.followup.send("Lockdown disabled and saved channel permissions restored.", ephemeral=True)
 

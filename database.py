@@ -2,6 +2,7 @@ import json
 import logging
 import shutil
 import sqlite3
+import threading
 from contextlib import closing, contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -11,6 +12,10 @@ BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 DATABASE_PATH = DATA_DIR / "bot.db"
 logger = logging.getLogger("aquila.database")
+# WAL mode is persistent per SQLite database. Negotiating it on every
+# connection acquires locks unnecessarily under high write concurrency.
+_wal_initialized: set[str] = set()
+_wal_init_lock = threading.Lock()
 
 BACKUP_RETENTION_DAYS = 5
 BACKUP_PATTERNS = (
@@ -27,10 +32,22 @@ def connect_sqlite(
 ) -> sqlite3.Connection:
     """Open a project SQLite connection with contention-safe defaults."""
     connection = sqlite3.connect(database_path, timeout=timeout)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA busy_timeout = 10000")
-    connection.execute("PRAGMA journal_mode = WAL")
-    return connection
+    try:
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA busy_timeout = 10000")
+
+        # The journal mode is stored in the DB file. Initialize it once per
+        # process and DB path, not for each hot-path read or XP flush.
+        db_key = str(Path(database_path).resolve())
+        if db_key not in _wal_initialized:
+            with _wal_init_lock:
+                if db_key not in _wal_initialized:
+                    connection.execute("PRAGMA journal_mode = WAL")
+                    _wal_initialized.add(db_key)
+        return connection
+    except Exception:
+        connection.close()
+        raise
 
 
 def cleanup_old_backups(

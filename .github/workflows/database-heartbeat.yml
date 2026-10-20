@@ -1,0 +1,30 @@
+name: Database heartbeat safety
+
+on:
+  pull_request:
+    paths:
+      - 'database.py'
+      - 'cogs/leveling.py'
+      - 'cogs/server_stats.py'
+      - 'cogs/app_bridge.py'
+      - 'cogs/audit_log.py'
+      - 'cogs/security.py'
+      - 'cogs/anti_raid.py'
+      - 'tests/test_database_heartbeat_safety.py'
+      - '.github/workflows/database-heartbeat.yml'
+  workflow_dispatch:
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install test dependencies
+        run: python -m pip install 'discord.py>=2.5,<3' 'python-dotenv' 'pytest>=8' 'pytest-asyncio'
+      - name: Compile changed modules
+        run: python -m compileall -q database.py cogs/leveling.py cogs/server_stats.py cogs/app_bridge.py cogs/audit_log.py cogs/security.py cogs/anti_raid.py
+      - name: Run heartbeat and leveling tests
+        run: python -m pytest -q tests/test_database_heartbeat_safety.py tests/test_leveling_config_safety.py
