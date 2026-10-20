@@ -378,7 +378,7 @@ class SecurityCog(ObserverCog):
         ) >= cooldown
         if alert_due:
             self.scam_alerts[alert_key] = now
-            self.cases.create_case(
+            await asyncio.to_thread(self.cases.create_case, 
                 message.guild.id,
                 "scam_flag",
                 message.author.id,
@@ -584,7 +584,7 @@ class SecurityCog(ObserverCog):
                     logger.exception("Lockdown partially applied in guild %s", guild.id)
                     await interaction.followup.send("Lockdown could not finish. Recovery data is saved; disable lockdown to restore permissions.", ephemeral=True)
                     return
-                self.cases.create_case(guild.id, "lockdown", interaction.user.id, interaction.user.id, "Enabled", status="resolved")
+                await asyncio.to_thread(self.cases.create_case, guild.id, "lockdown", interaction.user.id, interaction.user.id, "Enabled", status="resolved")
                 await self._alert(guild, "Security lockdown enabled", f"Enabled by {interaction.user.mention}.")
                 await interaction.followup.send("Lockdown enabled; channels are locked and verification is at least High.", ephemeral=True)
                 return
@@ -616,7 +616,7 @@ class SecurityCog(ObserverCog):
                 return
             self.store.delete(guild.id, MODULE_KEY, "lockdown_previous")
             self.store.set(guild.id, MODULE_KEY, "lockdown_enabled", False)
-            self.cases.create_case(guild.id, "lockdown", interaction.user.id, interaction.user.id, "Disabled", status="resolved")
+            await asyncio.to_thread(self.cases.create_case, guild.id, "lockdown", interaction.user.id, interaction.user.id, "Disabled", status="resolved")
             await self._alert(guild, "Anti-raid lockdown disabled", f"Disabled by {interaction.user.mention}.")
             await interaction.followup.send("Lockdown disabled and saved channel permissions restored.", ephemeral=True)
 
