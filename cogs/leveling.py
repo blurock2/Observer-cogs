@@ -492,24 +492,17 @@ class Leveling(ObserverCog):
     # ============================================================ User database operations
 
     @staticmethod
-    def _read_user_row_sync(guild_id: int, user_id: int) -> sqlite3.Row:
+    def _read_user_row_sync(guild_id: int, user_id: int) -> sqlite3.Row | dict[str, int]:
+        # Looking at a rank must not acquire SQLite's single-writer lock.
+        # The XP flush upserts users when they first earn XP.
         conn = _get_conn()
         try:
-            conn.execute(
-                "INSERT INTO users (guild_id,user_id) VALUES (?,?) "
-                "ON CONFLICT(guild_id,user_id) DO NOTHING",
-                (guild_id, user_id),
-            )
             row = conn.execute(
                 "SELECT xp, level, messages FROM users "
                 "WHERE guild_id = ? AND user_id = ?",
                 (guild_id, user_id),
             ).fetchone()
-            conn.commit()
-            return row
-        except Exception:
-            conn.rollback()
-            raise
+            return row if row is not None else {"xp": 0, "level": 0, "messages": 0}
         finally:
             conn.close()
 
@@ -527,39 +520,43 @@ class Leveling(ObserverCog):
     # ============================================================ Guild configuration operations
 
     @staticmethod
-    def _read_guild_config_sync(guild_id: int):
+    def _read_guild_config_sync(guild_id: int) -> tuple[dict[str, Any], list[tuple[int, int]]]:
+        # SQLite permits many WAL readers but only one writer. A read used to
+        # INSERT a default guild row on *every* weekly loop iteration, causing
+        # SQLITE_BUSY under concurrent moderation, XP, or setup writes.
+        legacy = {
+            "level_up_channel": None,
+            "level_up_message": "🎉 {user} just reached level {level}!",
+            "weekly_channel": None,
+            "weekly_day": 0,
+            "weekly_hour": 0,
+            "weekly_minute": 0,
+        }
         conn = _get_conn()
         try:
-            conn.execute(
-                "INSERT INTO guild_config (guild_id) VALUES (?) "
-                "ON CONFLICT(guild_id) DO NOTHING",
-                (guild_id,),
-            )
             row = conn.execute(
                 "SELECT level_up_channel, level_up_message, weekly_channel, "
                 "weekly_day, weekly_hour, weekly_minute "
                 "FROM guild_config WHERE guild_id = ?",
                 (guild_id,),
             ).fetchone()
+            if row is not None:
+                legacy.update(dict(row))
             rewards = conn.execute(
                 "SELECT level, role_id FROM role_rewards WHERE guild_id = ? "
                 "ORDER BY level ASC",
                 (guild_id,),
             ).fetchall()
-            conn.commit()
-            return dict(row), [(reward["level"], reward["role_id"]) for reward in rewards]
-        except Exception:
-            conn.rollback()
-            raise
+            return legacy, [(reward["level"], reward["role_id"]) for reward in rewards]
         finally:
             conn.close()
 
     async def _get_guild_config(self, guild_id: int) -> dict[str, Any]:
-        async with self._db_lock:
-            legacy, rewards = await asyncio.to_thread(
-                self._read_guild_config_sync, guild_id
-            )
-
+        # Independent SELECTs do not need to hold the XP writer's asyncio lock.
+        # Keep all SQLite work in worker threads so Discord heartbeats proceed.
+        legacy, rewards = await asyncio.to_thread(
+            self._read_guild_config_sync, guild_id
+        )
         stored = await asyncio.to_thread(self.store.get_module, guild_id, MODULE_KEY)
 
         def overlay(key: str, legacy_key: str):
@@ -722,16 +719,11 @@ class Leveling(ObserverCog):
     def _load_user_state(guild_id: int, user_id: int) -> tuple[int, int, int]:
         conn = _get_conn()
         try:
-            conn.execute(
-                "INSERT INTO users (guild_id, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING",
-                (guild_id, user_id),
-            )
             row = conn.execute(
                 "SELECT xp, level, messages FROM users WHERE guild_id = ? AND user_id = ?",
                 (guild_id, user_id),
             ).fetchone()
-            conn.commit()
-            return tuple(row)
+            return tuple(row) if row is not None else (0, 0, 0)
         finally:
             conn.close()
 
