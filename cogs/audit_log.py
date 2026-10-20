@@ -571,8 +571,8 @@ class AuditLogCog(ObserverCog):
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member) -> None:
         guild = member.guild
-        self.cases.add_name(guild.id, member.id, member.name)
-        self.cases.add_name(guild.id, member.id, member.display_name)
+        await asyncio.to_thread(self.cases.add_name, guild.id, member.id, member.name)
+        await asyncio.to_thread(self.cases.add_name, guild.id, member.id, member.display_name)
         if not await self._is_enabled(guild, "log_member_events"):
             return
         if self._is_ignored(guild.id, member=member):
@@ -653,8 +653,8 @@ class AuditLogCog(ObserverCog):
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member) -> None:
         guild = after.guild
-        self.cases.add_name(guild.id, after.id, after.name)
-        self.cases.add_name(guild.id, after.id, after.display_name)
+        await asyncio.to_thread(self.cases.add_name, guild.id, after.id, after.name)
+        await asyncio.to_thread(self.cases.add_name, guild.id, after.id, after.display_name)
         if not await self._is_enabled(guild, "log_member_events"):
             return
         if self._is_ignored(guild.id, member=after):
