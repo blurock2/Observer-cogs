@@ -78,7 +78,7 @@ class AntiRaid(ObserverCog):
         except discord.HTTPException as error:
             error_id = log_error(error, source="anti-raid enforcement", guild_id=member.guild.id, user_id=member.id)
             return f"failed; error {error_id}"
-        self.cases.create_case(member.guild.id, "ban" if ban else "timeout", member.id,
+        await asyncio.to_thread(self.cases.create_case, member.guild.id, "ban" if ban else "timeout", member.id,
                                self.bot.user.id, reason, status="resolved")
         return "banned" if ban else f"timed out for {minutes} minutes"
 
