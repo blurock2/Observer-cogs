@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from error_handling import ObserverCog
 
+import asyncio
 import json
 import logging
 import math
@@ -71,25 +72,22 @@ class AppBridge(ObserverCog):
         self.refresh_guild_data.cancel()
         self.write_stats()
 
-    def write_stats(self) -> None:
-        member_count = sum(
-            guild.member_count or 0
-            for guild in self.bot.guilds
-        )
-        write_json_atomic(
-            APP_STATS_FILE,
-            {
-                "app": "observer",
-                "bot": "Observer",
-                "status": "Online",
-                "servers": len(self.bot.guilds),
-                "users": member_count,
-                "commands_run": self.commands_run,
-                "updated_at": datetime.now(UTC).isoformat(),
-            },
-        )
+    def _stats_payload(self) -> dict[str, Any]:
+        member_count = sum(guild.member_count or 0 for guild in self.bot.guilds)
+        return {
+            "app": "observer", "bot": "Observer", "status": "Online",
+            "servers": len(self.bot.guilds), "users": member_count,
+            "commands_run": self.commands_run,
+            "updated_at": datetime.now(UTC).isoformat(),
+        }
 
-    def write_guild_data(self) -> None:
+    def write_stats(self) -> None:
+        write_json_atomic(APP_STATS_FILE, self._stats_payload())
+
+    async def write_stats_async(self) -> None:
+        await asyncio.to_thread(write_json_atomic, APP_STATS_FILE, self._stats_payload())
+
+    def _guild_data_payload(self) -> dict[str, Any]:
         guilds: list[dict[str, Any]] = []
 
         for guild in sorted(
@@ -150,12 +148,18 @@ class AppBridge(ObserverCog):
             "guilds": guilds,
         }
 
-        write_json_atomic(APP_GUILDS_FILE, payload)
+        return payload
+
+    def write_guild_data(self) -> None:
+        write_json_atomic(APP_GUILDS_FILE, self._guild_data_payload())
+
+    async def write_guild_data_async(self) -> None:
+        await asyncio.to_thread(write_json_atomic, APP_GUILDS_FILE, self._guild_data_payload())
 
     @commands.Cog.listener()
     async def on_ready(self) -> None:
-        self.write_guild_data()
-        self.write_stats()
+        await self.write_guild_data_async()
+        await self.write_stats_async()
 
         print(
             "[app_bridge] Saved live data for "
@@ -164,17 +168,17 @@ class AppBridge(ObserverCog):
 
     @commands.Cog.listener()
     async def on_guild_join(self, guild: discord.Guild) -> None:
-        self.write_guild_data()
-        self.write_stats()
+        await self.write_guild_data_async()
+        await self.write_stats_async()
 
     @commands.Cog.listener()
     async def on_guild_remove(self, guild: discord.Guild) -> None:
         store = SetupConfigStore(DB_PATH)
 
-        store.reset_guild(guild.id)
+        await asyncio.to_thread(store.reset_guild, guild.id)
 
-        self.write_guild_data()
-        self.write_stats()
+        await self.write_guild_data_async()
+        await self.write_stats_async()
 
         print(
             "[app_bridge] Observer was removed from "
@@ -185,7 +189,7 @@ class AppBridge(ObserverCog):
     @tasks.loop(seconds=10)
     async def refresh_guild_data(self) -> None:
         try:
-            self.write_guild_data()
+            await self.write_guild_data_async()
         except Exception:
             logger.exception("App bridge guild refresh failed; will retry next cycle")
 
@@ -248,12 +252,12 @@ class AppBridge(ObserverCog):
 
     @tasks.loop(seconds=1)
     async def process_message_requests(self) -> None:
-        requests = self.read_requests()
+        requests = await asyncio.to_thread(self.read_requests)
 
         if not requests:
             return
 
-        self.write_requests([])
+        await asyncio.to_thread(self.write_requests, [])
 
         for request in requests:
             request_id = str(request.get("id", "unknown"))
@@ -261,7 +265,7 @@ class AppBridge(ObserverCog):
             content = str(request.get("content", "")).strip()
 
             if not isinstance(channel_id, int):
-                self.write_result(
+                await asyncio.to_thread(self.write_result, 
                     request_id,
                     success=False,
                     message="Invalid channel ID.",
@@ -269,7 +273,7 @@ class AppBridge(ObserverCog):
                 continue
 
             if not content:
-                self.write_result(
+                await asyncio.to_thread(self.write_result, 
                     request_id,
                     success=False,
                     message="Message cannot be empty.",
@@ -277,7 +281,7 @@ class AppBridge(ObserverCog):
                 continue
 
             if len(content) > 2000:
-                self.write_result(
+                await asyncio.to_thread(self.write_result, 
                     request_id,
                     success=False,
                     message=(
@@ -295,7 +299,7 @@ class AppBridge(ObserverCog):
                     discord.Thread,
                 ),
             ):
-                self.write_result(
+                await asyncio.to_thread(self.write_result, 
                     request_id,
                     success=False,
                     message=(
@@ -312,7 +316,7 @@ class AppBridge(ObserverCog):
                 )
 
             except discord.Forbidden:
-                self.write_result(
+                await asyncio.to_thread(self.write_result, 
                     request_id,
                     success=False,
                     message=(
@@ -322,14 +326,14 @@ class AppBridge(ObserverCog):
                 )
 
             except discord.HTTPException as error:
-                self.write_result(
+                await asyncio.to_thread(self.write_result, 
                     request_id,
                     success=False,
                     message=f"Discord rejected the message: {error}",
                 )
 
             else:
-                self.write_result(
+                await asyncio.to_thread(self.write_result, 
                     request_id,
                     success=True,
                     message=f"Message sent to #{channel.name}.",
