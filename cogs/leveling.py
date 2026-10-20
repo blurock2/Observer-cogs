@@ -1151,96 +1151,65 @@ class Leveling(ObserverCog):
 
     # ============================================================ Weekly leaderboard operations
 
+    @staticmethod
+    def _select_rows_sync(query: str, params: tuple[Any, ...]) -> list[sqlite3.Row]:
+        conn = _get_conn()
+        try:
+            return conn.execute(query, params).fetchall()
+        finally:
+            conn.close()
+
+    @staticmethod
+    def _execute_sql_sync(query: str, params: tuple[Any, ...]) -> None:
+        conn = _get_conn()
+        try:
+            conn.execute(query, params)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
     async def _get_weekly_rows(
         self,
         guild_id: int,
         week_start: str,
     ) -> list[sqlite3.Row]:
-        async with self._db_lock:
-            conn = _get_conn()
-
-            try:
-                cur = conn.cursor()
-
-                cur.execute(
-                    """
-                    SELECT user_id, xp
-                    FROM weekly_xp
-                    WHERE guild_id = ?
-                      AND week_start = ?
-                    ORDER BY xp DESC
-                    LIMIT 10
-                    """,
-                    (
-                        guild_id,
-                        week_start,
-                    ),
-                )
-
-                return cur.fetchall()
-
-            finally:
-                conn.close()
+        return await asyncio.to_thread(
+            self._select_rows_sync,
+            """
+            SELECT user_id, xp FROM weekly_xp
+            WHERE guild_id = ? AND week_start = ?
+            ORDER BY xp DESC LIMIT 10
+            """,
+            (guild_id, week_start),
+        )
 
     async def _was_weekly_post_sent(
-        self,
-        guild_id: int,
-        week_start: str,
+        self, guild_id: int, week_start: str,
     ) -> bool:
-        async with self._db_lock:
-            conn = _get_conn()
-
-            try:
-                cur = conn.cursor()
-
-                cur.execute(
-                    """
-                    SELECT week_start
-                    FROM weekly_posts
-                    WHERE guild_id = ?
-                    """,
-                    (guild_id,),
-                )
-
-                row = cur.fetchone()
-
-                return (
-                    row is not None
-                    and row["week_start"] == week_start
-                )
-
-            finally:
-                conn.close()
+        rows = await asyncio.to_thread(
+            self._select_rows_sync,
+            "SELECT week_start FROM weekly_posts WHERE guild_id = ?",
+            (guild_id,),
+        )
+        return bool(rows and rows[0]["week_start"] == week_start)
 
     async def _mark_weekly_post_sent(
-        self,
-        guild_id: int,
-        week_start: str,
+        self, guild_id: int, week_start: str,
     ) -> None:
         async with self._db_lock:
-            conn = _get_conn()
-
-            try:
-                cur = conn.cursor()
-
-                cur.execute(
-                    """
-                    INSERT INTO weekly_posts
-                        (guild_id, week_start)
-                    VALUES (?, ?)
-                    ON CONFLICT(guild_id)
-                    DO UPDATE SET week_start = excluded.week_start
-                    """,
-                    (
-                        guild_id,
-                        week_start,
-                    ),
-                )
-
-                conn.commit()
-
-            finally:
-                conn.close()
+            await asyncio.to_thread(
+                self._execute_sql_sync,
+                """
+                INSERT INTO weekly_posts (guild_id, week_start)
+                VALUES (?, ?)
+                ON CONFLICT(guild_id) DO UPDATE SET
+                    week_start = excluded.week_start
+                """,
+                (guild_id, week_start),
+            )
 
     async def _post_weekly_leaderboard(
         self,
@@ -1558,32 +1527,17 @@ class Leveling(ObserverCog):
     # ============================================================ Leaderboard commands
 
     async def _get_leaderboard_rows(
-        self,
-        guild_id: int,
+        self, guild_id: int,
     ) -> list[sqlite3.Row]:
         await self._flush_pending_xp()
-
-        async with self._db_lock:
-            conn = _get_conn()
-
-            try:
-                cur = conn.cursor()
-
-                cur.execute(
-                    """
-                    SELECT user_id, xp, level, messages
-                    FROM users
-                    WHERE guild_id = ?
-                    ORDER BY level DESC, xp DESC
-                    LIMIT 10
-                    """,
-                    (guild_id,),
-                )
-
-                return cur.fetchall()
-
-            finally:
-                conn.close()
+        return await asyncio.to_thread(
+            self._select_rows_sync,
+            """
+            SELECT user_id, xp, level, messages FROM users
+            WHERE guild_id = ? ORDER BY level DESC, xp DESC LIMIT 10
+            """,
+            (guild_id,),
+        )
 
     @app_commands.command(name="leaderboard")
     async def leaderboard_slash(
@@ -1664,62 +1618,34 @@ class Leveling(ObserverCog):
 
     # ============================================================ Weekly rank commands
 
-    async def _get_weekly_rank(
-        self,
-        guild_id: int,
-        user_id: int,
+    @staticmethod
+    def _read_weekly_rank_sync(
+        guild_id: int, user_id: int, week_start: str,
     ) -> tuple[str, int, int]:
-        week_start = _current_week_start(
-            datetime.now(timezone.utc)
+        conn = _get_conn()
+        try:
+            row = conn.execute(
+                "SELECT xp FROM weekly_xp "
+                "WHERE guild_id = ? AND user_id = ? AND week_start = ?",
+                (guild_id, user_id, week_start),
+            ).fetchone()
+            xp = row["xp"] if row else 0
+            better = conn.execute(
+                "SELECT COUNT(*) AS better_users FROM weekly_xp "
+                "WHERE guild_id = ? AND week_start = ? AND xp > ?",
+                (guild_id, week_start, xp),
+            ).fetchone()
+            return week_start, xp, int(better["better_users"]) + 1
+        finally:
+            conn.close()
+
+    async def _get_weekly_rank(
+        self, guild_id: int, user_id: int,
+    ) -> tuple[str, int, int]:
+        week_start = _current_week_start(datetime.now(timezone.utc))
+        return await asyncio.to_thread(
+            self._read_weekly_rank_sync, guild_id, user_id, week_start
         )
-
-        async with self._db_lock:
-            conn = _get_conn()
-
-            try:
-                cur = conn.cursor()
-
-                cur.execute(
-                    """
-                    SELECT xp
-                    FROM weekly_xp
-                    WHERE guild_id = ?
-                      AND user_id = ?
-                      AND week_start = ?
-                    """,
-                    (
-                        guild_id,
-                        user_id,
-                        week_start,
-                    ),
-                )
-
-                row = cur.fetchone()
-                xp = row["xp"] if row else 0
-
-                cur.execute(
-                    """
-                    SELECT COUNT(*) AS better_users
-                    FROM weekly_xp
-                    WHERE guild_id = ?
-                      AND week_start = ?
-                      AND xp > ?
-                    """,
-                    (
-                        guild_id,
-                        week_start,
-                        xp,
-                    ),
-                )
-
-                rank = int(
-                    cur.fetchone()["better_users"]
-                ) + 1
-
-                return week_start, xp, rank
-
-            finally:
-                conn.close()
 
     @app_commands.command(name="weekly_rank")
     @app_commands.describe(
