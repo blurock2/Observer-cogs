@@ -148,7 +148,14 @@ def _backup_database() -> Path | None:
         f"{database.suffix}"
     )
 
-    shutil.copy2(database, backup_path)
+    # A raw copy is not a consistent snapshot of a live WAL database.
+    # SQLite's online backup API includes committed WAL transactions.
+    source = _get_conn()
+    try:
+        with sqlite3.connect(backup_path) as destination:
+            source.backup(destination)
+    finally:
+        source.close()
 
     return backup_path
 
@@ -794,49 +801,76 @@ class Leveling(ObserverCog):
             if key in MIRRORED_KEYS:
                 self.store.set(guild_id, MODULE_KEY, key, value)
 
+    @staticmethod
+    def _write_xp_batch(
+        pending_xp: dict[tuple[int, int], tuple[int, int]],
+        pending_weekly_xp: dict[tuple[int, int, str], int],
+        states: dict[tuple[int, int], tuple[int, int, int]],
+    ) -> None:
+        """Commit a whole XP batch in a worker thread (one SQLite connection)."""
+        conn = _get_conn()
+        try:
+            for (guild_id, user_id), (xp, messages) in pending_xp.items():
+                state = states[(guild_id, user_id)]
+                conn.execute(
+                    """
+                    INSERT INTO users (guild_id, user_id, xp, level, messages)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(guild_id, user_id) DO UPDATE SET
+                        xp = users.xp + excluded.xp,
+                        level = excluded.level,
+                        messages = users.messages + excluded.messages
+                    """,
+                    (guild_id, user_id, xp, state[1], messages),
+                )
+            for (guild_id, user_id, week_start), xp in pending_weekly_xp.items():
+                conn.execute(
+                    """
+                    INSERT INTO weekly_xp (guild_id, user_id, week_start, xp)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(guild_id, user_id, week_start) DO UPDATE SET
+                        xp = weekly_xp.xp + excluded.xp
+                    """,
+                    (guild_id, user_id, week_start, xp),
+                )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
     async def _flush_pending_xp(self) -> None:
         async with self._db_lock:
             if not self._pending_xp:
                 return
 
-            pending_xp = self._pending_xp
-            pending_weekly_xp = self._pending_weekly_xp
-            self._pending_xp = {}
-            self._pending_weekly_xp = {}
-            conn = _get_conn()
+            # Hold the lock so _add_xp cannot mutate these dictionaries while
+            # the commit runs. Crucially, don't clear them until it succeeds.
+            batch = dict(self._pending_xp)
+            weekly = dict(self._pending_weekly_xp)
+            states = {key: self._user_state[key] for key in batch}
+            operation = asyncio.create_task(
+                asyncio.to_thread(self._write_xp_batch, batch, weekly, states)
+            )
             try:
-                for (guild_id, user_id), (xp, messages) in pending_xp.items():
-                    state = self._user_state[(guild_id, user_id)]
-                    conn.execute(
-                        """
-                        INSERT INTO users (guild_id, user_id, xp, level, messages)
-                        VALUES (?, ?, ?, ?, ?)
-                        ON CONFLICT(guild_id, user_id) DO UPDATE SET
-                            xp = users.xp + excluded.xp,
-                            level = excluded.level,
-                            messages = users.messages + excluded.messages
-                        """,
-                        (guild_id, user_id, xp, state[1], messages),
-                    )
-                for (guild_id, user_id, week_start), xp in pending_weekly_xp.items():
-                    conn.execute(
-                        """
-                        INSERT INTO weekly_xp (guild_id, user_id, week_start, xp)
-                        VALUES (?, ?, ?, ?)
-                        ON CONFLICT(guild_id, user_id, week_start) DO UPDATE SET
-                            xp = weekly_xp.xp + excluded.xp
-                        """,
-                        (guild_id, user_id, week_start, xp),
-                    )
-                conn.commit()
-            except Exception:
-                conn.rollback()
-                self._pending_xp.update(pending_xp)
-                for key, value in pending_weekly_xp.items():
-                    self._pending_weekly_xp[key] = self._pending_weekly_xp.get(key, 0) + value
+                await asyncio.shield(operation)
+            except asyncio.CancelledError:
+                # The SQLite transaction is already running in a worker. Let
+                # it finish before releasing the lock and deciding whether to
+                # clear the batch, even if the scheduled flush is cancelled.
+                try:
+                    await operation
+                except Exception:
+                    logger.exception("XP commit failed during cancellation")
+                    raise
+                else:
+                    self._pending_xp.clear()
+                    self._pending_weekly_xp.clear()
                 raise
-            finally:
-                conn.close()
+            else:
+                self._pending_xp.clear()
+                self._pending_weekly_xp.clear()
 
     def _schedule_xp_flush(self) -> None:
         if self._xp_flush_task is None or self._xp_flush_task.done():
@@ -854,6 +888,23 @@ class Leveling(ObserverCog):
             if self._xp_flush_task is asyncio.current_task():
                 self._xp_flush_task = None
 
+    @staticmethod
+    def _load_user_state(guild_id: int, user_id: int) -> tuple[int, int, int]:
+        conn = _get_conn()
+        try:
+            conn.execute(
+                "INSERT INTO users (guild_id, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING",
+                (guild_id, user_id),
+            )
+            row = conn.execute(
+                "SELECT xp, level, messages FROM users WHERE guild_id = ? AND user_id = ?",
+                (guild_id, user_id),
+            ).fetchone()
+            conn.commit()
+            return tuple(row)
+        finally:
+            conn.close()
+
     async def _add_xp(
         self,
         guild_id: int,
@@ -864,13 +915,9 @@ class Leveling(ObserverCog):
             state_key = (guild_id, user_id)
             state = self._user_state.get(state_key)
             if state is None:
-                conn = _get_conn()
-                try:
-                    conn.execute("INSERT INTO users (guild_id, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING", (guild_id, user_id))
-                    state = tuple(conn.execute("SELECT xp, level, messages FROM users WHERE guild_id = ? AND user_id = ?", (guild_id, user_id)).fetchone())
-                    conn.commit()
-                finally:
-                    conn.close()
+                state = await asyncio.to_thread(
+                    self._load_user_state, guild_id, user_id
+                )
 
             old_xp, old_level, old_messages = state
             new_xp = old_xp + xp
