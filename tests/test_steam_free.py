@@ -84,11 +84,60 @@ def test_history_survives_restart_and_allows_new_promotion(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_disabled_setup_has_no_side_effects():
+async def test_disabled_setup_has_no_side_effects(monkeypatch):
+    monkeypatch.setattr("cogs.steam_free.RELEASED", False)
     bot = AsyncMock()
     with pytest.raises(RuntimeError, match="disabled"):
         await setup(bot)
     bot.add_cog.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_released_setup_registers_cog():
+    bot = AsyncMock()
+    await setup(bot)
+    assert isinstance(bot.add_cog.call_args.args[0], SteamFree)
+
+
+@pytest.mark.asyncio
+async def test_enabled_cog_starts_and_stops_polling(tmp_path, monkeypatch):
+    import cogs.steam_free as module
+
+    monkeypatch.setattr(module, "DATABASE_PATH", tmp_path / "bot.db")
+    bot = SimpleNamespace(wait_until_ready=asyncio.Event().wait)
+    cog = SteamFree(bot)
+    await cog.cog_load()
+    try:
+        assert cog.poll.is_running()
+        assert not cog.session.closed
+    finally:
+        await cog.cog_unload()
+    assert cog.session.closed
+    task = cog.poll.get_task()
+    if task:
+        await asyncio.gather(task, return_exceptions=True)
+
+
+def test_steam_extension_and_setup_settings_are_available():
+    import ast
+    from pathlib import Path
+
+    from cogs.setup_ui import get_module
+
+    module = get_module("steam_free")
+    assert {s.key for s in module.settings} == {"enabled", "channel", "country"}
+    assert next(s for s in module.settings if s.key == "country").default == "si"
+    tree = ast.parse((Path(__file__).resolve().parents[1] / "bot.py").read_text())
+    bot_class = next(
+        n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "MyBot"
+    )
+    extensions = next(
+        n
+        for n in bot_class.body
+        if isinstance(n, ast.Assign)
+        and any(isinstance(t, ast.Name) and t.id == "EXTENSIONS" for t in n.targets)
+    )
+    assert "cogs.steam_free" in ast.literal_eval(extensions.value)
 
 
 @pytest.mark.asyncio

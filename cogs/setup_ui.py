@@ -5,6 +5,7 @@ from error_handling import ErrorHandledModal, ErrorHandledView, ObserverCog, han
 
 import json
 import os
+import re
 from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -304,6 +305,20 @@ class ModuleSpec:
 
 
 MODULES: list[ModuleSpec] = [
+    ModuleSpec(
+        key="steam_free",
+        label="Free Steam Games",
+        emoji="🎮",
+        description="Games and DLC temporarily 100% off, claimed directly on Steam.",
+        settings=[
+            SettingSpec("enabled", "Automatic Steam alerts", "toggle", default=False,
+                        description="Check every 30 minutes after selecting a channel."),
+            SettingSpec("channel", "Free games channel", "channel",
+                        description="Needs View Channel, Send Messages and Embed Links."),
+            SettingSpec("country", "Steam region code", "text", default="si",
+                        description="Two-letter country code: si, de, gb, us. Prices and availability vary."),
+        ],
+    ),
     ModuleSpec(key="anti_raid", label="Anti-Raid and Honeypot", emoji="🍯",
         description="Join-burst verification holds, temporary restrictions, and an opt-in trap channel.",
         settings=[
@@ -1669,7 +1684,7 @@ class ChannelSelectView(AdminOnlyView):
             placeholder="Select a channel…",
             min_values=1,
             max_values=1,
-            channel_types=[discord.ChannelType.text] if (module_key, setting_key) == ("bot", "error_channel") else None,
+            channel_types=[discord.ChannelType.text] if (module_key, setting_key) in {("bot", "error_channel"), ("steam_free", "channel")} else None,
         )
         select.callback = self._on_select
         self.add_item(select)
@@ -1700,7 +1715,7 @@ class ChannelSelectView(AdminOnlyView):
             await interaction.response.defer()
             channel_id = interaction.data["values"][0]
             channel = await interaction.guild.fetch_channel(int(channel_id))
-            if (self.module_key, self.setting_key) == ("bot", "error_channel"):
+            if (self.module_key, self.setting_key) in {("bot", "error_channel"), ("steam_free", "channel")}:
                 permissions = channel.permissions_for(interaction.guild.me)
                 if not isinstance(channel, discord.TextChannel) or not (permissions.view_channel and permissions.send_messages and permissions.embed_links):
                     await interaction.followup.send("Choose a text channel where I can View Channel, Send Messages, and Embed Links.", ephemeral=True)
@@ -1800,6 +1815,14 @@ class TextModal(ErrorHandledModal):
         try:
             raw = self.input.value.strip()
             guild = interaction.guild
+            if self.module_key == "steam_free" and self.spec.key == "country":
+                raw = raw.lower() or "si"
+                if not re.fullmatch(r"[a-z]{2}", raw):
+                    await interaction.response.send_message(
+                        "Enter a two-letter Steam country code, such as si, de, gb or us.",
+                        ephemeral=True,
+                    )
+                    return
 
             if self.spec.kind == "integer":
                 if raw == "":

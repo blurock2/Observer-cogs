@@ -248,6 +248,7 @@ class HelpCog(ObserverCog):
             "This bot supports both prefix and slash commands.\n\n"
             f"• Prefix commands use `{self.prefix}{COMMAND_NAME_PREFIX}`\n"
             "• Slash commands use `/`\n\n"
+            "• Free Steam games and DLC: configure `/setup` → Free Steam Games.\n\n"
             f"Use `{self.prefix}{COMMAND_NAME_PREFIX}help <command>` or "
             "`/help command:<name>` "
             "for prefix-command details."

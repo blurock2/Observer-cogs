@@ -1,4 +1,4 @@
-"""Unreleased Steam alerts. Deliberately absent from bot.EXTENSIONS and /setup."""
+"""Automatic Steam free-to-keep promotions configured through /setup."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from database import DATABASE_PATH, connect_sqlite
 from error_handling import log_error
 
 logger = logging.getLogger("observer.steam_free")
-RELEASED = False
+RELEASED = True
 STORE = "https://store.steampowered.com"
 
 
@@ -308,7 +308,7 @@ class SteamClient:
 
 
 class SteamFree(commands.Cog):
-    """No public commands; configuration UI will be added at release."""
+    """Automatic alerts configured through the existing setup dashboard."""
 
     def __init__(self, bot):
         self.bot = bot
@@ -371,7 +371,7 @@ class SteamFree(commands.Cog):
                 )
                 if config.get("enabled") is not True:
                     continue
-                country = str(config.get("country", "si")).lower()
+                country = str(config.get("country") or "si").lower()
                 if not re.fullmatch(r"[a-z]{2}", country):
                     raise ValueError("Invalid Steam country code")
                 channel = guild.get_channel(int(config.get("channel", 0)))

@@ -1,9 +1,9 @@
-# Unreleased Steam alerts draft
+# Steam free game and DLC alerts
 
 Rebuilt from the shared conversation on 22 October 2026. This is new code,
 not a recovery of the previous session's source or its reported test results.
 
-The draft checks Steam every 30 minutes for normally paid games and DLC
+The cog checks Steam every 30 minutes for normally paid games and DLC
 temporarily offered at 100% off, directly claimable on Steam and free to keep.
 It excludes demos, free weekends, permanently free content and key giveaways.
 Steam's embedded purchase data must confirm a positive original price, zero
@@ -28,12 +28,17 @@ retried without sending another message. Pending writes are retried at the start
 of every scan, including when an offer has since expired. Discord sends are not
 blindly retried after HTTP errors; discord.py manages Discord rate limits.
 
-The draft is absent from bot.py's extension list, help, README and setup UI.
-Its RELEASED constant is False; attempting to load it raises before adding a
-cog, opening a session or creating tables. No bot token is needed for tests.
+The cog loads automatically through bot.py's extension list and is enabled in
+the feature branch. After updating the bot and restarting it (or running the
+owner-only reload command), open `/setup` → **Free Steam Games**:
 
-At release, integrate the enabled/channel/country settings into the existing
-setup UI, enable the release flag and add the extension.
+1. Select **Free games channel**. The bot needs View Channel, Send Messages and Embed Links.
+2. Set **Steam region code** (default `si` for Slovenia).
+3. Turn **Automatic Steam alerts** on. The next scheduled scan runs within 30 minutes.
+
+Posting is opt-in for each server; existing servers receive nothing until
+a channel is selected and alerts are turned on. Help includes setup guidance.
+No bot token is needed for tests.
 Configuration is stored under steam_free; enabled must be the JSON boolean
 true, channel a text channel ID, and country a two-letter Steam region code.
 Default region is Slovenia (si). No new configuration commands are added.
@@ -44,4 +49,4 @@ again before sending; polling cannot guarantee all short promotions are found.
 SQLite history prevents normal repeat posts across restarts and distinguishes
 later promotions by their deadline. A crash between Discord delivery and the
 history write can still produce a repeat; delivery is not exactly once.
-Run only one bot process for this draft. Region availability may vary.
+Run only one bot process for this feature. Region availability may vary.

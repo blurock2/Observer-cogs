@@ -75,6 +75,7 @@ class MyBot(commands.Bot):
         "cogs.rules",
         "cogs.tickets",
         "cogs.reminder",
+        "cogs.steam_free",
         "cogs.message_relay",
         "cogs.moderation",
         "cogs.security",
