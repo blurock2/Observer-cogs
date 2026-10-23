@@ -166,6 +166,35 @@ def make_post(offer: Offer):
     return embed, view
 
 
+def make_ended_post(original: discord.Embed, ends: int, price: str) -> discord.Embed:
+    """Turn the original announcement into a closed promotion, retaining its artwork."""
+    embed = discord.Embed.from_dict(original.to_dict())
+    if not (embed.title or "").startswith("ENDED • "):
+        embed.title = ("ENDED • " + (embed.title or "Steam offer"))[:256]
+    embed.description = (
+        "**This free-to-keep promotion has ended.** "
+        "It can no longer be claimed for free."
+    )
+    embed.color = discord.Color(0x747982)
+    for index, field in enumerate(embed.fields):
+        if field.name == "Price":
+            embed.set_field_at(
+                index,
+                name="Current price",
+                value=discord.utils.escape_markdown(price)[:1000],
+                inline=field.inline,
+            )
+        elif field.name == "Claim before":
+            embed.set_field_at(
+                index, name="Promotion ended",
+                value=f"<t:{ends}:F>", inline=field.inline,
+            )
+    footer = embed.footer.text or "Observer • Steam offers"
+    if not footer.endswith(" • Ended"):
+        embed.set_footer(text=(footer + " • Ended")[:2048])
+    return embed
+
+
 class History:
     def __init__(self, path):
         self.path = path
@@ -173,8 +202,22 @@ class History:
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS steam_free_posts ("
                 "guild_id INTEGER, app_id INTEGER, ends INTEGER, message_id INTEGER, "
+                "channel_id INTEGER, country TEXT, ended_at INTEGER, "
                 "PRIMARY KEY(guild_id, app_id, ends))"
             )
+            # Upgrade existing installations without losing post history.
+            columns = {
+                row["name"] for row in conn.execute("PRAGMA table_info(steam_free_posts)")
+            }
+            for column, sql_type in (
+                ("channel_id", "INTEGER"),
+                ("country", "TEXT"),
+                ("ended_at", "INTEGER"),
+            ):
+                if column not in columns:
+                    conn.execute(
+                        f"ALTER TABLE steam_free_posts ADD COLUMN {column} {sql_type}"
+                    )
 
     def seen(self, guild_id, offer):
         with closing(connect_sqlite(self.path)) as conn:
@@ -186,11 +229,36 @@ class History:
                 is not None
             )
 
-    def record(self, guild_id, offer, message_id):
+    def record(self, guild_id, offer, message_id, channel_id=None):
         with closing(connect_sqlite(self.path)) as conn, conn:
             conn.execute(
-                "INSERT OR IGNORE INTO steam_free_posts VALUES (?, ?, ?, ?)",
-                (guild_id, offer.app_id, offer.ends, message_id),
+                "INSERT OR IGNORE INTO steam_free_posts "
+                "(guild_id, app_id, ends, message_id, channel_id, country) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (guild_id, offer.app_id, offer.ends, message_id, channel_id, offer.country),
+            )
+            conn.execute(
+                "UPDATE steam_free_posts "
+                "SET channel_id=COALESCE(channel_id, ?), country=COALESCE(country, ?) "
+                "WHERE guild_id=? AND app_id=? AND ends=?",
+                (channel_id, offer.country, guild_id, offer.app_id, offer.ends),
+            )
+
+    def pending_end_checks(self):
+        with closing(connect_sqlite(self.path)) as conn:
+            rows = conn.execute(
+                "SELECT guild_id, app_id, ends, message_id, channel_id, country "
+                "FROM steam_free_posts WHERE ended_at IS NULL "
+                "ORDER BY ends"
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def mark_ended(self, guild_id, app_id, ends):
+        with closing(connect_sqlite(self.path)) as conn, conn:
+            conn.execute(
+                "UPDATE steam_free_posts SET ended_at=? "
+                "WHERE guild_id=? AND app_id=? AND ends=? AND ended_at IS NULL",
+                (int(time.time()), guild_id, app_id, ends),
             )
 
 
@@ -268,6 +336,41 @@ class SteamClient:
         else:
             logger.warning("Steam discovery capped at 250 results country=%s", country)
         return sorted(ids)
+
+    async def restored_price(self, app_id, country):
+        """Return a verified nonzero current price, or None if still free/uncertain.
+
+        Missing or changed store markup must never close an announcement.
+        """
+        source = await self.get(f"{STORE}/app/{app_id}/", cc=country, l="english")
+        items = [item for item in store_items(source) if item.get("appid") == app_id]
+        if not items:
+            raise SteamResponseError(
+                "Steam item data missing; cannot verify restored price"
+            )
+        if parse_offer(app_id, source, country) is not None:
+            return None
+        for item in items:
+            if item.get("type") not in (0, 4):
+                continue
+            option = item.get("best_purchase_option")
+            if not isinstance(option, dict):
+                continue
+            try:
+                final = int(option["final_price_in_cents"])
+                original = int(option["original_price_in_cents"])
+            except (KeyError, ValueError, TypeError, OverflowError):
+                continue
+            if final <= 0 or original <= 0:
+                continue
+            formatted = option.get("formatted_final_price")
+            if isinstance(formatted, str):
+                # Steam prices may contain simple HTML; never put that in Discord.
+                formatted = re.sub(r"<[^>]*>", "", html.unescape(formatted)).strip()
+                if formatted:
+                    return formatted[:100]
+            return "Paid (check Steam for the current amount)"
+        return None
 
     async def offer(self, app_id, country):
         source = await self.get(f"{STORE}/app/{app_id}/", cc=country, l="english")
@@ -440,6 +543,102 @@ class SteamFree(commands.Cog):
             except Exception as error:  # noqa: BLE001 - isolate and report one guild failure
                 log_error(error, source="steam_free.guild_scan", guild_id=guild.id)
 
+        # Existing messages must be maintained even when new alerts are disabled.
+        await self.update_ended_posts(client)
+
+    async def update_ended_posts(self, client):
+        """Edit posted messages once Steam confirms that their price is paid again."""
+        try:
+            pending = await asyncio.to_thread(self.history.pending_end_checks)
+        except sqlite3.Error as error:
+            log_error(error, source="steam_free.load_post_history")
+            return
+
+        price_cache = {}
+        for post in pending:
+            guild_id, app_id, ends = post["guild_id"], post["app_id"], post["ends"]
+            try:
+                guild = self.bot.get_guild(guild_id)
+                if guild is None:
+                    continue
+                # Older DB rows have no channel or country. Fall back to /setup.
+                config = await asyncio.to_thread(
+                    self.bot.setup_store.get_module, guild_id, "steam_free"
+                )
+                country = post["country"] or str(config.get("country") or "si").lower()
+                if not re.fullmatch(r"[a-z]{2}", country):
+                    logger.warning("Invalid archived Steam region guild=%s", guild_id)
+                    continue
+                channel_id = post["channel_id"] or config.get("channel")
+                channel = guild.get_channel(int(channel_id or 0))
+                if not isinstance(channel, discord.TextChannel) or guild.me is None:
+                    logger.warning(
+                        "Steam posted channel unavailable guild=%s app=%s",
+                        guild_id, app_id,
+                    )
+                    continue
+                perms = channel.permissions_for(guild.me)
+                if not (perms.view_channel and perms.read_message_history
+                        and perms.embed_links):
+                    logger.warning(
+                        "Steam history permissions missing guild=%s channel=%s",
+                        guild_id, channel.id,
+                    )
+                    continue
+
+                cache_key = (app_id, country)
+                if cache_key not in price_cache:
+                    try:
+                        price_cache[cache_key] = await client.restored_price(app_id, country)
+                    except SteamResponseError:
+                        logger.warning(
+                            "Steam price check unavailable app=%s region=%s",
+                            app_id, country, exc_info=True,
+                        )
+                        price_cache[cache_key] = None
+                price = price_cache[cache_key]
+                if price is None:
+                    continue
+
+                try:
+                    message = await channel.fetch_message(post["message_id"])
+                except discord.NotFound:
+                    # Removed manually: stop trying to edit a nonexistent message.
+                    await asyncio.to_thread(self.history.mark_ended, guild_id, app_id, ends)
+                    logger.info("Steam post was deleted guild=%s app=%s", guild_id, app_id)
+                    continue
+
+                if (self.bot.user is None or message.author.id != self.bot.user.id
+                        or not message.embeds
+                        or not (message.embeds[0].footer.text or "").startswith(
+                            "Observer • Steam offers"
+                        )):
+                    logger.warning(
+                        "Steam post not recognized guild=%s app=%s message=%s",
+                        guild_id, app_id, post["message_id"],
+                    )
+                    continue
+
+                embed = make_ended_post(message.embeds[0], ends, price)
+                await message.edit(
+                    embed=embed, view=None, allowed_mentions=discord.AllowedMentions.none()
+                )
+                await asyncio.to_thread(self.history.mark_ended, guild_id, app_id, ends)
+                logger.info(
+                    "Steam offer ended; edited guild=%s app=%s message=%s",
+                    guild_id, app_id, post["message_id"],
+                )
+            except (discord.Forbidden, discord.HTTPException) as error:
+                logger.warning(
+                    "Steam post could not be edited guild=%s app=%s: %s",
+                    guild_id, app_id, type(error).__name__,
+                )
+            except Exception as error:  # noqa: BLE001 - isolate and report one history error
+                log_error(
+                    error, source="steam_free.edit_ended",
+                    guild_id=guild_id, reference=post["message_id"],
+                )
+
     async def deliver(self, guild_id, channel, offer):
         key = (guild_id, offer.app_id, offer.ends)
         if key in self._pending_history:
@@ -460,7 +659,7 @@ class SteamFree(commands.Cog):
         )
         self._pending_history[key] = message.id
         try:
-            await asyncio.to_thread(self.history.record, guild_id, offer, message.id)
+            await asyncio.to_thread(self.history.record, guild_id, offer, message.id, channel.id)
         except sqlite3.Error as error:
             log_error(
                 error,
