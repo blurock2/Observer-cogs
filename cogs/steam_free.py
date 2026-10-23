@@ -446,14 +446,20 @@ class SteamFree(commands.Cog):
         await self.bot.wait_until_ready()
 
     async def scan(self):
-        for key, message_id in list(self._pending_history.items()):
+        for key, pending in list(self._pending_history.items()):
             guild_id, app_id, ends = key
+            # Older in-process entries can contain just the message ID.
+            if isinstance(pending, tuple):
+                message_id, channel_id, country = pending
+            else:
+                message_id, channel_id, country = pending, None, "si"
             try:
                 await asyncio.to_thread(
                     self.history.record,
                     guild_id,
-                    Offer(app_id, "", "", ends, "si"),
+                    Offer(app_id, "", "", ends, country),
                     message_id,
+                    channel_id,
                 )
             except sqlite3.Error as error:
                 log_error(
@@ -643,8 +649,13 @@ class SteamFree(commands.Cog):
         key = (guild_id, offer.app_id, offer.ends)
         if key in self._pending_history:
             # Discord already accepted this message. Retry only the DB write.
+            pending = self._pending_history[key]
+            if isinstance(pending, tuple):
+                message_id, channel_id, _ = pending
+            else:
+                message_id, channel_id = pending, None
             await asyncio.to_thread(
-                self.history.record, guild_id, offer, self._pending_history[key]
+                self.history.record, guild_id, offer, message_id, channel_id
             )
             del self._pending_history[key]
             return
@@ -657,7 +668,7 @@ class SteamFree(commands.Cog):
         message = await channel.send(
             embed=embed, view=view, allowed_mentions=discord.AllowedMentions.none()
         )
-        self._pending_history[key] = message.id
+        self._pending_history[key] = (message.id, channel.id, offer.country)
         try:
             await asyncio.to_thread(self.history.record, guild_id, offer, message.id, channel.id)
         except sqlite3.Error as error:
