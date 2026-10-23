@@ -384,7 +384,8 @@ async def test_restored_price_requires_confirmed_paid_price():
         await client.restored_price(42, "de")
 
 
-def test_ended_embed_retains_art_and_no_longer_says_free():
+@pytest.mark.asyncio
+async def test_ended_embed_retains_art_and_no_longer_says_free():
     from cogs.steam_free import make_ended_post
 
     offer = Offer(
