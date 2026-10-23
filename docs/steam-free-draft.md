@@ -49,4 +49,23 @@ again before sending; polling cannot guarantee all short promotions are found.
 SQLite history prevents normal repeat posts across restarts and distinguishes
 later promotions by their deadline. A crash between Discord delivery and the
 history write can still produce a repeat; delivery is not exactly once.
+
+End-of-promotion updates:
+- New posts save the original Discord channel ID, message ID and Steam region in
+  SQLite. Existing `steam_free_posts` rows are migrated automatically and retained;
+  older rows without a channel/region fall back to the server's current setup.
+- Every scan rechecks the saved posts, including offers no longer in Steam search.
+  Only a verified *paid* Steam price triggers an edit; missing/unrecognized
+  Steam responses do not mark offers as ended.
+- The original message is edited to display ENDED, the current paid price and
+  the original deadline. Its image and Steam link are preserved, and the claim
+  button is removed. SQLite records `ended_at` after the successful edit, so
+  subsequent scans and restarts do not edit it again.
+- Ended-message updates continue even if the server disables *new* alerts.
+  Editing requires View Channel, Read Message History and Embed Links.
+- Manually deleted messages are marked as handled. When editing fails due to
+  permissions/network errors, Observer retries on subsequent scans.
+- Steam's undocumented store data may lag or change; if a paid price cannot be
+  verified, the announcement remains unchanged rather than falsely ending it.
+
 Run only one bot process for this feature. Region availability may vary.
