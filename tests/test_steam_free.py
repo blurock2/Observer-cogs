@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import aiohttp
+import discord
 import pytest
 
 from cogs.steam_free import (
@@ -300,6 +301,7 @@ async def test_expired_offer_is_not_sent():
 async def test_pending_history_retried_even_after_offer_expires():
     cog = SteamFree(SimpleNamespace(guilds=[]))
     cog.history = Mock()
+    cog.history.pending_end_checks.return_value = []
     cog._pending_history[(1, 42, 1)] = 8
     await cog.scan()
     cog.history.record.assert_called_once()
@@ -322,3 +324,171 @@ def test_image_uses_actual_steam_header_with_social_fallback():
 def test_untrusted_image_urls_are_ignored(url):
     markup = f'<img class="game_header_image_full" src="{url}">'
     assert parse_offer(42, page() + markup, "si", now=1000).image_url is None
+
+
+def test_history_migration_preserves_existing_announcements(tmp_path):
+    path = tmp_path / "legacy.db"
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "CREATE TABLE steam_free_posts (guild_id INTEGER, app_id INTEGER, "
+            "ends INTEGER, message_id INTEGER, "
+            "PRIMARY KEY(guild_id, app_id, ends))"
+        )
+        db.execute("INSERT INTO steam_free_posts VALUES (1, 42, 2000, 777)")
+
+    store = History(path)
+    rows = store.pending_end_checks()
+    assert len(rows) == 1
+    assert rows[0]["message_id"] == 777
+    assert rows[0]["channel_id"] is None
+    assert rows[0]["country"] is None
+    assert History(path).seen(1, Offer(42, "Game", "€9.99", 2000, "de"))
+    store.mark_ended(1, 42, 2000)
+    assert History(path).pending_end_checks() == []
+    assert store.seen(1, Offer(42, "Game", "€9.99", 2000, "de"))
+
+
+def test_history_records_channel_and_region_across_restarts(tmp_path):
+    path = tmp_path / "posts.db"
+    offer = Offer(42, "Game", "€9.99", 2000, "de")
+    History(path).record(1, offer, 123456789, channel_id=77)
+    posts = History(path).pending_end_checks()
+    assert len(posts) == 1
+    assert posts[0]["channel_id"] == 77
+    assert posts[0]["country"] == "de"
+    assert posts[0]["message_id"] == 123456789
+
+
+@pytest.mark.asyncio
+async def test_restored_price_requires_confirmed_paid_price():
+    client = SteamClient(Mock())
+    client.get = AsyncMock(return_value=page(
+        is_free_to_keep=0,
+        discount_pct=0,
+        final_price_in_cents="999",
+        formatted_final_price="€9.99",
+        free_to_keep_ends=0,
+    ))
+    assert await client.restored_price(42, "de") == "€9.99"
+
+    # An active promotion must never be marked ended.
+    client.get.return_value = page(free_to_keep_ends=int(time.time()) + 3600)
+    assert await client.restored_price(42, "de") is None
+
+    # Unknown prices must not produce a false expired announcement.
+    client.get.return_value = page(best_purchase_option="unexpected")
+    assert await client.restored_price(42, "de") is None
+
+    client.get.return_value = "unexpected markup"
+    with pytest.raises(SteamResponseError, match="cannot verify"):
+        await client.restored_price(42, "de")
+
+
+def test_ended_embed_retains_art_and_no_longer_says_free():
+    from cogs.steam_free import make_ended_post
+
+    offer = Offer(
+        42, "Game", "€9.99", 2000, "de",
+        image_url="https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/42/hash/header.jpg",
+    )
+    original, _ = make_post(offer)
+    ended = make_ended_post(original, offer.ends, "€9.99")
+    assert ended.title.startswith("ENDED • ")
+    assert "ended" in ended.description.lower()
+    assert ended.image.url == original.image.url
+    assert ended.url == original.url
+    assert "€9.99" in next(f.value for f in ended.fields if f.name == "Current price")
+    assert not any("100% off" in f.value for f in ended.fields)
+
+
+@pytest.mark.asyncio
+async def test_original_message_edited_once_after_price_returns(tmp_path, monkeypatch):
+    import cogs.steam_free as module
+
+    original, _ = make_post(Offer(42, "Game", "€9.99", 2000, "de"))
+    message = SimpleNamespace(
+        author=SimpleNamespace(id=900),
+        embeds=[original],
+        edit=AsyncMock(),
+    )
+
+    class FakeChannel:
+        id = 77
+
+        def permissions_for(self, member):
+            return SimpleNamespace(
+                view_channel=True, read_message_history=True, embed_links=True
+            )
+
+        async def fetch_message(self, message_id):
+            assert message_id == 123456789
+            return message
+
+    monkeypatch.setattr(module.discord, "TextChannel", FakeChannel)
+    guild = Mock()
+    guild.me = SimpleNamespace(id=900)
+    guild.get_channel.return_value = FakeChannel()
+    bot = Mock()
+    bot.user = SimpleNamespace(id=900)
+    bot.get_guild.return_value = guild
+    # Even if the server disables new posts or changes settings, the original
+    # channel and region saved with the message remain authoritative.
+    bot.setup_store.get_module.return_value = {
+        "enabled": False, "channel": 44, "country": "si"
+    }
+    path = tmp_path / "posted.db"
+    history = History(path)
+    history.record(1, Offer(42, "Game", "€9.99", 2000, "de"), 123456789, 77)
+
+    cog = SteamFree(bot)
+    cog.history = history
+    client = Mock()
+    client.restored_price = AsyncMock(return_value="€9.99")
+    await cog.update_ended_posts(client)
+
+    message.edit.assert_awaited_once()
+    edited = message.edit.call_args.kwargs
+    assert edited["view"] is None
+    assert edited["embed"].title.startswith("ENDED • ")
+    assert "€9.99" in next(
+        f.value for f in edited["embed"].fields if f.name == "Current price"
+    )
+    client.restored_price.assert_awaited_once_with(42, "de")
+    assert History(path).pending_end_checks() == []
+
+    # A later scan, or a new bot process, should not edit the same post again.
+    cog.history = History(path)
+    await cog.update_ended_posts(client)
+    message.edit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_no_message_edit_when_steam_price_is_unknown(tmp_path, monkeypatch):
+    import cogs.steam_free as module
+
+    class FakeChannel:
+        id = 77
+        def permissions_for(self, member):
+            return SimpleNamespace(
+                view_channel=True, read_message_history=True, embed_links=True
+            )
+        fetch_message = AsyncMock()
+
+    monkeypatch.setattr(module.discord, "TextChannel", FakeChannel)
+    guild = Mock()
+    guild.me = SimpleNamespace(id=900)
+    guild.get_channel.return_value = FakeChannel()
+    bot = Mock()
+    bot.user = SimpleNamespace(id=900)
+    bot.get_guild.return_value = guild
+    bot.setup_store.get_module.return_value = {"country": "de"}
+    path = tmp_path / "posted.db"
+    history = History(path)
+    history.record(1, Offer(42, "Game", "€9.99", 2000, "de"), 555, 77)
+    cog = SteamFree(bot)
+    cog.history = history
+    client = Mock()
+    client.restored_price = AsyncMock(return_value=None)
+    await cog.update_ended_posts(client)
+    guild.get_channel.return_value.fetch_message.assert_not_awaited()
+    assert len(History(path).pending_end_checks()) == 1
