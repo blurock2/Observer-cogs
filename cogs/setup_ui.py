@@ -469,7 +469,7 @@ MODULES: list[ModuleSpec] = [
         key="message_quoter",
         label="Message Quoter",
         emoji="💬",
-        description="Reply-quoting of messages.",
+        description="Quote message links. If no allowed roles are set, everyone can use this feature when enabled. Require reply is a separate option.",
         settings=[
             SettingSpec("enabled", "Enabled", "toggle", default=False),
             SettingSpec("embed_color", "Embed color", "text",
@@ -959,47 +959,28 @@ def get_visible_message_quoter_role_specs(
     store: SetupConfigStore,
     guild: discord.Guild,
 ) -> list[SettingSpec]:
-    """
-    Show configured roles plus exactly one next empty role slot.
+    """Show every saved role and the first empty slot, even when slots have gaps.
 
-    Example:
-        none configured -> role 1
-        role 1 configured -> roles 1 and 2
-        roles 1-3 configured -> roles 1-4
+    Clearing a role must not hide roles saved in later slots: otherwise the
+    dashboard appears unrestricted while Message Quoter still blocks users.
+    When no roles are configured, only the first empty slot is displayed.
     """
     role_specs = get_message_quoter_role_specs()
     visible_specs: list[SettingSpec] = []
+    first_empty: SettingSpec | None = None
 
     for spec in role_specs:
-        role_id = store.get(
-            guild.id,
-            MESSAGE_QUOTER_MODULE_KEY,
-            spec.key,
-            None,
-        )
-# balls y u reading this lol
-        if role_id is not None:
-            visible_specs.append(spec)
-            continue
-
-        # Show only the first empty slot after all previous slots.
-        if not visible_specs:
-            return [spec]
-
-        previous_spec = role_specs[len(visible_specs) - 1]
-        previous_role_id = store.get(
-            guild.id,
-            MESSAGE_QUOTER_MODULE_KEY,
-            previous_spec.key,
-            None,
-        )
-
-        if previous_role_id is not None:
+        role_id = store.get(guild.id, MESSAGE_QUOTER_MODULE_KEY, spec.key, None)
+        if role_id is None:
+            if first_empty is None:
+                first_empty = spec
+        else:
             visible_specs.append(spec)
 
-        return visible_specs
+    if first_empty is not None:
+        visible_specs.append(first_empty)
 
-    return visible_specs
+    return sorted(visible_specs, key=message_quoter_role_number)
 
 
 # ============================================================ Value formatting helpers
