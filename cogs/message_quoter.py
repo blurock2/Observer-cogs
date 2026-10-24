@@ -12,6 +12,7 @@ from pathlib import Path
 import discord
 from discord.ext import commands
 
+from cogs.config import is_bot_owner
 from database import connect_sqlite
 
 NO_MENTIONS = discord.AllowedMentions.none()
@@ -324,6 +325,10 @@ class MessageQuoter(ObserverCog):
         """Return whether the author is allowed to use the Message Quoter."""
         if not isinstance(message.author, discord.Member):
             return False
+
+        # Always allow Observer's configured owner when the cog is enabled.
+        if is_bot_owner(message.author):
+            return True
 
         allowed_role_ids = self.config.get_allowed_role_ids(message.guild.id)
 
