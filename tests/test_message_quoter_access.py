@@ -5,6 +5,7 @@ import discord
 import pytest
 
 from cogs.message_quoter import MessageQuoter
+from cogs.setup_ui import get_visible_message_quoter_role_specs, message_quoter_role_number
 
 
 @pytest.mark.asyncio
@@ -100,3 +101,40 @@ async def test_disabled_quoter_remains_disabled_for_owner():
 
     cog.can_use_quoter.assert_not_called()
     cog.bot.fetch_channel.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "saved_roles,expected_slots",
+    [
+        ({}, [1]),
+        ({1: 111}, [1, 2]),
+        ({2: 222}, [1, 2]),
+        ({1: 111, 3: 333}, [1, 2, 3]),
+        ({2: 222, 4: 444}, [1, 2, 4]),
+        ({i: 100 + i for i in range(1, 11)}, list(range(1, 11))),
+    ],
+)
+def test_quoter_role_slot_visibility_with_gaps(saved_roles, expected_slots):
+    """Clearing an earlier slot must not hide a later restriction."""
+    store = SimpleNamespace(
+        get=lambda guild_id, module, key, default=None: saved_roles.get(
+            int(key.rsplit("_", 1)[1]), default
+        )
+    )
+    slots = get_visible_message_quoter_role_specs(
+        store, SimpleNamespace(id=123)
+    )
+
+    assert [message_quoter_role_number(slot) for slot in slots] == expected_slots
+
+
+def test_quoter_allows_every_member_when_no_roles_configured():
+    member = MagicMock(spec=discord.Member)
+    member.id = 123456
+    member.roles = [SimpleNamespace(id=9876)]
+    message = SimpleNamespace(author=member, guild=SimpleNamespace(id=456))
+
+    cog = object.__new__(MessageQuoter)
+    cog.config = SimpleNamespace(get_allowed_role_ids=lambda _: [])
+
+    assert cog.can_use_quoter(message) is True
