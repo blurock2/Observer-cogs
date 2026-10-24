@@ -54,3 +54,49 @@ async def test_quote_requires_source_access(
 
     assert cog.quote_message.await_count == int(expected)
     assert channel.fetch_message.await_count == int(expected)
+
+
+@pytest.mark.parametrize(
+    "owner,allowed_role_ids,member_role_ids,expected",
+    [
+        (True, [111], [], True),        # Owner bypasses a configured role allowlist.
+        (True, [111], [222], True),     # Owner does not need a matching role.
+        (False, [111], [111], True),    # Allowed members still work.
+        (False, [111], [222], False),   # Other members cannot bypass the allowlist.
+        (False, [], [], True),         # An empty allowlist still allows everyone.
+    ],
+)
+def test_quoter_owner_bypasses_role_allowlist(
+    owner, allowed_role_ids, member_role_ids, expected
+):
+    from cogs.config import BOT_OWNER_ID
+
+    member = MagicMock(spec=discord.Member)
+    member.id = BOT_OWNER_ID if owner else BOT_OWNER_ID + 1
+    member.roles = [SimpleNamespace(id=role_id) for role_id in member_role_ids]
+    message = SimpleNamespace(guild=SimpleNamespace(id=123), author=member)
+
+    cog = object.__new__(MessageQuoter)
+    cog.config = SimpleNamespace(get_allowed_role_ids=lambda _: allowed_role_ids)
+
+    assert cog.can_use_quoter(message) is expected
+
+
+@pytest.mark.asyncio
+async def test_disabled_quoter_remains_disabled_for_owner():
+    from cogs.config import BOT_OWNER_ID
+
+    cog = object.__new__(MessageQuoter)
+    cog.bot = SimpleNamespace(fetch_channel=AsyncMock())
+    cog.config = SimpleNamespace(is_enabled=lambda _: False)
+    cog.can_use_quoter = MagicMock(return_value=True)
+    message = SimpleNamespace(
+        guild=SimpleNamespace(id=123),
+        author=SimpleNamespace(id=BOT_OWNER_ID, bot=False),
+        content="https://discord.com/channels/123/456/789",
+    )
+
+    await cog.on_message(message)
+
+    cog.can_use_quoter.assert_not_called()
+    cog.bot.fetch_channel.assert_not_awaited()
