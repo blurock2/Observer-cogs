@@ -689,7 +689,6 @@ MODULES: list[ModuleSpec] = [
                     "Available only in Observer Support."
                 ),
             ),
-            ),
             SettingSpec(
                 "blacklisted_role",
                 "Blacklisted role",
