@@ -62,7 +62,7 @@ async function loadLanding() {
   ];
   const supportCards = supportOptions.map((option, index) => `<article class="support-card support-card-${option.themeClass}"><div class="support-card-top"><span class="support-period">${esc(option.period)}</span><span class="support-symbol">${index === 0 ? "+" : index}</span></div><h3>${esc(option.name)}</h3><div class="support-price">${option.price}</div><p>${esc(option.description)}</p><div class="support-role-chips">${option.roles.map((role) => `<span>${esc(role)}</span>`).join("")}</div><ul class="support-benefits">${option.benefits.map((benefit) => `<li>${esc(benefit)}</li>`).join("")}</ul><a class="button button-quiet support-button" href="${esc(option.url || publicInfo.kofi_url)}" target="_blank" rel="noreferrer">${esc(option.button)} <span>&gt;</span></a></article>`).join("");
   root.innerHTML = `<div class="site-shell">
-    <nav class="topbar">${brand()}<div class="topnav"><a href="#features">Features</a><a href="#support">Support</a><a href="#about">About</a>${profile}</div></nav>
+    <nav class="topbar">${brand()}<div class="topnav"><a href="#features">Features</a><a href="#updates">Updates</a><a href="#support">Support</a><a href="#about">About</a>${profile}</div></nav>
     <main>
       <section class="hero">
         <div class="hero-copy"><div class="eyebrow"><span class="live-mark"></span> YOUR SERVER, IN CLEAR VIEW</div>
@@ -87,6 +87,14 @@ async function loadLanding() {
       <section class="feature-section" id="features"><div class="section-intro"><div><div class="eyebrow">A LITTLE MORE PEACE OF MIND</div><h2>One bot. A calmer server.</h2></div><p>Useful tools for the everyday work of keeping a community welcoming, safe, and running smoothly.</p></div>
         <div class="feature-grid"><article class="feature-card feature-featured"><div class="feature-icon icon-shield">⌑</div><span class="feature-index">01 / PROTECT</span><h3>See trouble sooner.</h3><p>Scam detection, raid safeguards, and audit logs help your moderators spot issues before they spread.</p><span class="feature-decoration">◉</span></article><article class="feature-card"><div class="feature-icon icon-gavel">⌁</div><span class="feature-index">02 / MODERATE</span><h3>Keep actions clear.</h3><p>Manage reports and moderation cases with a record your staff can follow.</p><span class="feature-decoration">↗</span></article><article class="feature-card"><div class="feature-icon icon-spark">✳</div><span class="feature-index">03 / RUN YOUR SERVER</span><h3>Make room for community.</h3><p>Configure helpful tools for tickets, roles, leveling, reminders, and more.</p><span class="feature-decoration">✦</span></article></div>
       </section>
+      <section class="updates-section" id="updates">
+        <div class="updates-intro"><div class="eyebrow">CHANGELOG</div><h2>Recent updates.</h2><p>New tools, improvements, and fixes from Observer.</p></div>
+        <div class="updates-list">
+          <article class="update-item"><time datetime="2026-10-27">2026-10-27</time><div class="update-copy"><span class="update-type">FIX</span><h3>Improved anti-scam and advertising controls</h3><p>Added an allow advertising option with an optional channel restriction. Invite links and common self-promotion are detected, with trusted invite handling when advertising is enabled. OCR image scanning also helps catch harmful images.</p></div></article>
+          <article class="update-item"><time datetime="2026-09-18">2026-09-18</time><div class="update-copy"><span class="update-type">FEATURE</span><h3>Reminders and more community tools</h3><p>Added a simple reminder flow for messages and replies, plus custom ticket reasons and panels, temporary voice channels, and additional safeguards.</p></div></article>
+          <article class="update-item"><time datetime="2026-09-12">2026-09-12</time><div class="update-copy"><span class="update-type">IMPROVEMENT</span><h3>Storage migration and reliability work</h3><p>Moved guild and user data from JSON files to SQLite, improved error handling and debug logs, and fixed mention protection so members can ping one another when they share the same role.</p></div></article>
+        </div>
+      </section>
       <section class="engineering-section" id="engineering"><div class="section-intro"><div><div class="eyebrow">DESIGNED FOR REAL SERVER WORK</div><h2>Useful systems, with room to grow.</h2></div><p>Observer is built as a set of focused features that share server settings and work together when your community needs them.</p></div><div class="project-engineering-grid"><article class="project-engineering-item"><span class="project-engineering-label">01 / MODULAR</span><h3>Features stay organized.</h3><p>Moderation, reports, tickets, leveling, and utilities live in separate cogs, so each part can be maintained and improved on its own.</p></article><article class="project-engineering-item"><span class="project-engineering-label">02 / PERSISTENT</span><h3>Settings belong to your server.</h3><p>Per-server configuration is stored in SQLite and remains available across bot restarts.</p></article><article class="project-engineering-item"><span class="project-engineering-label">03 / PERMISSION AWARE</span><h3>Staff controls matter.</h3><p>Moderation tools use Discord permissions and configured staff roles to help keep actions limited to the right people.</p></article></div><p class="engineering-note">Observer is an independent project built with Python and discord.py. Core features are designed to work without paid AI services.</p></section>
       <section class="workflow-section" id="workflow">
         <div class="workflow-intro"><div><div class="eyebrow"><span class="live-mark"></span> GET STARTED</div><h2>From invite to everyday use.</h2></div><p>Bring Observer into a server, choose the tools that fit, then let your team manage activity from Discord and the web dashboard.</p></div>
@@ -109,6 +117,8 @@ function initLandingScrollReveal() {
     [".impact-stat", 90],
     [".feature-section .section-intro", 0],
     [".feature-card", 90],
+    [".updates-intro", 0],
+    [".update-item", 95],
     [".engineering-section .section-intro", 0],
     [".project-engineering-item", 80],
     [".engineering-note", 0],
