@@ -227,14 +227,14 @@ body:has(.site-shell), body:has(.dashboard-shell) { background: #0b0b0d; color: 
 .server-identity > img, .server-identity > .server-avatar-fallback { flex: 0 0 40px; width: 40px; height: 40px; object-fit: cover; border-radius: 12px; }
 .server-row.has-dashboard-cards { display: grid; grid-template-columns: minmax(150px, .85fr) minmax(0, 1.8fr); align-items: stretch; gap: 12px; }
 .server-dashboard-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; min-width: 0; }
-.server-dashboard-card { position: relative; display: flex; min-width: 0; min-height: 82px; flex-direction: column; justify-content: center; gap: 5px; padding: 11px 12px; border: 1px solid #303b34; border-radius: 8px; background: #101612; color: #e5eee8; text-decoration: none; }
-.server-dashboard-card:hover { border-color: #63766a; background: #172019; }
-.server-card-kicker { color: #8e9b91; font: 7px ui-monospace, monospace; letter-spacing: .9px; }
+.server-dashboard-card { position: relative; display: flex; min-width: 0; min-height: 82px; flex-direction: column; justify-content: center; gap: 5px; padding: 11px 12px; border: 1px solid #303941; border-radius: 8px; background: linear-gradient(145deg,#11161a,#101316); color: #e5eee8; text-decoration: none; transition: border-color .18s ease,background .18s ease,box-shadow .18s ease; }
+.server-dashboard-card:hover { border-color: #429db5; background: linear-gradient(145deg,#17252c,#13191d); box-shadow: 0 8px 26px #42d7e80e; }
+.server-card-kicker { color: #91a7ae; font: 7px ui-monospace, monospace; letter-spacing: .9px; }
 .server-dashboard-card strong { font-size: 10px; font-weight: 650; }
 .server-dashboard-card small { color: #8c9990; font-size: 8px; line-height: 1.5; }
-.server-card-arrow { position: absolute; top: 10px; right: 11px; color: #a6edc7; }
-.server-mod-link { margin-top: 2px; color: #a6edc7; font-size: 8px; }
-.server-mod-card:hover .server-mod-link { color: #d0f6df; }
+.server-card-arrow { position: absolute; top: 10px; right: 11px; color: #78cddd; }
+.server-mod-link { margin-top: 2px; color: #78cddd; font-size: 8px; }
+.server-mod-card:hover .server-mod-link { color: #c0f3fa; }
 @media(max-width:620px) {
   .server-row.has-dashboard-cards { grid-template-columns: minmax(0, 1fr); }
   .server-dashboard-card { min-height: 76px; }
