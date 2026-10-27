@@ -135,9 +135,12 @@ class ClaimReportView(ErrorHandledView):
                 child.label = "Report Claimed"
             elif child.custom_id == "report_unclaim":
                 child.disabled = claimed_by is None
-            elif child.custom_id == "report_accept" and accepted:
-                child.disabled = True
-                child.label = "Accepted"
+            elif child.custom_id == "report_accept":
+                child.disabled = accepted or claimed_by is None
+                if accepted:
+                    child.label = "Accepted"
+                elif claimed_by is None:
+                    child.label = "Claim report first"
 
     def is_staff(self, member: discord.Member) -> bool:
         if member.guild_permissions.manage_messages:
@@ -222,6 +225,11 @@ class ClaimReportView(ErrorHandledView):
         if isinstance(unclaim_button, discord.ui.Button):
             unclaim_button.disabled = False
 
+        accept_button = discord.utils.get(self.children, custom_id="report_accept")
+        if isinstance(accept_button, discord.ui.Button) and not self.accepted:
+            accept_button.disabled = False
+            accept_button.label = "Accept Report"
+
         embed = interaction.message.embeds[0]
 
         embed.add_field(
@@ -304,6 +312,11 @@ class ClaimReportView(ErrorHandledView):
             claim_button.disabled = False
             claim_button.label = "Claim Report"
 
+        accept_button = discord.utils.get(self.children, custom_id="report_accept")
+        if isinstance(accept_button, discord.ui.Button) and not self.accepted:
+            accept_button.disabled = True
+            accept_button.label = "Claim report first"
+
         button.disabled = True
 
         embed = interaction.message.embeds[0]
@@ -338,6 +351,12 @@ class ClaimReportView(ErrorHandledView):
         if not isinstance(interaction.user, discord.Member) or not self.is_staff(interaction.user):
             await interaction.response.send_message(
                 "Only staff can accept reports.", ephemeral=True
+            )
+            return
+        if self.claimed_by != interaction.user.id:
+            await interaction.response.send_message(
+                "Claim this report before accepting it. Only its claimant can take report actions.",
+                ephemeral=True,
             )
             return
 
