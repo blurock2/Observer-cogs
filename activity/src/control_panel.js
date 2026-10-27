@@ -46,7 +46,7 @@ function controlFor(module, setting) {
     field = `<div class="searchable-picker"><input id="${id}" type="search" list="${id}-options" data-picker-input autocomplete="off" placeholder="Type to search ${isChannel ? "channels" : "roles"}…" value="${esc(inputValue)}"><datalist id="${id}-options"><option value="Not set" data-id=""></option>${optionHtml}</datalist><input type="hidden" data-setting-value="${module.key}|${setting.key}" value="${esc(chosen)}">${save}</div>`;
   } else if (setting.kind === "ticket_panel") {
     const panelSettings = value || {};
-    field = `<div class="ticket-panel-fields"><label>Panel title<input data-ticket-field="panel_title" maxlength="256" value="${esc(panelSettings.panel_title || "")}"></label><label>Panel description<textarea data-ticket-field="panel_description" maxlength="2048">${esc(panelSettings.panel_description || "")}</textarea></label><label>Panel footer<textarea data-ticket-field="panel_footer" maxlength="2048">${esc(panelSettings.panel_footer || "")}</textarea></label><label>Ticket reasons <small>One per line; up to 24.</small><textarea data-ticket-field="reason_options">${esc((panelSettings.reason_options || []).join("\n"))}</textarea></label><button class="save-setting" data-save-ticket="${module.key}|${setting.key}">Save ticket panel</button></div>`;
+    field = `<div class="ticket-panel-fields"><label>Panel title<input data-ticket-field="panel_title" maxlength="256" value="${esc(panelSettings.panel_title || "")}"></label><label>Panel description<textarea data-ticket-field="panel_description" maxlength="2048">${esc(panelSettings.panel_description || "")}</textarea></label><label>Panel footer<textarea data-ticket-field="panel_footer" maxlength="2048">${esc(panelSettings.panel_footer || "")}</textarea></label><label>Ticket reasons <small>One per line; up to 24.</small><textarea data-ticket-field="reason_options">${esc((panelSettings.reason_options || []).join("\n"))}</textarea></label><div class="ticket-panel-actions"><button class="save-setting" data-save-ticket="${module.key}|${setting.key}">Save panel settings</button><button class="save-setting" data-send-ticket-panel="${module.key}|${setting.key}">Save &amp; send panel to channel</button></div></div>`;
   } else {
     const text = value == null ? "" : String(value);
     const input = setting.kind === "integer"
@@ -98,6 +98,14 @@ function activityPanel() {
   return `<aside class="control-activity-panel"><div class="activity-panel-head"><div><div class="eyebrow">SERVER ACTIVITY</div><h2>Recent reports &amp; actions</h2></div><a class="activity-panel-link" href="/moderate?guild_id=${encodeURIComponent(guildId)}">View moderation page ↗</a></div><section class="activity-panel-section"><h3>Reports</h3>${reportRows || `<p class="activity-panel-empty">${activityData?.reports_configured ? "No reports found in the configured channel." : "No reports channel configured."}</p>`}</section><section class="activity-panel-section"><h3>Moderation actions</h3>${actionRows || `<p class="activity-panel-empty">No moderation actions recorded yet.</p>`}</section></aside>`;
 }
 
+function readTicketPanelFields() {
+  return {
+    panel_title: document.querySelector('[data-ticket-field="panel_title"]').value,
+    panel_description: document.querySelector('[data-ticket-field="panel_description"]').value,
+    panel_footer: document.querySelector('[data-ticket-field="panel_footer"]').value,
+    reason_options: document.querySelector('[data-ticket-field="reason_options"]').value.split("\\n").map((item) => item.trim()).filter(Boolean),
+  };
+}
 async function save(moduleKey, key, value) {
   await api(`/api/control-panel/${encodeURIComponent(guildId)}/setting`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ module: moduleKey, key, value }) });
   const module = panel.modules.find((item) => item.key === moduleKey);
@@ -147,8 +155,26 @@ function render() {
     const ticket = event.target.closest("[data-save-ticket]");
     if (ticket) {
       const [moduleKey, key] = ticket.dataset.saveTicket.split("|");
-      const value = { panel_title: document.querySelector('[data-ticket-field="panel_title"]').value, panel_description: document.querySelector('[data-ticket-field="panel_description"]').value, panel_footer: document.querySelector('[data-ticket-field="panel_footer"]').value, reason_options: document.querySelector('[data-ticket-field="reason_options"]').value.split("\n").map((item) => item.trim()).filter(Boolean) };
-      try { await save(moduleKey, key, value); } catch (error) { alert(error.message); }
+      try { await save(moduleKey, key, readTicketPanelFields()); } catch (error) { alert(error.message); }
+      return;
+    }
+    const sendTicketPanel = event.target.closest("[data-send-ticket-panel]");
+    if (sendTicketPanel) {
+      const [moduleKey, key] = sendTicketPanel.dataset.sendTicketPanel.split("|");
+      sendTicketPanel.disabled = true;
+      try {
+        await save(moduleKey, key, readTicketPanelFields());
+        const result = await api(`/api/control-panel/${encodeURIComponent(guildId)}/ticket-panel`, { method: "POST" });
+        const notice = document.querySelector("#save-notice");
+        notice.textContent = `Ticket panel sent to #${result.channel_name}`;
+        notice.classList.add("is-visible");
+        setTimeout(() => notice.classList.remove("is-visible"), 2600);
+      } catch (error) {
+        alert(error.message);
+      } finally {
+        const currentButton = document.querySelector("[data-send-ticket-panel]");
+        if (currentButton) currentButton.disabled = false;
+      }
     }
   });
   root.addEventListener("change", async (event) => {
