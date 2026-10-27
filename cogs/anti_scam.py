@@ -1221,7 +1221,7 @@ class AntiScam(ObserverCog):
                 title = "Confirmed cross-server scam account restricted"
                 ban = self._bool_setting(guild.id, "cross_server_scam_ban", False)
                 timeout_minutes = self._int_setting(
-                    guild.id, "cross_server_scam_timeout_minutes", 1440, 0, 40320
+                    guild.id, "cross_server_scam_timeout_minutes", 1440, 1, 40320
                 )
                 result = await self.restrict(
                     member, reason, ban=ban, minutes=timeout_minutes
