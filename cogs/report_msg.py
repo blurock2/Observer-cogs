@@ -53,10 +53,18 @@ class AcceptedReportStore:
                     report_message_id INTEGER PRIMARY KEY,
                     guild_id INTEGER NOT NULL,
                     reporter_id INTEGER NOT NULL,
+                    target_id INTEGER,
                     accepted_at INTEGER
                 )
                 """
             )
+
+            columns = {
+                row["name"]
+                for row in db.execute("PRAGMA table_info(accepted_report_tracking)").fetchall()
+            }
+            if "target_id" not in columns:
+                db.execute("ALTER TABLE accepted_report_tracking ADD COLUMN target_id INTEGER")
 
     @contextmanager
     def _connect(self):
@@ -70,13 +78,26 @@ class AcceptedReportStore:
         finally:
             db.close()
 
-    def add_report(self, message_id: int, guild_id: int, reporter_id: int) -> None:
+    def add_report(
+        self, message_id: int, guild_id: int, reporter_id: int, target_id: int | None = None
+    ) -> None:
         with self._connect() as db:
             db.execute(
                 "INSERT OR IGNORE INTO accepted_report_tracking "
-                "(report_message_id, guild_id, reporter_id) VALUES (?, ?, ?)",
-                (message_id, guild_id, reporter_id),
+                "(report_message_id, guild_id, reporter_id, target_id) VALUES (?, ?, ?, ?)",
+                (message_id, guild_id, reporter_id, target_id),
             )
+
+    def accepted_guild_count(
+        self, target_id: int, *, exclude_guild_id: int, since: int
+    ) -> int:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT COUNT(DISTINCT guild_id) FROM accepted_report_tracking "
+                "WHERE target_id = ? AND guild_id != ? AND accepted_at >= ?",
+                (target_id, exclude_guild_id, since),
+            ).fetchone()
+            return int(row[0] or 0)
 
     def accept(self, message_id: int, guild_id: int) -> tuple[int | None, bool]:
         with self._connect() as db:
@@ -657,7 +678,7 @@ class ReportModal(ErrorHandledModal):
             return
 
         self.cog.reports.add_report(
-            report_message.id, guild.id, interaction.user.id
+            report_message.id, guild.id, interaction.user.id, message.author.id
         )
 
         self.cog.start_cooldown(
