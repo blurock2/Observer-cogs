@@ -175,6 +175,7 @@ class Autoroles(commands.GroupCog, group_name="autorole", group_description="Con
 	@owner_or_has_guild_permissions(manage_guild=True)
 	async def enable(self, interaction: discord.Interaction):
 		with connect_sqlite(DB_PATH) as db: db.execute("INSERT INTO guild_autorole_config (guild_id, enabled) VALUES (?, 1) ON CONFLICT(guild_id) DO UPDATE SET enabled=1", (interaction.guild.id,))
+		self.store.set(interaction.guild.id, "autorole", "enabled", True)
 		await interaction.response.send_message("Join autoroles enabled.", ephemeral=True)
 
 	@app_commands.command(name="disable", description="Disable join autoroles.")
@@ -182,6 +183,7 @@ class Autoroles(commands.GroupCog, group_name="autorole", group_description="Con
 	@owner_or_has_guild_permissions(manage_guild=True)
 	async def disable(self, interaction: discord.Interaction):
 		with connect_sqlite(DB_PATH) as db: db.execute("INSERT INTO guild_autorole_config (guild_id, enabled) VALUES (?, 0) ON CONFLICT(guild_id) DO UPDATE SET enabled=0", (interaction.guild.id,))
+		self.store.set(interaction.guild.id, "autorole", "enabled", False)
 		await interaction.response.send_message("Join autoroles disabled.", ephemeral=True)
 
 	@app_commands.command(name="add", description="Add a role given on join.")
@@ -196,13 +198,30 @@ class Autoroles(commands.GroupCog, group_name="autorole", group_description="Con
 	@owner_or_has_guild_permissions(manage_guild=True)
 	async def remove(self, interaction: discord.Interaction, role: discord.Role, bots: bool = False):
 		with connect_sqlite(DB_PATH) as db: db.execute("DELETE FROM guild_autoroles WHERE guild_id = ? AND role_id = ? AND is_bot = ?", (interaction.guild.id, role.id, int(bots)))
+		prefix = "bot_role_" if bots else "member_role_"
+		for index in range(1, 6):
+			key = f"{prefix}{index}"
+			try:
+				configured = int(self.store.get(interaction.guild.id, "autorole", key, None))
+			except (TypeError, ValueError):
+				continue
+			if configured == role.id:
+				self.store.delete(interaction.guild.id, "autorole", key)
 		await interaction.response.send_message("Autorole removed.", ephemeral=True)
 
 	@app_commands.command(name="list", description="List join autoroles.")
 	@app_commands.guild_only()
 	async def list(self, interaction: discord.Interaction):
 		with connect_sqlite(DB_PATH) as db: rows = db.execute("SELECT role_id, is_bot FROM guild_autoroles WHERE guild_id = ?", (interaction.guild.id,)).fetchall()
-		await interaction.response.send_message("\n".join(f"<@&{row['role_id']}> ({'bots' if row['is_bot'] else 'members'})" for row in rows) or "No autoroles configured.", ephemeral=True)
+		configured = {False: {int(row["role_id"]) for row in rows if not row["is_bot"]}, True: {int(row["role_id"]) for row in rows if row["is_bot"]}}
+		for is_bot, prefix in ((False, "member_role_"), (True, "bot_role_")):
+			for index in range(1, 6):
+				try:
+					configured[is_bot].add(int(self.store.get(interaction.guild.id, "autorole", f"{prefix}{index}", None)))
+				except (TypeError, ValueError):
+					continue
+		lines = [f"<@&{role_id}> ({'bots' if is_bot else 'members'})" for is_bot in (False, True) for role_id in sorted(configured[is_bot])]
+		await interaction.response.send_message("\n".join(lines) or "No autoroles configured.", ephemeral=True)
 
 	@commands.Cog.listener()
 	async def on_member_join(self, member: discord.Member):
