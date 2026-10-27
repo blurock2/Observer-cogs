@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from error_handling import ObserverCog
+from moderation_notifications import dm_moderation_action
 
 from datetime import timedelta
 
@@ -8,6 +9,7 @@ import discord
 from discord.ext import commands
 
 from cogs.setup_ui import DB_PATH, SetupConfigStore
+from database import ModerationActionStore, ModerationCaseStore
 
 MODULE_KEY = "mentions"
 NO_MENTIONS = discord.AllowedMentions.none()
@@ -32,6 +34,8 @@ class Mentions(ObserverCog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.store = SetupConfigStore(DB_PATH)
+        self.cases = ModerationCaseStore(DB_PATH)
+        self.actions = ModerationActionStore(DB_PATH)
 
     # ============================================================ Setup config
 
@@ -167,8 +171,10 @@ class Mentions(ObserverCog):
 
         member = message.author
 
+        message_deleted = False
         try:
             await message.delete()
+            message_deleted = True
         except discord.Forbidden:
             print(
                 "[mentions] Could not delete a protected-mention "
@@ -205,18 +211,65 @@ class Mentions(ObserverCog):
                     f"{member} ({member.id}): {error}"
                 )
 
+        if timeout_succeeded or message_deleted:
+            reason = f"Mention protection violation: {violation_reason}"
+            expiry = (
+                (discord.utils.utcnow() + timedelta(minutes=timeout_minutes)).isoformat()
+                if timeout_succeeded
+                else None
+            )
+            action_type = "timeout" if timeout_succeeded else "mention_protection"
+            action_id = self.actions.create(
+                guild.id,
+                action_type,
+                member.id,
+                self.bot.user.id,
+                status="active" if timeout_succeeded else "resolved",
+            )
+            self.cases.create_case(
+                guild.id,
+                action_type,
+                member.id,
+                self.bot.user.id if self.bot.user else None,
+                reason,
+                status="active" if timeout_succeeded else "resolved",
+                action_id=action_id,
+                expires_at=expiry,
+            )
+
         if timeout_succeeded:
+            await dm_moderation_action(
+                member,
+                guild,
+                f"Timeout for {timeout_minutes} minute(s)"
+                + (" and message removed" if message_deleted else ""),
+                f"Mention protection violation: {violation_reason}",
+            )
             warning = (
                 f"{member.mention}, your message was removed and you "
                 f"were timed out for {timeout_minutes} minute(s) because "
                 "you pinged a protected member or role."
             )
         elif timeout_minutes == 0:
+            if message_deleted:
+                await dm_moderation_action(
+                    member,
+                    guild,
+                    "Message removed",
+                    f"Mention protection violation: {violation_reason}",
+                )
             warning = (
                 f"{member.mention}, your message was removed because "
                 "you pinged a protected member or role."
             )
         else:
+            if message_deleted:
+                await dm_moderation_action(
+                    member,
+                    guild,
+                    "Message removed",
+                    f"Mention protection violation: {violation_reason}",
+                )
             warning = (
                 f"{member.mention}, your message was removed because "
                 "you pinged a protected member or role. I could not "

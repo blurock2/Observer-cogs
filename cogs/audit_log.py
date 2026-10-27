@@ -4,18 +4,21 @@ from error_handling import ObserverCog
 
 import asyncio
 import logging
+from contextlib import closing
+from datetime import timedelta
 
 import discord
 from discord.ext import commands
 
 from cogs.setup_ui import DB_PATH, SetupConfigStore
-from database import ModerationCaseStore
+from database import ModerationCaseStore, connect_sqlite
 
 MODULE_KEY = "audit_log"
 MAX_IGNORED_CHANNELS = 5
 MAX_IGNORED_ROLES = 5
 FIELD_LIMIT = 1024
 AUDIT_ENTRY_MAX_AGE = 15
+MESSAGE_SNAPSHOT_RETENTION_DAYS = 30
 
 # Severity colors (see class docstring for the convention).
 COLOR_RED = 0xED4245      # deletions, kicks, bans
@@ -63,6 +66,24 @@ class AuditLogCog(ObserverCog):
         self.bot = bot
         self.store = SetupConfigStore(DB_PATH)
         self.cases = ModerationCaseStore(DB_PATH)
+        with closing(connect_sqlite(DB_PATH)) as connection:
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS audit_message_snapshots (
+                    message_id INTEGER PRIMARY KEY,
+                    guild_id INTEGER NOT NULL,
+                    channel_id INTEGER NOT NULL,
+                    author_id INTEGER NOT NULL,
+                    content TEXT NOT NULL,
+                    reply_message_id INTEGER,
+                    reply_channel_id INTEGER,
+                    reply_guild_id INTEGER,
+                    reply_author_id INTEGER,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+            connection.commit()
 
     # ============================================================ Config helpers
 
@@ -235,6 +256,97 @@ class AuditLogCog(ObserverCog):
 
     # ============================================================ Messages
 
+    def _save_message_snapshot(self, message: discord.Message) -> None:
+        reference = message.reference
+        resolved = reference.resolved if reference else None
+        reply_author = getattr(getattr(resolved, "author", None), "id", None)
+        created_before = discord.utils.utcnow() - timedelta(days=MESSAGE_SNAPSHOT_RETENTION_DAYS)
+        with closing(connect_sqlite(DB_PATH)) as connection:
+            connection.execute(
+                """
+                INSERT OR REPLACE INTO audit_message_snapshots (
+                    message_id, guild_id, channel_id, author_id, content,
+                    reply_message_id, reply_channel_id, reply_guild_id,
+                    reply_author_id, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    message.id,
+                    message.guild.id,
+                    message.channel.id,
+                    message.author.id,
+                    message.content or "",
+                    reference.message_id if reference else None,
+                    reference.channel_id if reference else None,
+                    reference.guild_id if reference else None,
+                    reply_author,
+                    discord.utils.utcnow().isoformat(),
+                ),
+            )
+            connection.execute(
+                "DELETE FROM audit_message_snapshots WHERE created_at < ?",
+                (created_before.isoformat(),),
+            )
+            connection.commit()
+
+    @staticmethod
+    def _get_message_snapshot(message_id: int):
+        with closing(connect_sqlite(DB_PATH)) as connection:
+            return connection.execute(
+                """
+                SELECT content, reply_message_id, reply_channel_id,
+                       reply_guild_id, reply_author_id
+                FROM audit_message_snapshots WHERE message_id = ?
+                """,
+                (message_id,),
+            ).fetchone()
+
+    @staticmethod
+    def _delete_message_snapshot(message_id: int) -> None:
+        with closing(connect_sqlite(DB_PATH)) as connection:
+            connection.execute(
+                "DELETE FROM audit_message_snapshots WHERE message_id = ?",
+                (message_id,),
+            )
+            connection.commit()
+
+    @staticmethod
+    def _reply_context(
+        message: discord.Message | None,
+        guild_id: int,
+        channel_id: int,
+        *,
+        reply_message_id: int | None = None,
+        reply_channel_id: int | None = None,
+        reply_guild_id: int | None = None,
+        reply_author_id: int | None = None,
+    ) -> str | None:
+        reference = getattr(message, "reference", None)
+        message_id = reply_message_id or getattr(reference, "message_id", None)
+        if message_id is None:
+            return None
+
+        reference_channel_id = reply_channel_id or getattr(reference, "channel_id", None) or channel_id
+        reference_guild_id = reply_guild_id or getattr(reference, "guild_id", None) or guild_id
+        resolved = getattr(reference, "resolved", None)
+        parent_author_id = reply_author_id or getattr(getattr(resolved, "author", None), "id", None)
+        parent_author = f"<@{parent_author_id}>" if parent_author_id else "the linked message"
+        jump_url = getattr(resolved, "jump_url", None) or (
+            f"https://discord.com/channels/{reference_guild_id}/"
+            f"{reference_channel_id}/{message_id}"
+        )
+        return f"Reply to {parent_author}: [jump to replied message]({jump_url})"
+
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message) -> None:
+        if message.guild is None or message.author.bot:
+            return
+        if not await self._is_enabled(message.guild, "log_message_deletes"):
+            return
+        if self._is_ignored(message.guild.id, channel=message.channel, member=message.author):
+            return
+        self._save_message_snapshot(message)
+
     @commands.Cog.listener()
     async def on_raw_message_edit(self, payload: discord.RawMessageUpdateEvent) -> None:
         if payload.guild_id is None:
@@ -269,11 +381,13 @@ class AuditLogCog(ObserverCog):
         after_text = after_content if after_content is not None else "*(uncached — content unavailable)*"
 
         jump_url = f"https://discord.com/channels/{guild.id}/{payload.channel_id}/{payload.message_id}"
+        reply_context = self._reply_context(cached, guild.id, channel.id)
         embed = self._build_audit_embed(
             "✏️ Message Edited",
             COLOR_AMBER,
             author=author,
-            description=f"[Jump to message]({jump_url}) in {channel.mention}",
+            description=f"[Jump to message]({jump_url}) in {channel.mention}"
+                        + (f"\n{reply_context}" if reply_context else ""),
         )
         self._add_diff_fields(embed, "content", before_text, after_text)
         embed.set_footer(text=f"Message ID: {payload.message_id}")
@@ -294,20 +408,36 @@ class AuditLogCog(ObserverCog):
             return
 
         cached = payload.cached_message
+        snapshot = self._get_message_snapshot(payload.message_id) if cached is None else None
         author = None
         content = "*(uncached — content unavailable)*"
         if cached is not None:
             if cached.author.bot:
+                self._delete_message_snapshot(payload.message_id)
                 return
             author = cached.author
             content = cached.content or "*(no text content)*"
+        elif snapshot is not None:
+            content = snapshot["content"] or "*(no text content)*"
+            author = guild.get_member(snapshot["author_id"])
 
+        reply_context = self._reply_context(
+            cached,
+            guild.id,
+            channel.id,
+            reply_message_id=snapshot["reply_message_id"] if snapshot else None,
+            reply_channel_id=snapshot["reply_channel_id"] if snapshot else None,
+            reply_guild_id=snapshot["reply_guild_id"] if snapshot else None,
+            reply_author_id=snapshot["reply_author_id"] if snapshot else None,
+        )
+        self._delete_message_snapshot(payload.message_id)
         embed = self._build_audit_embed(
             "🗑️ Message Deleted",
             COLOR_RED,
             author=author,
             thumbnail_url=getattr(author.display_avatar, "url", None) if author else None,
-            description=f"In {channel.mention}",
+            description=f"In {channel.mention}"
+                        + (f"\n{reply_context}" if reply_context else ""),
         )
         embed.add_field(name="Content", value=_truncate(content), inline=False)
         embed.set_footer(text=f"Message ID: {payload.message_id}")
@@ -332,6 +462,12 @@ class AuditLogCog(ObserverCog):
                         f"{channel.mention if channel else f'<#{payload.channel_id}>'}",
         )
         embed.set_footer(text=f"Channel ID: {payload.channel_id}")
+        with closing(connect_sqlite(DB_PATH)) as connection:
+            connection.executemany(
+                "DELETE FROM audit_message_snapshots WHERE message_id = ?",
+                ((message_id,) for message_id in payload.message_ids),
+            )
+            connection.commit()
         await self._send(guild, embed)
 
     # ============================================================ Roles
@@ -571,8 +707,8 @@ class AuditLogCog(ObserverCog):
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member) -> None:
         guild = member.guild
-        await asyncio.to_thread(self.cases.add_name, guild.id, member.id, member.name)
-        await asyncio.to_thread(self.cases.add_name, guild.id, member.id, member.display_name)
+        self.cases.add_name(guild.id, member.id, member.name)
+        self.cases.add_name(guild.id, member.id, member.display_name)
         if not await self._is_enabled(guild, "log_member_events"):
             return
         if self._is_ignored(guild.id, member=member):
@@ -653,8 +789,8 @@ class AuditLogCog(ObserverCog):
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member) -> None:
         guild = after.guild
-        await asyncio.to_thread(self.cases.add_name, guild.id, after.id, after.name)
-        await asyncio.to_thread(self.cases.add_name, guild.id, after.id, after.display_name)
+        self.cases.add_name(guild.id, after.id, after.name)
+        self.cases.add_name(guild.id, after.id, after.display_name)
         if not await self._is_enabled(guild, "log_member_events"):
             return
         if self._is_ignored(guild.id, member=after):

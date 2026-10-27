@@ -380,7 +380,21 @@ class MemberCommands(ObserverCog):
             target = member or ctx.author
 
             if not isinstance(target, discord.Member):
-                return
+                # Prefix conversion to discord.User can return a User even
+                # when the target is a member of this server. Resolve it to a
+                # Member before using server-specific fields such as top_role.
+                target_member = guild.get_member(target.id) if isinstance(target, discord.User) else None
+                if target_member is None and isinstance(target, discord.User):
+                    try:
+                        target_member = await guild.fetch_member(target.id)
+                    except discord.NotFound:
+                        target_member = None
+                    except discord.HTTPException:
+                        target_member = None
+                if target_member is None:
+                    await ctx.send("I couldn't find that user in this server.")
+                    return
+                target = target_member
 
             if show_all:
                 user_for_details = await self._resolve_user_for_details(target)
@@ -472,9 +486,7 @@ class MemberCommands(ObserverCog):
         target = member or ctx.author
 
         if not isinstance(target, DiscordUser):
-            print(
-                f"[id-debug] rejecting DM target: {type(target).__name__}"
-            )
+            await ctx.send("I couldn't resolve that user. Please mention a user or provide a valid user ID.")
             return
 
         if show_all:

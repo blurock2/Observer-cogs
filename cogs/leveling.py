@@ -7,7 +7,6 @@ import logging
 import random
 import shutil
 import sqlite3
-from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -83,7 +82,7 @@ def _get_conn() -> sqlite3.Connection:
 
 SPECIAL_LEVELS = {
     10: {
-        "title": "🎉 Level 10 Reached!",
+        "title": "ðŸŽ‰ Level 10 Reached!",
         "description": (
             "{user} reached **Level 10**!"
         ),
@@ -93,13 +92,13 @@ SPECIAL_LEVELS = {
             242,
         ),
         "footer": "Keep chatting to level up.",
-        "field_name": "🎁 Reward",
+        "field_name": "ðŸŽ Reward",
         "field_value": (
             "You have been granted permission to rename your voice channel"
         ),
     },
     69: {
-        "title": "😏 Nice! Level 69",
+        "title": "ðŸ˜ Nice! Level 69",
         "description": (
             "{user} reached **Level 69**!\n\n"
             "That is... a nice level."
@@ -110,13 +109,13 @@ SPECIAL_LEVELS = {
             180,
         ),
         "footer": "Nice.",
-        "field_name": "😏 Special Milestone",
+        "field_name": "ðŸ˜ Special Milestone",
         "field_value": (
             "You unlocked the legendary Level 69 milestone."
         ),
     },
     420: {
-        "title": "🚬 Level 420 Unlocked",
+        "title": "ðŸš¬ Level 420 Unlocked",
         "description": (
             "{user} reached **Level 420**!\n\n"
             "Blaze through the leaderboard."
@@ -127,7 +126,7 @@ SPECIAL_LEVELS = {
             242,
         ),
         "footer": "Level 420 achieved.",
-        "field_name": "🚬 Special Milestone",
+        "field_name": "ðŸš¬ Special Milestone",
         "field_value": (
             "You reached the legendary Level 420 milestone."
         ),
@@ -149,14 +148,7 @@ def _backup_database() -> Path | None:
         f"{database.suffix}"
     )
 
-    # A raw copy is not a consistent snapshot of a live WAL database.
-    # SQLite's online backup API includes committed WAL transactions.
-    source = _get_conn()
-    try:
-        with closing(sqlite3.connect(backup_path)) as destination:
-            source.backup(destination)
-    finally:
-        source.close()
+    shutil.copy2(database, backup_path)
 
     return backup_path
 
@@ -240,7 +232,7 @@ def _init_db() -> None:
                 guild_id INTEGER PRIMARY KEY,
                 level_up_channel INTEGER,
                 level_up_message TEXT NOT NULL
-                    DEFAULT '🎉 {user} just reached level {level}!',
+                    DEFAULT 'ðŸŽ‰ {user} just reached level {level}!',
                 weekly_channel INTEGER,
                 weekly_day INTEGER NOT NULL DEFAULT 0,
                 weekly_hour INTEGER NOT NULL DEFAULT 0,
@@ -262,7 +254,7 @@ def _init_db() -> None:
             "level_up_message",
             (
                 "TEXT NOT NULL DEFAULT "
-                "'🎉 {user} just reached level {level}!'"
+                "'ðŸŽ‰ {user} just reached level {level}!'"
             ),
         )
 
@@ -404,7 +396,7 @@ def error_embed(
     guild: discord.Guild | None = None,
 ) -> discord.Embed:
     return themed_embed(
-        title="❌ Something went wrong",
+        title="âŒ Something went wrong",
         description=message,
         color=ERROR_COLOR,
         guild=guild,
@@ -416,7 +408,7 @@ def success_embed(
     guild: discord.Guild | None = None,
 ) -> discord.Embed:
     return themed_embed(
-        title="✅ Success",
+        title="âœ… Success",
         description=message,
         color=SUCCESS_COLOR,
         guild=guild,
@@ -439,8 +431,8 @@ def progress_bar(
     filled = round(percentage * length)
 
     return (
-        "▰" * filled
-        + "▱" * (length - filled)
+        "â–°" * filled
+        + "â–±" * (length - filled)
         + f" `{percentage:.0%}`"
     )
 
@@ -452,7 +444,7 @@ class Leveling(ObserverCog):
         self.bot = bot
 
         # Shared config store (read by this cog, written by /setup).
-        self.store: SetupConfigStore  # initialized in cog_load off the event loop
+        self.store: SetupConfigStore
 
         self._xp_cooldowns: dict[
             tuple[int, int],
@@ -469,6 +461,8 @@ class Leveling(ObserverCog):
         self._pending_weekly_xp: dict[tuple[int, int, str], int] = {}
         self._xp_flush_task: asyncio.Task[None] | None = None
 
+    # ============================================================ Cog lifecycle
+
     async def cog_load(self) -> None:
         self.store = await asyncio.to_thread(SetupConfigStore, DB_PATH)
         backup_path = await asyncio.to_thread(_backup_database)
@@ -476,8 +470,6 @@ class Leveling(ObserverCog):
             logger.info("Created leveling database backup at %s", backup_path)
         await asyncio.to_thread(_init_db)
         self._weekly_loop.start()
-
-    # ============================================================ Cog lifecycle
 
     async def cog_unload(self) -> None:
         self._weekly_loop.cancel()
@@ -489,8 +481,8 @@ class Leveling(ObserverCog):
             except Exception:
                 logger.exception("Could not flush XP while unloading leveling cog")
 
-    # ============================================================ User database operations
 
+    # ============================================================ User database operations
     @staticmethod
     def _read_user_row_sync(guild_id: int, user_id: int) -> sqlite3.Row | dict[str, int]:
         # Looking at a rank must not acquire SQLite's single-writer lock.
@@ -505,19 +497,6 @@ class Leveling(ObserverCog):
             return row if row is not None else {"xp": 0, "level": 0, "messages": 0}
         finally:
             conn.close()
-
-    async def _get_user_row(
-        self,
-        guild_id: int,
-        user_id: int,
-    ) -> sqlite3.Row:
-        await self._flush_pending_xp()
-        async with self._db_lock:
-            return await asyncio.to_thread(
-                self._read_user_row_sync, guild_id, user_id
-            )
-
-    # ============================================================ Guild configuration operations
 
     @staticmethod
     def _read_guild_config_sync(guild_id: int) -> tuple[dict[str, Any], list[tuple[int, int]]]:
@@ -550,30 +529,6 @@ class Leveling(ObserverCog):
             return legacy, [(reward["level"], reward["role_id"]) for reward in rewards]
         finally:
             conn.close()
-
-    async def _get_guild_config(self, guild_id: int) -> dict[str, Any]:
-        # Independent SELECTs do not need to hold the XP writer's asyncio lock.
-        # Keep all SQLite work in worker threads so Discord heartbeats proceed.
-        legacy, rewards = await asyncio.to_thread(
-            self._read_guild_config_sync, guild_id
-        )
-        stored = await asyncio.to_thread(self.store.get_module, guild_id, MODULE_KEY)
-
-        def overlay(key: str, legacy_key: str):
-            value = stored.get(key)
-            return value if value is not None else legacy[legacy_key]
-
-        return {
-            "enabled": stored.get("enabled", True),
-            "xp_cooldown": stored.get("xp_cooldown", 15),
-            "level_up_channel": overlay("level_up_channel", "level_up_channel"),
-            "level_up_message": overlay("level_up_message", "level_up_message"),
-            "weekly_channel": overlay("weekly_channel", "weekly_channel"),
-            "weekly_day": overlay("weekly_day", "weekly_day"),
-            "weekly_hour": overlay("weekly_hour", "weekly_hour"),
-            "weekly_minute": overlay("weekly_minute", "weekly_minute"),
-            "role_rewards": {str(level): role_id for level, role_id in rewards},
-        }
 
     @staticmethod
     def _write_guild_config_sync(guild_id: int, settings: dict[str, Any]) -> None:
@@ -610,16 +565,6 @@ class Leveling(ObserverCog):
             raise
         finally:
             conn.close()
-
-    async def _set_guild_config(self, guild_id: int, **kwargs: Any) -> None:
-        async with self._db_lock:
-            await asyncio.to_thread(self._write_guild_config_sync, guild_id, kwargs)
-
-        for key, value in kwargs.items():
-            if key in MIRRORED_KEYS:
-                await asyncio.to_thread(
-                    self.store.set, guild_id, MODULE_KEY, key, value
-                )
 
     @staticmethod
     def _write_xp_batch(
@@ -660,6 +605,105 @@ class Leveling(ObserverCog):
         finally:
             conn.close()
 
+    @staticmethod
+    def _load_user_state(guild_id: int, user_id: int) -> tuple[int, int, int]:
+        conn = _get_conn()
+        try:
+            row = conn.execute(
+                "SELECT xp, level, messages FROM users WHERE guild_id = ? AND user_id = ?",
+                (guild_id, user_id),
+            ).fetchone()
+            return tuple(row) if row is not None else (0, 0, 0)
+        finally:
+            conn.close()
+
+    @staticmethod
+    def _select_rows_sync(query: str, params: tuple[Any, ...]) -> list[sqlite3.Row]:
+        conn = _get_conn()
+        try:
+            return conn.execute(query, params).fetchall()
+        finally:
+            conn.close()
+
+    @staticmethod
+    def _execute_sql_sync(query: str, params: tuple[Any, ...]) -> None:
+        conn = _get_conn()
+        try:
+            conn.execute(query, params)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    @staticmethod
+    def _read_weekly_rank_sync(
+        guild_id: int, user_id: int, week_start: str,
+    ) -> tuple[str, int, int]:
+        conn = _get_conn()
+        try:
+            row = conn.execute(
+                "SELECT xp FROM weekly_xp "
+                "WHERE guild_id = ? AND user_id = ? AND week_start = ?",
+                (guild_id, user_id, week_start),
+            ).fetchone()
+            xp = row["xp"] if row else 0
+            better = conn.execute(
+                "SELECT COUNT(*) AS better_users FROM weekly_xp "
+                "WHERE guild_id = ? AND week_start = ? AND xp > ?",
+                (guild_id, week_start, xp),
+            ).fetchone()
+            return week_start, xp, int(better["better_users"]) + 1
+        finally:
+            conn.close()
+
+
+    async def _get_user_row(
+        self,
+        guild_id: int,
+        user_id: int,
+    ) -> sqlite3.Row:
+        await self._flush_pending_xp()
+        async with self._db_lock:
+            return await asyncio.to_thread(
+                self._read_user_row_sync, guild_id, user_id
+            )
+
+    async def _get_guild_config(self, guild_id: int) -> dict[str, Any]:
+        # Independent SELECTs do not need to hold the XP writer's asyncio lock.
+        # Keep all SQLite work in worker threads so Discord heartbeats proceed.
+        legacy, rewards = await asyncio.to_thread(
+            self._read_guild_config_sync, guild_id
+        )
+        stored = await asyncio.to_thread(self.store.get_module, guild_id, MODULE_KEY)
+
+        def overlay(key: str, legacy_key: str):
+            value = stored.get(key)
+            return value if value is not None else legacy[legacy_key]
+
+        return {
+            "enabled": stored.get("enabled", True),
+            "xp_cooldown": stored.get("xp_cooldown", 15),
+            "level_up_channel": overlay("level_up_channel", "level_up_channel"),
+            "level_up_message": overlay("level_up_message", "level_up_message"),
+            "weekly_channel": overlay("weekly_channel", "weekly_channel"),
+            "weekly_day": overlay("weekly_day", "weekly_day"),
+            "weekly_hour": overlay("weekly_hour", "weekly_hour"),
+            "weekly_minute": overlay("weekly_minute", "weekly_minute"),
+            "role_rewards": {str(level): role_id for level, role_id in rewards},
+        }
+
+    async def _set_guild_config(self, guild_id: int, **kwargs: Any) -> None:
+        async with self._db_lock:
+            await asyncio.to_thread(self._write_guild_config_sync, guild_id, kwargs)
+
+        for key, value in kwargs.items():
+            if key in MIRRORED_KEYS:
+                await asyncio.to_thread(
+                    self.store.set, guild_id, MODULE_KEY, key, value
+                )
+
     async def _flush_pending_xp(self) -> None:
         async with self._db_lock:
             if not self._pending_xp:
@@ -699,33 +743,14 @@ class Leveling(ObserverCog):
     async def _delayed_xp_flush(self) -> None:
         try:
             await asyncio.sleep(XP_FLUSH_DELAY_SECONDS)
-            backoff = XP_FLUSH_DELAY_SECONDS
-            while self._pending_xp:
-                try:
-                    await self._flush_pending_xp()
-                except asyncio.CancelledError:
-                    raise
-                except Exception:
-                    logger.exception("Failed to flush pending leveling XP; retrying")
-                    await asyncio.sleep(backoff)
-                    backoff = min(backoff * 2, 60)
+            await self._flush_pending_xp()
         except asyncio.CancelledError:
             raise
+        except Exception:
+            logger.exception("Failed to flush pending leveling XP")
         finally:
             if self._xp_flush_task is asyncio.current_task():
                 self._xp_flush_task = None
-
-    @staticmethod
-    def _load_user_state(guild_id: int, user_id: int) -> tuple[int, int, int]:
-        conn = _get_conn()
-        try:
-            row = conn.execute(
-                "SELECT xp, level, messages FROM users WHERE guild_id = ? AND user_id = ?",
-                (guild_id, user_id),
-            ).fetchone()
-            return tuple(row) if row is not None else (0, 0, 0)
-        finally:
-            conn.close()
 
     async def _add_xp(
         self,
@@ -760,6 +785,7 @@ class Leveling(ObserverCog):
         guild_id: int,
         user_id: int,
     ) -> None:
+        await self._flush_pending_xp()
         async with self._db_lock:
             conn = _get_conn()
 
@@ -782,6 +808,8 @@ class Leveling(ObserverCog):
 
             finally:
                 conn.close()
+
+            self._user_state.pop((guild_id, user_id), None)
 
     async def _reset_weekly_xp(
         self,
@@ -861,7 +889,7 @@ class Leveling(ObserverCog):
         )
 
         embed = themed_embed(
-            title=f"📊 {member.display_name}'s Rank",
+            title=f"ðŸ“Š {member.display_name}'s Rank",
             description=(
                 f"Current leveling progress for {member.mention}."
             ),
@@ -872,25 +900,25 @@ class Leveling(ObserverCog):
         embed.set_thumbnail(url=member.display_avatar.url)
 
         embed.add_field(
-            name="🏅 Level",
+            name="ðŸ… Level",
             value=f"```yaml\n{level}\n```",
             inline=True,
         )
 
         embed.add_field(
-            name="✨ Total XP",
+            name="âœ¨ Total XP",
             value=f"```yaml\n{xp:,}\n```",
             inline=True,
         )
 
         embed.add_field(
-            name="💬 Messages",
+            name="ðŸ’¬ Messages",
             value=f"```yaml\n{messages:,}\n```",
             inline=True,
         )
 
         embed.add_field(
-            name="📈 Progress",
+            name="ðŸ“ˆ Progress",
             value=(
                 f"{progress_bar(progress, needed)}\n"
                 f"`{progress:,} / {needed:,} XP`"
@@ -899,7 +927,7 @@ class Leveling(ObserverCog):
         )
 
         embed.add_field(
-            name="🎯 Next Level",
+            name="ðŸŽ¯ Next Level",
             value=(
                 f"Level **{level + 1}** "
                 f"at **{next_level_xp:,} XP**"
@@ -914,7 +942,7 @@ class Leveling(ObserverCog):
         guild: discord.Guild,
         rows: list[sqlite3.Row],
     ) -> discord.Embed:
-        medals = ["🥇", "🥈", "🥉"]
+        medals = ["ðŸ¥‡", "ðŸ¥ˆ", "ðŸ¥‰"]
         lines: list[str] = []
 
         for index, row in enumerate(rows, start=1):
@@ -934,20 +962,20 @@ class Leveling(ObserverCog):
 
             lines.append(
                 f"{rank_icon} **{name}**\n"
-                f"┗ Level `{row['level']}` • "
-                f"`{row['xp']:,} XP` • "
+                f"â”— Level `{row['level']}` â€¢ "
+                f"`{row['xp']:,} XP` â€¢ "
                 f"`{row['messages']:,} messages`"
             )
 
         embed = themed_embed(
-            title=f"🏆 {guild.name} Leaderboard",
+            title=f"ðŸ† {guild.name} Leaderboard",
             description="\n\n".join(lines),
             color=GOLD_COLOR,
             guild=guild,
         )
 
         embed.add_field(
-            name="📌 Ranking",
+            name="ðŸ“Œ Ranking",
             value="Sorted by level and total XP.",
             inline=False,
         )
@@ -966,7 +994,7 @@ class Leveling(ObserverCog):
         rank: int,
     ) -> discord.Embed:
         embed = themed_embed(
-            title=f"📅 {member.display_name}'s Weekly Rank",
+            title=f"ðŸ“… {member.display_name}'s Weekly Rank",
             description=(
                 f"Weekly activity for the week beginning "
                 f"**{week_start} UTC**."
@@ -978,19 +1006,19 @@ class Leveling(ObserverCog):
         embed.set_thumbnail(url=member.display_avatar.url)
 
         embed.add_field(
-            name="⚡ Weekly XP",
+            name="âš¡ Weekly XP",
             value=f"```yaml\n{xp:,} XP\n```",
             inline=True,
         )
 
         embed.add_field(
-            name="🏆 Position",
+            name="ðŸ† Position",
             value=f"```yaml\n#{rank}\n```",
             inline=True,
         )
 
         embed.add_field(
-            name="💡 Tip",
+            name="ðŸ’¡ Tip",
             value=(
                 "Keep participating to climb the weekly leaderboard!"
             ),
@@ -1073,11 +1101,11 @@ class Leveling(ObserverCog):
             field_value = special["field_value"]
 
         else:
-            title = "🎉 Level Up!"
+            title = "ðŸŽ‰ Level Up!"
 
             message_template = (
                 config.get("level_up_message")
-                or "🎉 {user} just reached level {level}!"
+                or "ðŸŽ‰ {user} just reached level {level}!"
             )
 
             try:
@@ -1090,18 +1118,34 @@ class Leveling(ObserverCog):
 
             color = SUCCESS_COLOR
             footer_text = (
-                f"{guild.name} • Keep chatting to level up"
+                f"{guild.name} â€¢ Keep chatting to level up"
             )
-            field_name = "🎁 Reward"
+            field_name = "ðŸŽ Reward"
             if level == 10:
                 field_value = (
-                    "You have been granted permission to rename your voice channel"
+                    "Voice channel rename access follows the configured level requirement."
                 )
             else:
                 field_value = (
                     "Your level reward has been applied if one "
                     "is configured."
                 )
+
+        try:
+            rename_level = max(
+                0,
+                int(self.store.get(guild.id, MODULE_KEY, "voice_rename_level", 10)),
+            )
+        except (TypeError, ValueError):
+            rename_level = 10
+
+        if rename_level == 0:
+            if level == 10:
+                field_value = "Voice channel renaming is available to everyone."
+        elif level == rename_level:
+            field_value = "You have unlocked permission to rename your voice channel."
+        elif level == 10 and level != rename_level:
+            field_value = f"Voice channel renaming unlocks at level {rename_level}."
 
         embed = themed_embed(
             title=title,
@@ -1113,7 +1157,7 @@ class Leveling(ObserverCog):
         embed.set_thumbnail(url=user.display_avatar.url)
 
         embed.add_field(
-            name="✨ New Level",
+            name="âœ¨ New Level",
             value=f"```yaml\nLevel {level}\n```",
             inline=True,
         )
@@ -1150,26 +1194,6 @@ class Leveling(ObserverCog):
 
 
     # ============================================================ Weekly leaderboard operations
-
-    @staticmethod
-    def _select_rows_sync(query: str, params: tuple[Any, ...]) -> list[sqlite3.Row]:
-        conn = _get_conn()
-        try:
-            return conn.execute(query, params).fetchall()
-        finally:
-            conn.close()
-
-    @staticmethod
-    def _execute_sql_sync(query: str, params: tuple[Any, ...]) -> None:
-        conn = _get_conn()
-        try:
-            conn.execute(query, params)
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            raise
-        finally:
-            conn.close()
 
     async def _get_weekly_rows(
         self,
@@ -1244,7 +1268,7 @@ class Leveling(ObserverCog):
         if not rows:
             return False
 
-        medals = ["🥇", "🥈", "🥉"]
+        medals = ["ðŸ¥‡", "ðŸ¥ˆ", "ðŸ¥‰"]
         lines: list[str] = []
 
         for index, row in enumerate(rows, start=1):
@@ -1263,19 +1287,19 @@ class Leveling(ObserverCog):
             )
 
             lines.append(
-                f"{rank_icon} **{name}** — "
+                f"{rank_icon} **{name}** â€” "
                 f"`{row['xp']:,} XP`"
             )
 
         embed = themed_embed(
-            title="🏆 Weekly Leaderboard",
+            title="ðŸ† Weekly Leaderboard",
             description="\n".join(lines),
             color=PURPLE_COLOR,
             guild=guild,
         )
 
         embed.add_field(
-            name="📅 Completed Week",
+            name="ðŸ“… Completed Week",
             value=f"`{week_start} UTC`",
             inline=False,
         )
@@ -1560,7 +1584,7 @@ class Leveling(ObserverCog):
         if not rows:
             await interaction.response.send_message(
                 embed=themed_embed(
-                    title="📭 No Leveling Data",
+                    title="ðŸ“­ No Leveling Data",
                     description=(
                         "Nobody has earned XP in this server yet."
                     ),
@@ -1598,7 +1622,7 @@ class Leveling(ObserverCog):
         if not rows:
             await ctx.send(
                 embed=themed_embed(
-                    title="📭 No Leveling Data",
+                    title="ðŸ“­ No Leveling Data",
                     description=(
                         "Nobody has earned XP in this server yet."
                     ),
@@ -1617,27 +1641,6 @@ class Leveling(ObserverCog):
 
 
     # ============================================================ Weekly rank commands
-
-    @staticmethod
-    def _read_weekly_rank_sync(
-        guild_id: int, user_id: int, week_start: str,
-    ) -> tuple[str, int, int]:
-        conn = _get_conn()
-        try:
-            row = conn.execute(
-                "SELECT xp FROM weekly_xp "
-                "WHERE guild_id = ? AND user_id = ? AND week_start = ?",
-                (guild_id, user_id, week_start),
-            ).fetchone()
-            xp = row["xp"] if row else 0
-            better = conn.execute(
-                "SELECT COUNT(*) AS better_users FROM weekly_xp "
-                "WHERE guild_id = ? AND week_start = ? AND xp > ?",
-                (guild_id, week_start, xp),
-            ).fetchone()
-            return week_start, xp, int(better["better_users"]) + 1
-        finally:
-            conn.close()
 
     async def _get_weekly_rank(
         self, guild_id: int, user_id: int,
@@ -2148,3 +2151,5 @@ class Leveling(ObserverCog):
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Leveling(bot))
+
+

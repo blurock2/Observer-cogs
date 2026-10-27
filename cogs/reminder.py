@@ -296,6 +296,16 @@ class Reminder(ObserverCog):
 			view=ReminderSeenView(self, reminder_id),
 			)
 		except (discord.Forbidden, discord.HTTPException) as error:
+			if getattr(error, "code", None) == 10013:
+				# Discord confirms that this recipient does not exist. Retrying a
+				# reminder for that ID cannot succeed and would log every five minutes.
+				self._acknowledge_reminder(reminder_id)
+				logger.warning(
+					"Disabled reminder %s because Discord reports user %s does not exist",
+					reminder_id,
+					reminder["user_id"],
+				)
+				return
 			logger.warning(
 				"Could not DM reminder %s to user %s: %s",
 				reminder_id,

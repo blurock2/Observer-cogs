@@ -18,6 +18,7 @@ from discord.ext import commands, tasks
 from cogs.setup_ui import DB_PATH, SetupConfigStore
 
 logger = logging.getLogger("observer.app_bridge")
+
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 APP_GUILDS_FILE = DATA_DIR / "app_guilds.json"
@@ -60,7 +61,6 @@ class AppBridge(ObserverCog):
         self.bot = bot
         self.started_at = datetime.now(UTC)
         self.commands_run = 0
-        # Serialize writes per file so a stale payload cannot replace a newer one.
         self._guild_write_lock = asyncio.Lock()
         self._stats_write_lock = asyncio.Lock()
 
@@ -75,17 +75,20 @@ class AppBridge(ObserverCog):
         self.refresh_guild_data.cancel()
         self.write_stats()
 
+    def write_stats(self) -> None:
+        write_json_atomic(APP_STATS_FILE, self._stats_payload())
+
     def _stats_payload(self) -> dict[str, Any]:
         member_count = sum(guild.member_count or 0 for guild in self.bot.guilds)
         return {
-            "app": "observer", "bot": "Observer", "status": "Online",
-            "servers": len(self.bot.guilds), "users": member_count,
+            "app": "observer",
+            "bot": "Observer",
+            "status": "Online",
+            "servers": len(self.bot.guilds),
+            "users": member_count,
             "commands_run": self.commands_run,
             "updated_at": datetime.now(UTC).isoformat(),
         }
-
-    def write_stats(self) -> None:
-        write_json_atomic(APP_STATS_FILE, self._stats_payload())
 
     async def write_stats_async(self) -> None:
         async with self._stats_write_lock:
@@ -137,12 +140,14 @@ class AppBridge(ObserverCog):
             )
 
         latency = self.bot.latency
-        latency_ms = round(latency * 1000) if math.isfinite(latency) and latency >= 0 else None
-
         payload = {
             "updated_at": datetime.now(UTC).isoformat(),
             "started_at": self.started_at.isoformat(),
-            "latency_ms": latency_ms,
+            "latency_ms": (
+                round(latency * 1000)
+                if math.isfinite(latency) and latency >= 0
+                else None
+            ),
             "bot_user": (
                 {
                     "id": self.bot.user.id,
@@ -274,7 +279,8 @@ class AppBridge(ObserverCog):
             content = str(request.get("content", "")).strip()
 
             if not isinstance(channel_id, int):
-                await asyncio.to_thread(self.write_result, 
+                await asyncio.to_thread(
+                    self.write_result,
                     request_id,
                     success=False,
                     message="Invalid channel ID.",
@@ -282,7 +288,8 @@ class AppBridge(ObserverCog):
                 continue
 
             if not content:
-                await asyncio.to_thread(self.write_result, 
+                await asyncio.to_thread(
+                    self.write_result,
                     request_id,
                     success=False,
                     message="Message cannot be empty.",
@@ -290,7 +297,8 @@ class AppBridge(ObserverCog):
                 continue
 
             if len(content) > 2000:
-                await asyncio.to_thread(self.write_result, 
+                await asyncio.to_thread(
+                    self.write_result,
                     request_id,
                     success=False,
                     message=(
@@ -308,7 +316,8 @@ class AppBridge(ObserverCog):
                     discord.Thread,
                 ),
             ):
-                await asyncio.to_thread(self.write_result, 
+                await asyncio.to_thread(
+                    self.write_result,
                     request_id,
                     success=False,
                     message=(
@@ -325,7 +334,8 @@ class AppBridge(ObserverCog):
                 )
 
             except discord.Forbidden:
-                await asyncio.to_thread(self.write_result, 
+                await asyncio.to_thread(
+                    self.write_result,
                     request_id,
                     success=False,
                     message=(
@@ -335,14 +345,16 @@ class AppBridge(ObserverCog):
                 )
 
             except discord.HTTPException as error:
-                await asyncio.to_thread(self.write_result, 
+                await asyncio.to_thread(
+                    self.write_result,
                     request_id,
                     success=False,
                     message=f"Discord rejected the message: {error}",
                 )
 
             else:
-                await asyncio.to_thread(self.write_result, 
+                await asyncio.to_thread(
+                    self.write_result,
                     request_id,
                     success=True,
                     message=f"Message sent to #{channel.name}.",

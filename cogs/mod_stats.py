@@ -92,6 +92,8 @@ class ModerationStatsStore:
             "kicks": 0,
             "bans": 0,
             "timeouts": 0,
+            "appeals_accepted": 0,
+            "appeals_rejected": 0,
         }
 
         with self._connect() as conn:
@@ -103,13 +105,27 @@ class ModerationStatsStore:
                 """,
                 (guild_id, moderator_id),
             ).fetchone()
+            appeal_row = conn.execute(
+                "SELECT "
+                "SUM(CASE WHEN status = 'accepted' THEN 1 ELSE 0 END) AS accepted, "
+                "SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) AS rejected "
+                "FROM moderation_ban_appeals "
+                "WHERE guild_id = ? AND reviewed_by = ?",
+                (guild_id, moderator_id),
+            ).fetchone()
 
         if row is None:
-            return defaults
+            row_stats = defaults.copy()
+        else:
+            row_stats = {
+                "reports_claimed": int(row["reports_claimed"]),
+                "kicks": int(row["kicks"]),
+                "bans": int(row["bans"]),
+                "timeouts": int(row["timeouts"]),
+                "appeals_accepted": 0,
+                "appeals_rejected": 0,
+            }
 
-        return {
-            "reports_claimed": int(row["reports_claimed"]),
-            "kicks": int(row["kicks"]),
-            "bans": int(row["bans"]),
-            "timeouts": int(row["timeouts"]),
-        }
+        row_stats["appeals_accepted"] = int(appeal_row["accepted"] or 0)
+        row_stats["appeals_rejected"] = int(appeal_row["rejected"] or 0)
+        return row_stats

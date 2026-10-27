@@ -186,7 +186,7 @@ class ServerInfo(ObserverCog):
             )
             return None
 
-        await asyncio.to_thread(self.store.set, guild.id, MODULE_KEY, config_key, channel.id)
+        self.store.set(guild.id, MODULE_KEY, config_key, channel.id)
         return channel
 
     async def _delete_counter(
@@ -210,14 +210,14 @@ class ServerInfo(ObserverCog):
             except (discord.Forbidden, discord.HTTPException):
                 return
 
-        await asyncio.to_thread(self.store.set, guild.id, MODULE_KEY, config_key, None)
+        self.store.set(guild.id, MODULE_KEY, config_key, None)
 
     async def _rename_counter(
         self,
         channel: discord.VoiceChannel,
         name: str,
     ) -> None:
-        """Throttle counter changes to avoid Discord's rename rate limits."""
+        """Rename only when needed and stay below Discord's rename limit."""
         if channel.name == name:
             return
 
@@ -225,10 +225,12 @@ class ServerInfo(ObserverCog):
         if now < self._counter_next_edit_at.get(channel.id, 0.0):
             return
 
-        # Mark attempted edits too: failures must not cause a request storm.
+        # Count failed attempts too, so permission/API failures do not cause
+        # a request storm on each refresh cycle.
         self._counter_next_edit_at[channel.id] = (
             now + COUNTER_RENAME_COOLDOWN_SECONDS
         )
+
         try:
             await channel.edit(
                 name=name,
@@ -304,7 +306,7 @@ class ServerInfo(ObserverCog):
                 return
 
             await self.refresh_guild_stats(guild)
-            await asyncio.to_thread(self.store.set, 
+            self.store.set(
                 guild.id,
                 MODULE_KEY,
                 "last_update",
@@ -324,8 +326,8 @@ class ServerInfo(ObserverCog):
     def _schedule_presence_refresh(self, guild: discord.Guild) -> None:
         existing_task = self._presence_refresh_tasks.get(guild.id)
 
-        if existing_task is not None and not existing_task.done():
-            return
+        if existing_task is not None:
+            existing_task.cancel()
 
         self._presence_refresh_tasks[guild.id] = asyncio.create_task(
             self._delayed_presence_refresh(guild)
@@ -363,7 +365,7 @@ class ServerInfo(ObserverCog):
 
             try:
                 await self.refresh_guild_stats(guild)
-                await asyncio.to_thread(self.store.set, guild.id, MODULE_KEY, "last_update", now)
+                self.store.set(guild.id, MODULE_KEY, "last_update", now)
             except Exception as error:  # noqa: BLE001 - keep the scheduler alive for other guilds
                 print(
                     f"[server_stats] Refresh error for "

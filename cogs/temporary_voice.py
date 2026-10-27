@@ -72,6 +72,15 @@ class TemporaryVoice(ObserverCog):
     def _is_enabled(self, guild_id: int) -> bool:
         return bool(self._get(guild_id, "enabled", default=False))
 
+    def _get_rename_level(self, guild_id: int) -> int:
+        try:
+            return max(
+                0,
+                int(self.store.get(guild_id, "leveling", "voice_rename_level", 10)),
+            )
+        except (TypeError, ValueError):
+            return 10
+
     def _get_join_channel_id(self, guild_id: int) -> int | None:
         value = self._get(guild_id, "join_channel")
 
@@ -352,7 +361,7 @@ class TemporaryVoice(ObserverCog):
                 "Use the buttons below to control your room.\n\n"
                 "🔒 **Lock** prevents new users from joining.\n"
                 "👤 **Invite** lets a selected member join a locked room.\n"
-                "✏️ **Rename** allows Level 10+ users to rename the channel."
+                "✏️ **Rename** access follows the Voice rename level in `/setup` → Leveling."
             ),
             color=discord.Color.blurple(),
         )
@@ -740,9 +749,10 @@ class RenameButton(discord.ui.Button):
             interaction.user.id,
         )
 
-        if level < 10:
+        required_level = view.cog._get_rename_level(interaction.guild.id)
+        if level < required_level:
             await interaction.response.send_message(
-                "You must be level 10 or higher to rename your voice channel.",
+                f"You must be level {required_level} or higher to rename your voice channel.",
                 ephemeral=True,
             )
             return

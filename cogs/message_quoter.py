@@ -12,7 +12,6 @@ from pathlib import Path
 import discord
 from discord.ext import commands
 
-from cogs.config import is_bot_owner
 from database import connect_sqlite
 
 NO_MENTIONS = discord.AllowedMentions.none()
@@ -326,11 +325,6 @@ class MessageQuoter(ObserverCog):
         if not isinstance(message.author, discord.Member):
             return False
 
-        # The bot owner can quote in any guild where this feature is enabled,
-        # regardless of which roles the guild has allowed.
-        if is_bot_owner(message.author):
-            return True
-
         allowed_role_ids = self.config.get_allowed_role_ids(message.guild.id)
 
         # No roles configured means the feature remains available to everyone.
@@ -379,17 +373,16 @@ class MessageQuoter(ObserverCog):
             return
 
 
-        seen_message_ids = set()
+        seen_message_ids: set[tuple[str, str, str]] = set()
 
 
         for link_guild_id, channel_id_str, message_id_str in matches:
-            if int(link_guild_id) != guild_id:
-                continue
-            if message_id_str in seen_message_ids:
+            link_key = (link_guild_id, channel_id_str, message_id_str)
+            if link_key in seen_message_ids:
                 continue
 
 
-            seen_message_ids.add(message_id_str)
+            seen_message_ids.add(link_key)
 
 
             try:
@@ -407,8 +400,9 @@ class MessageQuoter(ObserverCog):
                     continue
 
 
-                # Never use the bot's broader access to reveal private messages.
-                if channel.guild.id != guild_id:
+                # The caller must be able to read the original channel even
+                # when the link points to a different server.
+                if channel.guild.id != int(link_guild_id):
                     continue
                 permissions = channel.permissions_for(message.author)
                 if not (permissions.view_channel and permissions.read_message_history):
