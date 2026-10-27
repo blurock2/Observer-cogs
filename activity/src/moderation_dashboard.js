@@ -21,16 +21,55 @@ function reportRows() {
   return `<div class="mod-report-list">${reports.map((report) => {
     const date = new Date(report.created_at);
     const time = Number.isNaN(date.getTime()) ? "Recently" : date.toLocaleString();
-    const reportActions = report.accepted
-      ? `<span class="mod-action-complete">Accepted</span>`
-      : `${report.claimed_by ? `<button class="mod-action-button secondary" data-report-action="unclaim" data-report-id="${esc(report.id)}">Unclaim</button>` : `<button class="mod-action-button" data-report-action="claim" data-report-id="${esc(report.id)}">Claim</button>`}<button class="mod-action-button accept" data-report-action="accept" data-report-id="${esc(report.id)}">Accept</button>`;
+    const actionButton = (action, label, className = "") => `<button class="mod-action-button ${className}" data-report-action="${action}" data-report-id="${esc(report.id)}">${label}</button>`;
+    const claimControl = report.claimed_by
+      ? actionButton("unclaim", "↩ Unclaim Report", "secondary")
+      : (report.status === "open" && !report.accepted ? actionButton("claim", "Claim", "secondary") : "");
+    const reportActions = `${claimControl}${actionButton("warn", "Warn", "warn")}${actionButton("timeout", "Timeout", "timeout")}${actionButton("delete", "Delete", "danger")}${!report.accepted ? actionButton("close", "Close Report", "secondary") : `<span class="mod-action-complete">Closed</span>`}${!report.escalated_by_name ? actionButton("escalate", "Escalate", "escalate") : `<span class="mod-action-complete">Escalated</span>`}`;
     const claimNote = report.claimed_by_name ? `<small class="mod-claim-note">Claimed by ${esc(report.claimed_by_name)}</small>` : "";
     const linkedActionText = (report.linked_actions || []).map((action) => `Case #${action.case_number} ${action.case_type} by ${action.moderator_name}`).join(" · ");
     const resolution = report.status === "closed"
-      ? `<div class="mod-report-resolution">${claimNote}${report.accepted_by_name ? `<small>Accepted by ${esc(report.accepted_by_name)}</small>` : ""}<small>${linkedActionText ? `Linked moderation action: ${esc(linkedActionText)}` : "No linked moderation action recorded."}</small></div>`
-      : "";
-    return `<article class="mod-report"><div class="mod-report-symbol ${report.status === "closed" ? "is-reviewed" : ""}">${report.status === "closed" ? "✓" : "!"}</div><div class="mod-report-body"><div class="mod-report-meta"><strong>Message report</strong><time>${esc(time)}</time></div><p>${esc(report.reason || "No reason provided")}</p><div class="mod-report-target">Reported member <b>${esc(report.target_name)}</b>${report.channel ? ` · ${esc(report.channel)}` : ""}</div>${resolution}</div><div class="mod-report-controls"><span class="mod-status ${report.status === "closed" ? "is-reviewed" : ""}">${report.status === "closed" ? "CLOSED" : "OPEN"}</span>${report.status === "open" ? `<div class="mod-report-actions">${reportActions}</div>` : report.accepted ? `<span class="mod-action-complete">Accepted</span>` : ""}<a class="mod-review-link" href="${esc(report.url)}" target="_blank" rel="noreferrer">Open in Discord ↗</a></div></article>`;
+      ? `<div class="mod-report-resolution">${claimNote}${report.accepted_by_name ? `<small>Closed by ${esc(report.accepted_by_name)}</small>` : ""}${report.escalated_by_name ? `<small>Escalated by ${esc(report.escalated_by_name)}</small>` : ""}<small>${linkedActionText ? `Linked moderation action: ${esc(linkedActionText)}` : "No linked moderation action recorded."}</small></div>`
+      : claimNote;
+    return `<article class="mod-report"><div class="mod-report-symbol ${report.status === "closed" ? "is-reviewed" : ""}">${report.status === "closed" ? "✓" : "!"}</div><div class="mod-report-body"><div class="mod-report-meta"><strong>Message report</strong><time>${esc(time)}</time></div><p>${esc(report.reason || "No reason provided")}</p><div class="mod-report-target">Reported member <b>${esc(report.target_name)}</b>${report.channel ? ` · ${esc(report.channel)}` : ""}</div>${resolution}</div><div class="mod-report-controls"><span class="mod-status ${report.status === "closed" ? "is-reviewed" : ""}">${report.status === "closed" ? "CLOSED" : "OPEN"}</span><div class="mod-report-actions">${reportActions}</div><a class="mod-review-link" href="${esc(report.url)}" target="_blank" rel="noreferrer">Open in Discord ↗</a></div></article>`;
   }).join("")}</div>`;
+}
+
+function openActionDialog(report, action) {
+  const titles = { warn: "Warn member", timeout: "Timeout member", delete: "Delete reported message" };
+  const deleteWarning = action === "delete"
+    ? `<label class="mod-action-confirm"><input type="checkbox" name="confirm" required><span>I understand this permanently deletes the original Discord message.</span></label>`
+    : "";
+  const duration = action === "timeout"
+    ? `<label class="mod-action-field">Timeout duration in minutes<input name="duration_minutes" type="number" min="1" max="40320" value="60" required></label>`
+    : "";
+  root.insertAdjacentHTML("beforeend", `<div class="mod-action-modal" id="mod-action-modal"><form class="mod-action-dialog"><button class="mod-action-modal-close" type="button" aria-label="Close">×</button><div class="eyebrow">REPORT ACTION</div><h2>${titles[action]}</h2><p>Reported member: <strong>${esc(report.target_name)}</strong></p>${duration}<label class="mod-action-field">Reason<textarea name="reason" maxlength="1000">${esc(report.reason || "")}</textarea></label>${deleteWarning}<div class="mod-action-modal-buttons"><button class="mod-action-cancel" type="button">Cancel</button><button class="mod-action-submit ${action === "delete" ? "is-danger" : ""}" type="submit">${action === "delete" ? "Delete message" : `Confirm ${action}`}</button></div></form></div>`);
+  const overlay = root.querySelector("#mod-action-modal");
+  const form = overlay.querySelector("form");
+  requestAnimationFrame(() => overlay.classList.add("is-open"));
+  const close = () => { overlay.classList.remove("is-open"); setTimeout(() => overlay.remove(), 220); };
+  overlay.addEventListener("click", (event) => { if (event.target === overlay) close(); });
+  overlay.querySelector(".mod-action-modal-close").addEventListener("click", close);
+  overlay.querySelector(".mod-action-cancel").addEventListener("click", close);
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const submit = form.querySelector(".mod-action-submit");
+    const body = { reason: form.elements.reason.value.trim() };
+    if (action === "timeout") body.duration_minutes = Number(form.elements.duration_minutes.value);
+    if (action === "delete") body.confirm = form.elements.confirm.checked;
+    submit.disabled = true;
+    submit.textContent = action === "delete" ? "Deleting…" : "Applying…";
+    try {
+      await api(`/api/mod-dashboard/${encodeURIComponent(guildId)}/reports/${encodeURIComponent(report.id)}/${action}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      data = await api(`/api/mod-dashboard/${encodeURIComponent(guildId)}`);
+      overlay.remove();
+      render();
+    } catch (error) {
+      alert(error.message);
+      submit.disabled = false;
+      submit.textContent = action === "delete" ? "Delete message" : `Confirm ${action}`;
+    }
+  });
 }
 
 function actionHistory() {
@@ -52,8 +91,10 @@ function render() {
   root.querySelectorAll("[data-report-action]").forEach((button) => button.addEventListener("click", async () => {
     const action = button.dataset.reportAction;
     const reportId = button.dataset.reportId;
+    const report = (data.reports || []).find((item) => String(item.id) === String(reportId));
+    if (["warn", "timeout", "delete"].includes(action)) { openActionDialog(report, action); return; }
     button.disabled = true;
-    button.textContent = action === "accept" ? "Accepting…" : action === "claim" ? "Claiming…" : "Updating…";
+    button.textContent = action === "close" ? "Closing…" : action === "claim" ? "Claiming…" : action === "escalate" ? "Escalating…" : "Updating…";
     try {
       await api(`/api/mod-dashboard/${encodeURIComponent(guildId)}/reports/${encodeURIComponent(reportId)}/${action}`, { method: "POST" });
       data = await api(`/api/mod-dashboard/${encodeURIComponent(guildId)}`);
@@ -61,7 +102,7 @@ function render() {
     } catch (error) {
       alert(error.message);
       button.disabled = false;
-      button.textContent = action[0].toUpperCase() + action.slice(1);
+      button.textContent = action === "close" ? "Close Report" : action === "escalate" ? "Escalate" : action[0].toUpperCase() + action.slice(1);
     }
   }));
 }
