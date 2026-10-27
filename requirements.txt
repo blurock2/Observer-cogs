@@ -7,3 +7,4 @@ pytest
 pytest-asyncio
 ruff
 Pillow
+pytesseract>=0.3.13
