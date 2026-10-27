@@ -741,7 +741,7 @@ MODULES: list[ModuleSpec] = [
                 "appeal_channel",
                 "Ban appeals channel",
                 "channel",
-                description="Staff-only channel for permanent-ban appeals submitted from DMs. Leave unset to disable in-app appeals.",
+                description="Staff-only channel where permanent-ban appeals submitted from DMs are sent. Configure this to receive in-app appeals.",
             ),
             SettingSpec("mod_role", "Moderator role", "role"),
             SettingSpec("head_mod_role", "Head moderator role", "role"),
