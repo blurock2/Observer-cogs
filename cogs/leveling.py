@@ -92,7 +92,7 @@ SPECIAL_LEVELS = {
             242,
         ),
         "footer": "Keep chatting to level up.",
-        "field_name": "ðŸŽ Reward",
+        "field_name": "🎁 Reward",
         "field_value": (
             "You have been granted permission to rename your voice channel"
         ),
@@ -232,7 +232,7 @@ def _init_db() -> None:
                 guild_id INTEGER PRIMARY KEY,
                 level_up_channel INTEGER,
                 level_up_message TEXT NOT NULL
-                    DEFAULT 'ðŸŽ‰ {user} just reached level {level}!',
+                    DEFAULT '🎉 {user} just reached level {level}!',
                 weekly_channel INTEGER,
                 weekly_day INTEGER NOT NULL DEFAULT 0,
                 weekly_hour INTEGER NOT NULL DEFAULT 0,
@@ -254,7 +254,7 @@ def _init_db() -> None:
             "level_up_message",
             (
                 "TEXT NOT NULL DEFAULT "
-                "'ðŸŽ‰ {user} just reached level {level}!'"
+                "'🎉 {user} just reached level {level}!'"
             ),
         )
 
@@ -1101,12 +1101,19 @@ class Leveling(ObserverCog):
             field_value = special["field_value"]
 
         else:
-            title = "ðŸŽ‰ Level Up!"
+            title = "🎉 Level Up!"
 
             message_template = (
                 config.get("level_up_message")
-                or "ðŸŽ‰ {user} just reached level {level}!"
+                or "🎉 {user} just reached level {level}!"
             )
+
+            # Repair the known default saved by older releases with broken emoji encoding.
+            if message_template in {
+                "\\u00f0\\u0178\\u017d\\u2030 {user} just reached level {level}!",
+                "\\u00c3\\u00b0\\u00c5\\u00b8\\u00c5\\u00bd\\u00e2\\u20ac\\u2030 {user} just reached level {level}!",
+            }:
+                message_template = "🎉 {user} just reached level {level}!"
 
             try:
                 description = message_template.format(
@@ -1118,9 +1125,9 @@ class Leveling(ObserverCog):
 
             color = SUCCESS_COLOR
             footer_text = (
-                f"{guild.name} â€¢ Keep chatting to level up"
+                f"{guild.name} • Keep chatting to level up"
             )
-            field_name = "ðŸŽ Reward"
+            field_name = "🎁 Reward"
             if level == 10:
                 field_value = (
                     "Voice channel rename access follows the configured level requirement."
@@ -1157,7 +1164,7 @@ class Leveling(ObserverCog):
         embed.set_thumbnail(url=user.display_avatar.url)
 
         embed.add_field(
-            name="âœ¨ New Level",
+            name="✨ New Level",
             value=f"```yaml\nLevel {level}\n```",
             inline=True,
         )
