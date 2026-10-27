@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 24703)
+Total output lines: 1772
+
 """HTTP backend and static host for Observer's Discord Activity."""
 from __future__ import annotations
 
@@ -174,13 +177,14 @@ class ActivityServer:
         app.router.add_get("/api/control-panel/{guild_id}", self.control_panel)
         app.router.add_post("/api/control-panel/{guild_id}/setting", self.save_control_panel_setting)
         app.router.add_post("/api/control-panel/{guild_id}/ticket-panel", self.send_ticket_panel)
+        app.router.add_get("/api/public-reports", self.public_reports)
         app.router.add_get("/api/custom-embed/{guild_id}", self.custom_embed_info)
         app.router.add_get("/api/custom-embed/{guild_id}/message", self.custom_embed_message)
         app.router.add_post("/api/custom-embed/{guild_id}", self.send_custom_embed)
         app.router.add_get("/api/mod-dashboard/{guild_id}", self.mod_dashboard)
         app.router.add_post("/api/mod-dashboard/{guild_id}/reports/{message_id}/{action}", self.mod_report_action)
         app.router.add_get("/api/public-info", self.public_info)
-        app.router.add_get("/api/public-reports", self.public_reports)
+        app.router.add_get("/observer-stats.json", self.observer_stats)
         app.router.add_post("/api/token", self.exchange_code)
         app.router.add_get("/api/activity/{view}", self.activity_data)
         app.router.add_get("/healthz", self.health)
@@ -893,45 +897,7 @@ class ActivityServer:
                     target_raw = fields.get("message author", "")
                     target_match = re.search(r"`(\d{15,22})`", target_raw)
                     target_id = target_match.group(1) if target_match else ""
-                    member = guild.get_member(int(target_id)) if target_id.isdigit() else None
-                    claimed_fields = [field for field in embed.fields if field.name.casefold() == "claimed by"]
-                    claimed_id = next(
-                        (user_id for field in reversed(claimed_fields) if (user_id := _report_user_id(field.value))),
-                        None,
-                    )
-                    # A claim removes the report from the website queue and is
-                    # counted with closed reports there. Discord keeps its own
-                    # claim/unclaim controls for the assigned moderator.
-                    accepted = "accepted by staff" in fields
-                    closed = bool(claimed_fields) or accepted
-                    claimed_member = guild.get_member(int(claimed_id)) if claimed_id else None
-                    accepted_raw = fields.get("accepted by staff", "")
-                    accepted_match = re.search(r"<@!?(\d{15,22})>", accepted_raw)
-                    accepted_id = accepted_match.group(1) if accepted_match else None
-                    accepted_member = guild.get_member(int(accepted_id)) if accepted_id else None
-                    escalated_raw = fields.get("escalated by", "")
-                    escalated_match = re.search(r"\((\d{15,22})\)", escalated_raw)
-                    escalated_id = escalated_match.group(1) if escalated_match else None
-                    escalated_member = guild.get_member(int(escalated_id)) if escalated_id else None
-                    message_link = fields.get("message link", "")
-                    linked_message_match = re.search(
-                        r"https?://(?:canary\.|ptb\.)?discord(?:app)?\.com/channels/\d+/\d+/(\d{15,22})",
-                        message_link,
-                    )
-                    reports.append({
-                        "id": str(message.id),
-                        "target_name": member.display_name if member else (f"User {target_id}" if target_id else "Unknown member"),
-                        "target_id": target_id,
-                        "channel": fields.get("channel", "").split(" ", 1)[0],
-                        "reason": fields.get("reason", "No reason provided"),
-                        "created_at": message.created_at.isoformat(),
-                        "url": message.jump_url,
-                        "status": "closed" if closed else "open",
-                        "claimed": bool(claimed_fields),
-                        "claimed_by": claimed_id,
-                        "claimed_by_name": claimed_member.display_name if claimed_member else (f"User {claimed_id}" if claimed_id else None),
-                        "accepted": accepted,
-                        "accepted_by_name": accepted_member.display_name if accepted_member else (f"User {accepted_id}" if accepted_id else None),
+                    …703 tokens truncated…splay_name if accepted_member else (f"User {accepted_id}" if accepted_id else None),
                         "escalated_by_name": escalated_member.display_name if escalated_member else (f"User {escalated_id}" if escalated_id else None),
                         "reported_message_id": linked_message_match.group(1) if linked_message_match else None,
                         "linked_actions": [],
@@ -1576,6 +1542,7 @@ class ActivityServer:
             "channel_id": str(channel.id),
             "channel_name": channel.name,
         }, headers={"Cache-Control": "no-store"})
+
     def _bot_invite_url(self) -> str:
         if not self.client_id:
             return "https://discord.com/developers/applications"
@@ -1744,3 +1711,27 @@ class ActivityServer:
 
     async def health(self, request: web.Request) -> web.Response:
         return web.json_response({"status": "online", "servers": len(self.bot.guilds)})
+
+    async def observer_stats(self, request: web.Request) -> web.Response:
+        """Expose only aggregate bot counts to the public portfolio page."""
+        member_count = sum(guild.member_count or 0 for guild in self.bot.guilds)
+        app_bridge = self.bot.get_cog("AppBridge")
+        allowed_origin = os.getenv(
+            "OBSERVER_STATS_ALLOWED_ORIGIN",
+            "https://my-website.rockus26.workers.dev",
+        ).rstrip("/")
+        headers = {"Cache-Control": "no-store"}
+        request_origin = request.headers.get("Origin", "").rstrip("/")
+        if request_origin and request_origin == allowed_origin:
+            headers["Access-Control-Allow-Origin"] = request_origin
+            headers["Vary"] = "Origin"
+        return web.json_response(
+            {
+                "status": "Online" if self.bot.is_ready() else "Offline",
+                "servers": len(self.bot.guilds),
+                "users": member_count,
+                "commands_run": int(getattr(app_bridge, "commands_run", 0)),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            },
+            headers=headers,
+        )
