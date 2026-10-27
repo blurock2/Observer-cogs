@@ -21,7 +21,7 @@ function reportRows() {
   return `<div class="mod-report-list">${reports.map((report) => {
     const date = new Date(report.created_at);
     const time = Number.isNaN(date.getTime()) ? "Recently" : date.toLocaleString();
-    return `<article class="mod-report"><div class="mod-report-symbol ${report.status === "reviewed" ? "is-reviewed" : ""}">${report.status === "reviewed" ? "✓" : "!"}</div><div class="mod-report-body"><div class="mod-report-meta"><strong>Message report</strong><time>${esc(time)}</time></div><p>${esc(report.reason || "No reason provided")}</p><div class="mod-report-target">Reported member <b>${esc(report.target_name)}</b>${report.channel ? ` · ${esc(report.channel)}` : ""}</div></div><span class="mod-status ${report.status === "reviewed" ? "is-reviewed" : ""}">${report.status === "reviewed" ? "REVIEWED" : "OPEN"}</span><a class="mod-review-link" href="${esc(report.url)}" target="_blank" rel="noreferrer">Open in Discord ↗</a></article>`;
+    return `<article class="mod-report"><div class="mod-report-symbol ${report.status === "closed" ? "is-reviewed" : ""}">${report.status === "closed" ? "✓" : "!"}</div><div class="mod-report-body"><div class="mod-report-meta"><strong>Message report</strong><time>${esc(time)}</time></div><p>${esc(report.reason || "No reason provided")}</p><div class="mod-report-target">Reported member <b>${esc(report.target_name)}</b>${report.channel ? ` · ${esc(report.channel)}` : ""}</div></div><span class="mod-status ${report.status === "closed" ? "is-reviewed" : ""}">${report.status === "closed" ? "CLOSED" : "OPEN"}</span><a class="mod-review-link" href="${esc(report.url)}" target="_blank" rel="noreferrer">Open in Discord ↗</a></article>`;
   }).join("")}</div>`;
 }
 
