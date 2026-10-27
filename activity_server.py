@@ -473,6 +473,7 @@ class ActivityServer:
         return web.json_response({
             "guild": {"id": str(guild.id), "name": guild.name, "icon": guild.icon.key if guild.icon else None,
                       "is_owner": str(guild.owner_id) == str(session["user"].get("id", ""))},
+            "viewer_id": str(session["user"].get("id", "")),
             "bot_online": self.bot.is_ready(),
             "member_count": guild.member_count or 0,
             "open_reports": open_reports,
@@ -669,6 +670,10 @@ class ActivityServer:
         accepted = any(field.name.casefold() == "accepted by staff" for field in embed.fields)
         claimed_match = re.search(r"\((\d{15,22})\)", claimed_field.value) if claimed_field else None
         claimed_by = int(claimed_match.group(1)) if claimed_match else None
+        if action not in {"claim", "unclaim"} and claimed_by != user_id:
+            if claimed_by is None:
+                raise web.HTTPForbidden(text="Claim this report before taking action")
+            raise web.HTTPForbidden(text="Only the moderator who claimed this report can take action")
         fields = {field.name.casefold(): field.value for field in embed.fields}
         target_match = re.search(r"\((\d{15,22})\)", fields.get("message author", ""))
         if not target_match:
