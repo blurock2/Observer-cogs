@@ -510,9 +510,20 @@ class AntiScam(ObserverCog):
         with Image.open(BytesIO(image_bytes)) as source:
             if source.width * source.height > IMAGE_SCAN_MAX_PIXELS:
                 raise ValueError("Image dimensions are too large to scan")
-            # Bound decode output before expensive conversion/preprocessing.
-            source.thumbnail((OCR_MAX_SIDE, OCR_MAX_SIDE), Image.Resampling.LANCZOS)
-            rgb = source.convert("RGB")
+            # Palette PNGs can carry transparency as raw bytes; Pillow warns
+            # when thumbnailing those directly, so normalize alpha first.
+            if source.mode == "P" and "transparency" in source.info:
+                with source.convert("RGBA") as normalized:
+                    normalized.thumbnail(
+                        (OCR_MAX_SIDE, OCR_MAX_SIDE), Image.Resampling.LANCZOS
+                    )
+                    rgb = normalized.convert("RGB")
+            else:
+                # Bound decoded output before expensive conversion/preprocessing.
+                source.thumbnail(
+                    (OCR_MAX_SIDE, OCR_MAX_SIDE), Image.Resampling.LANCZOS
+                )
+                rgb = source.convert("RGB")
         recognized: list[str] = []
         passes = 0
         complete = True
