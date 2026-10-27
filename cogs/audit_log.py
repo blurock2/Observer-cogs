@@ -3,6 +3,7 @@ from __future__ import annotations
 from error_handling import ObserverCog
 
 import asyncio
+import json
 import logging
 from contextlib import closing
 from datetime import timedelta
@@ -75,6 +76,7 @@ class AuditLogCog(ObserverCog):
                     channel_id INTEGER NOT NULL,
                     author_id INTEGER NOT NULL,
                     content TEXT NOT NULL,
+                    attachments_json TEXT NOT NULL DEFAULT '[]',
                     reply_message_id INTEGER,
                     reply_channel_id INTEGER,
                     reply_guild_id INTEGER,
@@ -83,6 +85,17 @@ class AuditLogCog(ObserverCog):
                 )
                 """
             )
+            columns = {
+                row[1]
+                for row in connection.execute(
+                    "PRAGMA table_info(audit_message_snapshots)"
+                ).fetchall()
+            }
+            if "attachments_json" not in columns:
+                connection.execute(
+                    "ALTER TABLE audit_message_snapshots "
+                    "ADD COLUMN attachments_json TEXT NOT NULL DEFAULT '[]'"
+                )
             connection.commit()
 
     # ============================================================ Config helpers
@@ -260,15 +273,23 @@ class AuditLogCog(ObserverCog):
         reference = message.reference
         resolved = reference.resolved if reference else None
         reply_author = getattr(getattr(resolved, "author", None), "id", None)
+        attachments = [
+            {
+                "url": attachment.url,
+                "filename": attachment.filename,
+                "content_type": attachment.content_type,
+            }
+            for attachment in getattr(message, "attachments", ())
+        ]
         created_before = discord.utils.utcnow() - timedelta(days=MESSAGE_SNAPSHOT_RETENTION_DAYS)
         with closing(connect_sqlite(DB_PATH)) as connection:
             connection.execute(
                 """
                 INSERT OR REPLACE INTO audit_message_snapshots (
-                    message_id, guild_id, channel_id, author_id, content,
+                    message_id, guild_id, channel_id, author_id, content, attachments_json,
                     reply_message_id, reply_channel_id, reply_guild_id,
                     reply_author_id, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     message.id,
@@ -276,6 +297,7 @@ class AuditLogCog(ObserverCog):
                     message.channel.id,
                     message.author.id,
                     message.content or "",
+                    json.dumps(attachments),
                     reference.message_id if reference else None,
                     reference.channel_id if reference else None,
                     reference.guild_id if reference else None,
@@ -294,7 +316,7 @@ class AuditLogCog(ObserverCog):
         with closing(connect_sqlite(DB_PATH)) as connection:
             return connection.execute(
                 """
-                SELECT content, reply_message_id, reply_channel_id,
+                SELECT content, attachments_json, reply_message_id, reply_channel_id,
                        reply_guild_id, reply_author_id
                 FROM audit_message_snapshots WHERE message_id = ?
                 """,
@@ -411,15 +433,28 @@ class AuditLogCog(ObserverCog):
         snapshot = self._get_message_snapshot(payload.message_id) if cached is None else None
         author = None
         content = "*(uncached — content unavailable)*"
+        attachments = []
         if cached is not None:
             if cached.author.bot:
                 self._delete_message_snapshot(payload.message_id)
                 return
             author = cached.author
             content = cached.content or "*(no text content)*"
+            attachments = [
+                {
+                    "url": attachment.url,
+                    "filename": attachment.filename,
+                    "content_type": attachment.content_type,
+                }
+                for attachment in cached.attachments
+            ]
         elif snapshot is not None:
             content = snapshot["content"] or "*(no text content)*"
             author = guild.get_member(snapshot["author_id"])
+            try:
+                attachments = json.loads(snapshot["attachments_json"] or "[]")
+            except (TypeError, json.JSONDecodeError):
+                attachments = []
 
         reply_context = self._reply_context(
             cached,
@@ -440,6 +475,31 @@ class AuditLogCog(ObserverCog):
                         + (f"\n{reply_context}" if reply_context else ""),
         )
         embed.add_field(name="Content", value=_truncate(content), inline=False)
+        image_attachments = [
+            item for item in attachments
+            if isinstance(item, dict)
+            and isinstance(item.get("url"), str)
+            and (
+                (item.get("content_type") or "").lower().startswith("image/")
+                or str(item.get("filename") or "").lower().endswith(
+                    (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tif", ".tiff")
+                )
+            )
+        ]
+        if image_attachments:
+            embed.set_image(url=image_attachments[0]["url"])
+        if attachments:
+            attachment_links = [
+                f"[{_truncate(str(item.get('filename') or 'Attachment'), 120)}]({item['url']})"
+                for item in attachments
+                if isinstance(item, dict) and isinstance(item.get("url"), str)
+            ]
+            if attachment_links:
+                embed.add_field(
+                    name="Attachments",
+                    value=_truncate("\\n".join(attachment_links)),
+                    inline=False,
+                )
         embed.set_footer(text=f"Message ID: {payload.message_id}")
         await self._send(guild, embed)
 
