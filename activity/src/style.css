@@ -308,12 +308,13 @@ body.modal-open { overflow: hidden; }
 .mod-header > div { flex: 1; }
 .mod-header h1 { margin: 5px 0; font-size: clamp(1.8rem, 4vw, 2.5rem); }
 .mod-header p { margin: 0; color: var(--muted, #9ca8b5); }
-.mod-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.mod-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
 .mod-metric { min-height: 140px; padding: 20px; border: 1px solid var(--line, #292d32); border-radius: 14px; background: rgba(255,255,255,.025); }
 .mod-metric .eyebrow { color: var(--muted, #9ca8b5); font-size: .68rem; letter-spacing: .14em; }
 .mod-metric strong { display: block; margin: 12px 0 4px; font-size: 2rem; }
 .mod-metric small { color: var(--muted, #9ca8b5); }
 .mod-metric.metric-attention strong { color: #ffbd66; }
+.mod-metric.metric-closed strong { color: #70dbe6; }
 .mod-metric .online-text { color: #78e6bd; font-size: 1.55rem; }
 .mod-queue { margin-top: 28px; padding: 24px; border: 1px solid var(--line, #292d32); border-radius: 16px; background: rgba(255,255,255,.02); }
 .mod-section-head { display: flex; justify-content: space-between; align-items: center; gap: 18px; margin-bottom: 18px; }

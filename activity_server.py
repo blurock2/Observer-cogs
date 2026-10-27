@@ -382,14 +382,16 @@ class ActivityServer:
                     target_match = re.search(r"`(\d{15,22})`", target_raw)
                     target_id = target_match.group(1) if target_match else ""
                     member = guild.get_member(int(target_id)) if target_id.isdigit() else None
-                    # Claiming is a work assignment, not a resolution. Reports
-                    # stay open until staff accepts/closes them.
-                    closed = "accepted by staff" in fields
                     claimed_fields = [field for field in embed.fields if field.name.casefold() == "claimed by"]
                     claimed_id = next(
                         (user_id for field in reversed(claimed_fields) if (user_id := _report_user_id(field.value))),
                         None,
                     )
+                    # A claim removes the report from the website queue and is
+                    # counted with closed reports there. Discord keeps its own
+                    # claim/unclaim controls for the assigned moderator.
+                    accepted = "accepted by staff" in fields
+                    closed = bool(claimed_fields) or accepted
                     claimed_member = guild.get_member(int(claimed_id)) if claimed_id else None
                     accepted_raw = fields.get("accepted by staff", "")
                     accepted_match = re.search(r"<@!?(\d{15,22})>", accepted_raw)
@@ -416,7 +418,7 @@ class ActivityServer:
                         "claimed": bool(claimed_fields),
                         "claimed_by": claimed_id,
                         "claimed_by_name": claimed_member.display_name if claimed_member else (f"User {claimed_id}" if claimed_id else None),
-                        "accepted": "accepted by staff" in fields,
+                        "accepted": accepted,
                         "accepted_by_name": accepted_member.display_name if accepted_member else (f"User {accepted_id}" if accepted_id else None),
                         "escalated_by_name": escalated_member.display_name if escalated_member else (f"User {escalated_id}" if escalated_id else None),
                         "reported_message_id": linked_message_match.group(1) if linked_message_match else None,
@@ -426,7 +428,12 @@ class ActivityServer:
                 raise web.HTTPServiceUnavailable(text="Observer needs permission to view the configured reports channel")
             except discord.HTTPException:
                 raise web.HTTPBadGateway(text="Could not load reports from Discord")
-        source_ids = sorted({report["reported_message_id"] for report in reports if report["reported_message_id"]})
+        visible_reports = [report for report in reports if not report["claimed"]]
+        source_ids = sorted({
+            report["reported_message_id"]
+            for report in visible_reports
+            if report["reported_message_id"]
+        })
         if source_ids:
             with connect_sqlite(DB_PATH) as db:
                 case_table = db.execute(
@@ -453,10 +460,11 @@ class ActivityServer:
                             "status": row["status"],
                             "created_at": row["created_at"],
                         })
-                    for report in reports:
+                    for report in visible_reports:
                         report["linked_actions"] = linked_by_message.get(report["reported_message_id"], [])
 
         open_reports = sum(report["status"] == "open" for report in reports)
+        closed_reports = sum(report["status"] == "closed" for report in reports)
         recent_actions = []
         with connect_sqlite(DB_PATH) as db:
             case_table = db.execute(
@@ -489,7 +497,8 @@ class ActivityServer:
             "bot_online": self.bot.is_ready(),
             "member_count": guild.member_count or 0,
             "open_reports": open_reports,
-            "reports": reports,
+            "closed_reports": closed_reports,
+            "reports": visible_reports,
             "recent_actions": recent_actions,
             "reports_configured": bool(channel_id),
             "reports_channel": channel.name if channel else None,
