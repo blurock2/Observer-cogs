@@ -1999,7 +1999,7 @@ class AntiScam(ObserverCog):
             recent.clear()
         elif delete_enabled and (strong_signal or contextual_signal):
             try:
-                await message.delete(reason="Possible scam message flagged")
+                await message.delete()
             except discord.Forbidden:
                 deletion_result = "Deletion failed: bot needs Manage Messages"
             except discord.NotFound:
