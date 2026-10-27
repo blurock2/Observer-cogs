@@ -373,7 +373,9 @@ class ActivityServer:
                     target_match = re.search(r"`(\d{15,22})`", target_raw)
                     target_id = target_match.group(1) if target_match else ""
                     member = guild.get_member(int(target_id)) if target_id.isdigit() else None
-                    closed = "accepted by staff" in fields or "claimed by" in fields
+                    # Claiming is a work assignment, not a resolution. Reports
+                    # stay open until staff accepts/closes them.
+                    closed = "accepted by staff" in fields
                     claimed_raw = fields.get("claimed by", "")
                     claimed_match = re.search(r"\((\d{15,22})\)", claimed_raw)
                     claimed_id = claimed_match.group(1) if claimed_match else None
