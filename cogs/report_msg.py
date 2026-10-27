@@ -534,6 +534,15 @@ class ReportModal(ErrorHandledModal):
                 value=attachment_urls[:1024],
                 inline=False,
             )
+            image_extensions = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
+            image_attachment = next((
+                attachment
+                for attachment in message.attachments
+                if (attachment.content_type or "").startswith("image/")
+                or "." + (attachment.filename or "").rsplit(".", 1)[-1].lower() in image_extensions
+            ), None)
+            if image_attachment is not None:
+                embed.set_image(url=image_attachment.url)
 
         embed.add_field(
             name="Message link",
