@@ -1110,8 +1110,8 @@ class Leveling(ObserverCog):
 
             # Repair the known default saved by older releases with broken emoji encoding.
             if message_template in {
-                "\u00f0\\u0178\\u017d\\u2030 {user} just reached level {level}!",
-                "\u00c3\u00b0\u00c5\u00b8\u00c5\u00bd\u00e2\\u20ac\\u2030 {user} just reached level {level}!",
+                "\u00f0\u0178\u017d\u2030 {user} just reached level {level}!",
+                "\u00c3\u00b0\u00c5\u00b8\u00c5\u00bd\u00e2\u20ac\u2030 {user} just reached level {level}!",
             }:
                 message_template = "🎉 {user} just reached level {level}!"
 
