@@ -252,3 +252,18 @@ Free use with credits to the original creator.
   <strong>Observer</strong><br>
   Moderation • Audit Logging • Anti-Raid • Server Management • Community Utilities
 </p>
+
+
+## Observer website
+
+The public landing page and Discord sign-in server picker are served by the bot's aiohttp web service. Build the frontend on the VPS with Node.js installed:
+
+```bash
+cd /opt/observer-bot/activity
+npm install
+npm run build
+```
+
+Set `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, and `PUBLIC_BASE_URL=https://observer-dashboard.observer` in the bot's `.env`. Register `https://observer-dashboard.observer/auth/callback` in the Discord application's OAuth2 redirect URLs. The site lists only Discord servers owned by the signed-in account, checks whether Observer is present, and provides an invite when it is absent. If Observer is already present, the page opens the server and directs the owner to `/setup` in Discord; browser-based setup editing is not included yet.
+
+Optional landing details are configured with `OBSERVER_CREATOR_NAME`, `OBSERVER_SUPPORT_URL`, and `OBSERVER_SOURCE_URL`.

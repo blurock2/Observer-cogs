@@ -18,6 +18,7 @@ from database import cleanup_old_backups, migrate_legacy_databases
 from logging_config import configure_logging
 from error_reporting import ErrorReporter
 from error_handling import handle_interaction_error, handle_prefix_error
+from activity_server import ActivityServer
 
 load_dotenv()
 configure_logging()
@@ -101,6 +102,7 @@ class MyBot(commands.Bot):
         )
         self.setup_store = SetupConfigStore(DB_PATH)
         self.error_reporter = ErrorReporter(self, OBSERVER_SUPPORT_GUILD_ID)
+        self.activity_server = ActivityServer(self)
 
         # These are defaults inherited by commands which do not explicitly
         # define their own allowed contexts.
@@ -145,6 +147,7 @@ class MyBot(commands.Bot):
         return any(role.id in role_ids for role in getattr(user, "roles", []))
 
     async def close(self) -> None:
+        await self.activity_server.close()
         await self.error_reporter.close()
         await super().close()
 
@@ -174,6 +177,7 @@ class MyBot(commands.Bot):
         """
 
         self.error_reporter.start()
+        await self.activity_server.start()
 
         for extension in self.EXTENSIONS:
             try:
