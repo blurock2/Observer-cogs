@@ -1088,12 +1088,24 @@ class AntiScam(ObserverCog):
         self.last_case_ids[(member.guild.id, member.id)] = case_id
         self.last_action_ids[(member.guild.id, member.id)] = action_id
         try:
-            await dm_moderation_action(
+            appeal_view = None
+            if ban:
+                moderation = self.bot.get_cog("ModerationCog")
+                if moderation is not None:
+                    # Reuse the same persistent appeal control as manual bans.
+                    # No moderator is attached for automated enforcement.
+                    from cogs.moderation import PermanentBanDMView
+
+                    appeal_view = PermanentBanDMView(moderation)
+            dm_message = await dm_moderation_action(
                 member,
                 member.guild,
                 "Ban" if ban else ("Permanent mute" if mute_role else f"Timeout for {minutes} minute(s)"),
                 reason,
+                view=appeal_view,
             )
+            if ban and dm_message is not None and appeal_view is not None:
+                self.cases.set_appeal_message(case_id, dm_message.id)
         except Exception:
             # A notification problem must not undo or interrupt enforcement.
             logger.exception("Could not notify anti-raid target %s", member.id)
