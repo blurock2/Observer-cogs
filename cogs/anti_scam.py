@@ -49,6 +49,7 @@ except ImportError:  # QR scanning is optional on systems without OpenCV.
 
 from cogs.setup_ui import DB_PATH, SetupConfigStore, owner_or_has_guild_permissions
 from cogs.config import is_bot_owner
+from cogs.report_msg import AcceptedReportStore
 from database import AntiScamActivityStore, ModerationActionStore, ModerationCaseStore
 from error_handling import log_error
 from moderation_notifications import dm_moderation_action
@@ -377,12 +378,15 @@ class AntiScam(ObserverCog):
         self.store = SetupConfigStore(DB_PATH)
         self.cases = ModerationCaseStore(DB_PATH)
         self.actions = ModerationActionStore(DB_PATH)
+        self.report_store = AcceptedReportStore(DB_PATH)
         self.activity_store = AntiScamActivityStore(DB_PATH)
         self.lock_tasks: dict[tuple[int, int], asyncio.Task] = {}
         self._recovery_task: asyncio.Task | None = None
         self._permission_lock = asyncio.Lock()
         self.scam_alerts: dict[tuple[int, int], float] = {}
         self.scam_enforcements: dict[tuple[int, int], float] = {}
+        self.cross_server_enforcements: dict[tuple[int, int], float] = {}
+        self.cross_server_check_cache: dict[tuple[int, int], float] = {}
         self.scam_user_locks = defaultdict(asyncio.Lock)
         self.scam_quarantine: dict[tuple[int, int], float] = {}
         self.recent_image_messages = defaultdict(lambda: deque(maxlen=20))
@@ -1174,6 +1178,92 @@ class AntiScam(ObserverCog):
             )
         )
 
+    async def _check_cross_server_scam_history(
+        self, message: discord.Message
+    ) -> bool:
+        """Apply this server's opt-in policy to confirmed bans and accepted reports elsewhere."""
+        guild = message.guild
+        member = message.author
+        if guild is None or not isinstance(member, discord.Member):
+            return False
+
+        key = (guild.id, member.id)
+        now = time.monotonic()
+        if self.cross_server_enforcements.get(key, 0) > now:
+            return False
+        if self.cross_server_check_cache.get(key, 0) > now:
+            return False
+
+        confirmed_enabled = self._bool_setting(
+            guild.id, "cross_server_scam_protection", False
+        )
+        reports_enabled = self._bool_setting(
+            guild.id, "cross_server_report_timeout", False
+        )
+        if not confirmed_enabled and not reports_enabled:
+            return False
+
+        reason = None
+        title = None
+        result = "not applied"
+        if confirmed_enabled:
+            source = await asyncio.to_thread(
+                self.cases.find_cross_server_scam_ban,
+                member.id,
+                exclude_guild_id=guild.id,
+            )
+            if source is not None:
+                source_guild_id = int(source["guild_id"])
+                reason = (
+                    "Confirmed high-confidence scam ban in another Observer server "
+                    f"(source server {source_guild_id})"
+                )
+                title = "Confirmed cross-server scam account restricted"
+                ban = self._bool_setting(guild.id, "cross_server_scam_ban", False)
+                timeout_minutes = self._int_setting(
+                    guild.id, "cross_server_scam_timeout_minutes", 1440, 0, 40320
+                )
+                result = await self.restrict(
+                    member, reason, ban=ban, minutes=timeout_minutes
+                )
+
+        if reason is None and reports_enabled:
+            threshold = self._int_setting(
+                guild.id, "cross_server_report_threshold", 2, 1, 100
+            )
+            since = int(time.time()) - 30 * 24 * 60 * 60
+            report_guilds = await asyncio.to_thread(
+                self.report_store.accepted_guild_count,
+                member.id,
+                exclude_guild_id=guild.id,
+                since=since,
+            )
+            if report_guilds >= threshold:
+                timeout_minutes = self._int_setting(
+                    guild.id, "cross_server_report_timeout_minutes", 60, 1, 40320
+                )
+                reason = (
+                    f"Staff-accepted reports in {report_guilds} other Observer servers "
+                    "within the last 30 days"
+                )
+                title = "Cross-server report threshold reached"
+                result = await self.restrict(
+                    member, reason, minutes=timeout_minutes
+                )
+
+        if reason is None:
+            self.cross_server_check_cache[key] = now + 30
+            return False
+
+        if "failed" not in result and "not applied" not in result:
+            self.cross_server_enforcements[key] = now + 600
+        await self._alert(
+            guild,
+            title or "Cross-server account check",
+            f"Member: {member.mention} (`{member.id}`)\\n{reason}\\nAction: {result}",
+        )
+        return True
+
     def _int_setting(self, guild_id: int, key: str, default: int, minimum: int, maximum: int) -> int:
         try:
             value = int(self._get(guild_id, key, default))
@@ -1335,6 +1425,9 @@ class AntiScam(ObserverCog):
             return
         if self._has_scam_bypass_role(message):
             return
+        if isinstance(message.author, discord.Member):
+            if await self._check_cross_server_scam_history(message):
+                return
         key = (message.guild.id, message.author.id)
         received_at = time.monotonic()
         activity = self.recent_user_activity[key]
