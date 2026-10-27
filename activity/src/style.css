@@ -359,6 +359,8 @@ body.modal-open { overflow: hidden; }
 .mod-action-button:disabled { opacity: .55; cursor: wait; }
 .mod-action-complete { color: #74e3bb; font-size: .75rem; }
 .mod-claim-note { display: block; margin-top: 6px; color: #8fdfe5; }
+.mod-report-resolution { display: grid; gap: 5px; margin-top: 9px; }
+.mod-report-resolution small { color: #91a0a3; font-size: .76rem; line-height: 1.5; }
 .mod-action-history { display: grid; }
 .mod-history-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 14px 0; border-top: 1px solid var(--line, #292d32); }
 .mod-history-icon { display: grid; width: 32px; height: 32px; place-items: center; color: #80dce4; background: rgba(62,213,226,.1); border-radius: 9px; font-weight: 700; }
