@@ -74,6 +74,7 @@ class ActivityServer:
         app.router.add_get("/api/control-panel/{guild_id}", self.control_panel)
         app.router.add_post("/api/control-panel/{guild_id}/setting", self.save_control_panel_setting)
         app.router.add_get("/api/mod-dashboard/{guild_id}", self.mod_dashboard)
+        app.router.add_post("/api/mod-dashboard/{guild_id}/reports/{message_id}/{action}", self.mod_report_action)
         app.router.add_get("/api/public-info", self.public_info)
         app.router.add_post("/api/token", self.exchange_code)
         app.router.add_get("/api/activity/{view}", self.activity_data)
@@ -373,6 +374,10 @@ class ActivityServer:
                     target_id = target_match.group(1) if target_match else ""
                     member = guild.get_member(int(target_id)) if target_id.isdigit() else None
                     closed = "accepted by staff" in fields or "claimed by" in fields
+                    claimed_raw = fields.get("claimed by", "")
+                    claimed_match = re.search(r"\((\d{15,22})\)", claimed_raw)
+                    claimed_id = claimed_match.group(1) if claimed_match else None
+                    claimed_member = guild.get_member(int(claimed_id)) if claimed_id else None
                     reports.append({
                         "id": str(message.id),
                         "target_name": member.display_name if member else (f"User {target_id}" if target_id else "Unknown member"),
@@ -382,6 +387,9 @@ class ActivityServer:
                         "created_at": message.created_at.isoformat(),
                         "url": message.jump_url,
                         "status": "closed" if closed else "open",
+                        "claimed_by": claimed_id,
+                        "claimed_by_name": claimed_member.display_name if claimed_member else None,
+                        "accepted": "accepted by staff" in fields,
                     })
             except discord.Forbidden:
                 raise web.HTTPServiceUnavailable(text="Observer needs permission to view the configured reports channel")
@@ -406,6 +414,7 @@ class ActivityServer:
                     recent_actions.append({
                         "case_number": row["case_number"],
                         "case_type": row["case_type"],
+                        "target_id": str(row["target_id"]),
                         "target_name": target.display_name if target else str(row["target_id"]),
                         "moderator_name": moderator.display_name if moderator else (str(row["moderator_id"]) if row["moderator_id"] else "Observer"),
                         "reason": row["reason"] or "No reason recorded",
@@ -423,6 +432,123 @@ class ActivityServer:
             "reports_configured": bool(channel_id),
             "reports_channel": channel.name if channel else None,
         }, headers={"Cache-Control": "no-store"})
+
+    async def mod_report_action(self, request: web.Request) -> web.Response:
+        session, guild = await self._moderator_guild(request)
+        action = request.match_info.get("action", "")
+        if action not in {"claim", "unclaim", "accept"}:
+            raise web.HTTPNotFound(text="Unknown report action")
+        try:
+            message_id = int(request.match_info["message_id"])
+        except (KeyError, TypeError, ValueError):
+            raise web.HTTPBadRequest(text="A valid report ID is required")
+
+        user_id = int(session["user"].get("id", 0))
+        if user_id != guild.owner_id:
+            try:
+                member = guild.get_member(user_id) or await guild.fetch_member(user_id)
+            except (discord.HTTPException, ValueError):
+                raise web.HTTPForbidden(text="Could not verify your server permissions")
+            staff_role_id = self.bot.setup_store.get(guild.id, "report_msg", "staff_role")
+            try:
+                staff_role_id = int(staff_role_id) if staff_role_id is not None else None
+            except (TypeError, ValueError):
+                staff_role_id = None
+            is_report_staff = member.guild_permissions.manage_messages or (
+                staff_role_id is not None and any(role.id == staff_role_id for role in member.roles)
+            )
+            if not is_report_staff:
+                raise web.HTTPForbidden(text="You need Manage Messages or the configured report staff role to act on reports")
+
+        report_cog = self.bot.get_cog("ReportMessage")
+        if report_cog is None:
+            raise web.HTTPServiceUnavailable(text="Observer's report controls are unavailable")
+        try:
+            report_channel_id = int(report_cog.get_report_channel_id(guild.id) or 0)
+        except (TypeError, ValueError):
+            report_channel_id = 0
+        channel = guild.get_channel(report_channel_id) if report_channel_id else None
+        if not isinstance(channel, (discord.TextChannel, discord.Thread)):
+            raise web.HTTPConflict(text="This server has no valid reports channel configured")
+        try:
+            message = await channel.fetch_message(message_id)
+        except discord.NotFound:
+            raise web.HTTPNotFound(text="This report could not be found in the configured reports channel")
+        except discord.Forbidden:
+            raise web.HTTPServiceUnavailable(text="Observer cannot access the reports channel")
+        except discord.HTTPException:
+            raise web.HTTPBadGateway(text="Could not load this report from Discord")
+        if not message.embeds or message.embeds[0].title != "New Message Report":
+            raise web.HTTPBadRequest(text="That message is not an Observer report")
+
+        embed = message.embeds[0]
+        claimed_field = next((field for field in embed.fields if field.name.casefold() == "claimed by"), None)
+        accepted = any(field.name.casefold() == "accepted by staff" for field in embed.fields)
+        claimed_match = re.search(r"\((\d{15,22})\)", claimed_field.value) if claimed_field else None
+        claimed_by = int(claimed_match.group(1)) if claimed_match else None
+        reporter_id = None
+        newly_accepted = False
+        report_cog_member = guild.get_member(user_id)
+        display_name = report_cog_member.display_name if report_cog_member else session["user"].get("global_name") or session["user"].get("username", "Moderator")
+
+        if action == "claim":
+            if claimed_by is not None:
+                raise web.HTTPConflict(text="This report has already been claimed")
+            embed.add_field(name="Claimed by", value=f"<@{user_id}> (`{user_id}`)", inline=False)
+            claimed_by = user_id
+            report_cog.mod_stats.increment(guild.id, user_id, "reports_claimed")
+        elif action == "unclaim":
+            if claimed_by is None:
+                raise web.HTTPConflict(text="This report is not currently claimed")
+            if claimed_by != user_id and user_id != guild.owner_id:
+                try:
+                    moderator = guild.get_member(user_id) or await guild.fetch_member(user_id)
+                except discord.HTTPException:
+                    raise web.HTTPForbidden(text="Could not verify your server permissions")
+                staff_role = report_cog.get_staff_role_id(guild.id)
+                is_configured_staff = staff_role is not None and any(role.id == staff_role for role in moderator.roles)
+                if not moderator.guild_permissions.manage_messages and not is_configured_staff:
+                    raise web.HTTPForbidden(text="Only the claimant or a moderator can unclaim this report")
+            for index, field in enumerate(embed.fields):
+                if field.name.casefold() == "claimed by":
+                    embed.remove_field(index)
+                    break
+            claimed_by = None
+        else:
+            if accepted:
+                raise web.HTTPConflict(text="This report has already been accepted")
+            reporter_id, newly_accepted = report_cog.reports.accept(message.id, guild.id)
+            embed.add_field(
+                name="Accepted by staff",
+                value=f"<@{user_id}> · <t:{int(datetime.now(timezone.utc).timestamp())}:f>",
+                inline=False,
+            )
+            if reporter_id is not None and newly_accepted:
+                month = datetime.now(timezone.utc).strftime("%Y-%m")
+                try:
+                    await report_cog.update_monthly_reporter_role(guild, month)
+                except discord.HTTPException:
+                    logger.warning("Report %s was accepted, but its monthly role update failed", message.id, exc_info=True)
+
+        from cogs.report_msg import ClaimReportView
+        view = ClaimReportView(
+            report_cog,
+            report_cog.get_staff_role_id(guild.id),
+            claimed_by=claimed_by,
+            accepted=accepted or action == "accept",
+        )
+        if action == "claim":
+            for item in view.children:
+                if isinstance(item, discord.ui.Button) and item.custom_id == "report_claim":
+                    item.label = f"Claimed by {display_name}"[:80]
+        try:
+            await message.edit(embed=embed, view=view)
+            self.bot.add_view(view, message_id=message.id)
+        except discord.Forbidden:
+            raise web.HTTPServiceUnavailable(text="Observer cannot update report messages in the configured channel")
+        except discord.HTTPException:
+            raise web.HTTPBadGateway(text="Discord could not update this report")
+        return web.json_response({"ok": True, "action": action, "accepted": accepted or action == "accept", "claimed_by": str(claimed_by) if claimed_by else None})
 
     def _dashboard_guild(self, request: web.Request) -> tuple[dict, discord.Guild]:
         session = self._get_session(request)
