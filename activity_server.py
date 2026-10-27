@@ -392,6 +392,11 @@ class ActivityServer:
                     value = get_setting_value(
                         self.bot.setup_store, guild, module, spec
                     )
+                    # Discord snowflakes exceed JavaScript's exact integer range.
+                    # Keep selector values as strings so the browser can match IDs
+                    # against the channel and role lists without rounding them.
+                    if spec.kind in ("channel", "role") and value is not None:
+                        value = str(value)
                 settings.append({
                     "key": spec.key,
                     "label": spec.label,
