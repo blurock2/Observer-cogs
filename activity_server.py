@@ -187,9 +187,10 @@ class ActivityServer:
     async def public_info(self, request: web.Request) -> web.Response:
         support_guild_id = os.getenv("OBSERVER_SUPPORT_GUILD_ID", "1535974879554437210")
         info = {
-            "creator": os.getenv("OBSERVER_CREATOR_NAME", "").strip() or "Independent community project",
+            "creator": os.getenv("OBSERVER_CREATOR_NAME", "").strip() or "Rocky / Rockus26",
             "support_url": os.getenv("OBSERVER_SUPPORT_URL", f"https://discord.com/channels/{support_guild_id}"),
-            "source_url": os.getenv("OBSERVER_SOURCE_URL", "").strip(),
+            "source_url": os.getenv("OBSERVER_SOURCE_URL", "").strip() or "https://github.com/blurock2/Observer-cogs",
+            "portfolio_url": os.getenv("OBSERVER_PORTFOLIO_URL", "").strip() or "https://my-website.rockus26.workers.dev/#projects",
         }
         return web.json_response(info, headers={"Cache-Control": "public, max-age=300"})
 
