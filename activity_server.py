@@ -948,6 +948,16 @@ class ActivityServer:
             "open_reports": open_reports,
             "closed_reports": closed_reports,
             "reports": visible_reports,
+            "recent_report_reasons": [
+                {
+                    "reason": report["reason"],
+                    "target_name": report["target_name"],
+                    "created_at": report["created_at"],
+                    "status": report["status"],
+                    "url": report["url"],
+                }
+                for report in reports[:5]
+            ],
             "recent_actions": recent_actions,
             "reports_configured": bool(channel_id),
             "reports_channel": channel.name if channel else None,
