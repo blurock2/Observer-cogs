@@ -192,6 +192,7 @@ class ActivityServer:
             "support_url": os.getenv("OBSERVER_SUPPORT_URL", f"https://discord.com/channels/{support_guild_id}"),
             "source_url": os.getenv("OBSERVER_SOURCE_URL", "").strip() or "https://github.com/blurock2/Observer-cogs",
             "portfolio_url": os.getenv("OBSERVER_PORTFOLIO_URL", "").strip() or "https://my-website.rockus26.workers.dev/#projects",
+            "kofi_url": os.getenv("OBSERVER_KOFI_URL", "").strip() or "https://ko-fi.com/supporting_observer",
         }
         return web.json_response(info, headers={"Cache-Control": "public, max-age=300"})
 
