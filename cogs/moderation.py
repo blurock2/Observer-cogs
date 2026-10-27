@@ -16,9 +16,15 @@ from cogs.config import is_bot_owner
 from cogs.mod_stats import ModerationStatsStore
 from cogs.setup_ui import (
     DB_PATH,
+    MAX_PUNISHMENT_ROLES,
     SetupConfigStore,
 )
-from database import BanAppealStore, ModerationActionStore, ModerationCaseStore
+from database import (
+    BanAppealStore,
+    ModerationActionStore,
+    ModerationCaseStore,
+    PunishmentRoleStore,
+)
 from moderation_notifications import dm_moderation_action
 
 DEFAULT_LOG_COLOR = 0x96EDF1
@@ -313,10 +319,102 @@ class ModerationCog(ObserverCog):
         self.actions = ModerationActionStore(DB_PATH)
         self.cases = ModerationCaseStore(DB_PATH)
         self.appeals = BanAppealStore(DB_PATH)
+        self.punishment_roles = PunishmentRoleStore(DB_PATH)
         self._legacy = _load_legacy_config()
         self.bot.add_view(ModerationUndoView(self))
         self.bot.add_view(PermanentBanDMView(self))
         self.bot.add_view(BanAppealReviewView(self))
+
+    def _configured_punishment_role_ids(self, guild_id: int) -> set[int]:
+        role_ids = set()
+        for index in range(1, MAX_PUNISHMENT_ROLES + 1):
+            value = self.store.get(
+                guild_id,
+                MODULE_KEY,
+                f"punishment_role_{index}",
+            )
+            try:
+                if value is not None:
+                    role_ids.add(int(value))
+            except (TypeError, ValueError):
+                continue
+        return role_ids
+
+    @commands.Cog.listener()
+    async def on_member_update(
+        self,
+        before: discord.Member,
+        after: discord.Member,
+    ) -> None:
+        configured = self._configured_punishment_role_ids(after.guild.id)
+        remembered = self.punishment_roles.get_member_roles(
+            after.guild.id,
+            after.id,
+        )
+        tracked = configured | remembered
+        after_roles = {role.id for role in after.roles}
+        for role_id in tracked:
+            if role_id in after_roles and role_id in configured:
+                self.punishment_roles.remember(after.guild.id, after.id, role_id)
+            elif role_id in remembered:
+                # A moderator removing the punishment role ends its persistence.
+                self.punishment_roles.forget(after.guild.id, after.id, role_id)
+
+    @commands.Cog.listener()
+    async def on_member_remove(self, member: discord.Member) -> None:
+        configured = self._configured_punishment_role_ids(member.guild.id)
+        held = {role.id for role in member.roles} & configured
+        # Snapshot the member's current punishments so removed or unconfigured
+        # roles cannot linger as stale rejoin assignments.
+        self.punishment_roles.set_member_roles(
+            member.guild.id,
+            member.id,
+            held,
+        )
+
+    @commands.Cog.listener()
+    async def on_member_join(self, member: discord.Member) -> None:
+        guild_id = member.guild.id
+        configured = self._configured_punishment_role_ids(guild_id)
+        remembered = self.punishment_roles.get_member_roles(guild_id, member.id)
+        for role_id in remembered - configured:
+            self.punishment_roles.forget(guild_id, member.id, role_id)
+
+        bot_member = member.guild.me
+        for role_id in sorted(remembered & configured):
+            role = member.guild.get_role(role_id)
+            if role is None:
+                self.punishment_roles.forget(guild_id, member.id, role_id)
+                continue
+            if role in member.roles:
+                continue
+            if (
+                bot_member is None
+                or not bot_member.guild_permissions.manage_roles
+                or role.managed
+                or role >= bot_member.top_role
+            ):
+                logger.warning(
+                    "Cannot restore punishment role %s for member %s in guild %s; "
+                    "check Manage Roles permission and role hierarchy",
+                    role_id,
+                    member.id,
+                    guild_id,
+                )
+                continue
+            try:
+                await member.add_roles(
+                    role,
+                    reason="Reapply configured punishment role after member rejoined",
+                )
+            except discord.HTTPException:
+                logger.warning(
+                    "Could not restore punishment role %s for member %s in guild %s",
+                    role_id,
+                    member.id,
+                    guild_id,
+                    exc_info=True,
+                )
 
     def get_appeals_channel(
         self,

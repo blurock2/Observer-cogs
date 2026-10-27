@@ -102,7 +102,18 @@ async function save(moduleKey, key, value) {
   await api(`/api/control-panel/${encodeURIComponent(guildId)}/setting`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ module: moduleKey, key, value }) });
   const module = panel.modules.find((item) => item.key === moduleKey);
   const setting = module?.settings.find((item) => item.key === key);
-  if (setting) setting.value = value;
+  if (moduleKey === "moderation" && /^punishment_role_\d+$/.test(key)) {
+    try {
+      // The API returns configured role slots plus the next empty slot, so
+      // saving a role reveals the next "add another" selector immediately.
+      panel = await api(`/api/control-panel/${encodeURIComponent(guildId)}`);
+    } catch (error) {
+      if (setting) setting.value = value;
+      console.warn("Could not refresh punishment role slots", error);
+    }
+  } else if (setting) {
+    setting.value = value;
+  }
   renderCards();
   if (selectedModule) renderEditor(selectedModule, false);
   const notice = document.querySelector("#save-notice");

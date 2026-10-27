@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import time
 
 import discord
@@ -10,8 +9,6 @@ from discord.ext import commands
 
 from cogs.setup_ui import DB_PATH, owner_or_has_guild_permissions
 from database import connect_sqlite
-
-logger = logging.getLogger("observer.temproles")
 
 
 def _duration(value: str) -> int | None:
@@ -55,63 +52,6 @@ class TempRoles(commands.GroupCog, group_name="temprole", group_description="Man
 				with connect_sqlite(DB_PATH) as db:
 					db.execute("DELETE FROM temporary_roles WHERE guild_id = ? AND user_id = ? AND role_id = ?", (row["guild_id"], row["user_id"], row["role_id"]))
 			await asyncio.sleep(30)
-
-	@commands.Cog.listener()
-	async def on_member_join(self, member: discord.Member):
-		"""Restore active temporary roles when a punished member rejoins."""
-		now = time.time()
-		with connect_sqlite(DB_PATH) as db:
-			rows = db.execute(
-				"SELECT role_id FROM temporary_roles "
-				"WHERE guild_id = ? AND user_id = ? AND expires_at > ?",
-				(member.guild.id, member.id, now),
-			).fetchall()
-
-		if not rows:
-			return
-
-		bot_member = member.guild.me
-		for row in rows:
-			role_id = int(row["role_id"])
-			role = member.guild.get_role(role_id)
-			if role is None:
-				# A deleted role cannot be restored; discard its stale schedule.
-				with connect_sqlite(DB_PATH) as db:
-					db.execute(
-						"DELETE FROM temporary_roles "
-						"WHERE guild_id = ? AND user_id = ? AND role_id = ?",
-						(member.guild.id, member.id, role_id),
-					)
-				continue
-			if role in member.roles:
-				continue
-			if (
-				bot_member is None
-				or not bot_member.guild_permissions.manage_roles
-				or role.managed
-				or role >= bot_member.top_role
-			):
-				logger.warning(
-					"Cannot restore temporary role %s for member %s in guild %s; "
-					"check Manage Roles permission and role hierarchy",
-					role_id,
-					member.id,
-					member.guild.id,
-				)
-				continue
-			try:
-				await member.add_roles(
-					role,
-					reason="Restore unexpired temporary role after member rejoined",
-				)
-			except discord.HTTPException:
-				logger.warning(
-					"Could not restore temporary role %s for member %s in guild %s",
-					role_id,
-					member.id,
-					member.guild.id,
-					exc_info=True,
-				)
 
 	def _can_manage(self, interaction: discord.Interaction, role: discord.Role) -> bool:
 		member = interaction.guild.me

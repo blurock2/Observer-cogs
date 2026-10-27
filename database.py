@@ -1490,3 +1490,69 @@ class AntiScamActivityStore:
                 """,
                 (guild_id, user_id, since),
             ).fetchall()
+
+
+class PunishmentRoleStore:
+    """Track configured punishment roles held by members who may rejoin."""
+
+    def __init__(self, db_path: str | Path = DATABASE_PATH):
+        self.db_path = str(db_path)
+        with connect_sqlite(self.db_path) as connection:
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS moderation_punishment_roles (
+                    guild_id INTEGER NOT NULL,
+                    member_id INTEGER NOT NULL,
+                    role_id INTEGER NOT NULL,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (guild_id, member_id, role_id)
+                )
+                """
+            )
+
+    def get_member_roles(self, guild_id: int, member_id: int) -> set[int]:
+        with connect_sqlite(self.db_path) as connection:
+            rows = connection.execute(
+                "SELECT role_id FROM moderation_punishment_roles "
+                "WHERE guild_id = ? AND member_id = ?",
+                (guild_id, member_id),
+            ).fetchall()
+        return {int(row["role_id"]) for row in rows}
+
+    def remember(self, guild_id: int, member_id: int, role_id: int) -> None:
+        with connect_sqlite(self.db_path) as connection:
+            connection.execute(
+                """
+                INSERT INTO moderation_punishment_roles (guild_id, member_id, role_id)
+                VALUES (?, ?, ?)
+                ON CONFLICT(guild_id, member_id, role_id)
+                DO UPDATE SET updated_at = CURRENT_TIMESTAMP
+                """,
+                (guild_id, member_id, role_id),
+            )
+
+    def forget(self, guild_id: int, member_id: int, role_id: int) -> None:
+        with connect_sqlite(self.db_path) as connection:
+            connection.execute(
+                "DELETE FROM moderation_punishment_roles "
+                "WHERE guild_id = ? AND member_id = ? AND role_id = ?",
+                (guild_id, member_id, role_id),
+            )
+
+    def set_member_roles(
+        self,
+        guild_id: int,
+        member_id: int,
+        role_ids: set[int],
+    ) -> None:
+        with connect_sqlite(self.db_path) as connection:
+            connection.execute(
+                "DELETE FROM moderation_punishment_roles "
+                "WHERE guild_id = ? AND member_id = ?",
+                (guild_id, member_id),
+            )
+            connection.executemany(
+                "INSERT OR IGNORE INTO moderation_punishment_roles "
+                "(guild_id, member_id, role_id) VALUES (?, ?, ?)",
+                [(guild_id, member_id, role_id) for role_id in role_ids],
+            )

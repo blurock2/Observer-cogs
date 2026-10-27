@@ -96,6 +96,9 @@ EMBED_COLOR = 0x96EDF1
 MESSAGE_QUOTER_MODULE_KEY = "message_quoter"
 MESSAGE_QUOTER_ROLE_PREFIX = "allowed_role_"
 MAX_MESSAGE_QUOTER_ROLES = 10
+MODERATION_MODULE_KEY = "moderation"
+PUNISHMENT_ROLE_PREFIX = "punishment_role_"
+MAX_PUNISHMENT_ROLES = 25
 
 
 # ============================================================ SQLite config store
@@ -723,7 +726,7 @@ MODULES: list[ModuleSpec] = [
         key="moderation",
         label="Moderation",
         emoji="🛡️",
-        description="Moderation commands + logging.",
+        description="Moderation commands, logs, appeals, and punishment roles that persist across rejoining.",
         settings=[
             SettingSpec("enabled", "Logging enabled", "toggle", default=True,
                         description="Master switch for mod-log messages."),
@@ -736,6 +739,19 @@ MODULES: list[ModuleSpec] = [
             ),
             SettingSpec("mod_role", "Moderator role", "role"),
             SettingSpec("head_mod_role", "Head moderator role", "role"),
+            *[
+                SettingSpec(
+                    f"{PUNISHMENT_ROLE_PREFIX}{index}",
+                    f"Punishment role {index}",
+                    "role",
+                    description=(
+                        "Members who have this role keep it if they leave and rejoin. "
+                        "Observer needs Manage Roles and must be above it. Remove the role "
+                        "here or from the member to end the persistence."
+                    ),
+                )
+                for index in range(1, MAX_PUNISHMENT_ROLES + 1)
+            ],
             SettingSpec("embed_color", "Log embed color", "text",
                         description="Hex color, e.g. 96edf1",
                         default="96edf1"),
@@ -1035,6 +1051,52 @@ def get_visible_message_quoter_role_specs(
     return visible_specs
 
 
+def is_punishment_role_setting(spec: SettingSpec) -> bool:
+    """Return whether a setting is one of the Moderation punishment-role slots."""
+    suffix = spec.key[len(PUNISHMENT_ROLE_PREFIX):] if spec.key.startswith(PUNISHMENT_ROLE_PREFIX) else ""
+    return (
+        spec.kind == "role"
+        and suffix.isdigit()
+        and 1 <= int(suffix) <= MAX_PUNISHMENT_ROLES
+    )
+
+
+def punishment_role_number(spec: SettingSpec) -> int:
+    return int(spec.key[len(PUNISHMENT_ROLE_PREFIX):])
+
+
+def get_punishment_role_specs() -> list[SettingSpec]:
+    module = get_module(MODERATION_MODULE_KEY)
+    if module is None:
+        return []
+    return sorted(
+        (spec for spec in module.settings if is_punishment_role_setting(spec)),
+        key=punishment_role_number,
+    )
+
+
+def get_visible_punishment_role_specs(
+    store: SetupConfigStore,
+    guild: discord.Guild,
+) -> list[SettingSpec]:
+    """Show configured punishment roles and one empty slot for adding another."""
+    role_specs = get_punishment_role_specs()
+    configured = [
+        spec for spec in role_specs
+        if store.get(guild.id, MODERATION_MODULE_KEY, spec.key, None) is not None
+    ]
+    configured_numbers = {punishment_role_number(spec) for spec in configured}
+    next_number = next(
+        (number for number in range(1, MAX_PUNISHMENT_ROLES + 1)
+         if number not in configured_numbers),
+        None,
+    )
+    visible = list(configured)
+    if next_number is not None:
+        visible.append(role_specs[next_number - 1])
+    return sorted(visible, key=punishment_role_number)
+
+
 # ============================================================ Value formatting helpers
 
 def format_value(guild: discord.Guild, value) -> str:
@@ -1160,6 +1222,15 @@ def get_module_settings(
         settings = [
             spec for spec in settings
             if not is_message_quoter_role_setting(spec) or spec.key in visible_roles
+        ]
+    elif module.key == MODERATION_MODULE_KEY:
+        visible_roles = {
+            spec.key
+            for spec in get_visible_punishment_role_specs(store, guild)
+        }
+        settings = [
+            spec for spec in settings
+            if not is_punishment_role_setting(spec) or spec.key in visible_roles
         ]
     return [
         spec for spec in settings

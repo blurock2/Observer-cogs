@@ -23,6 +23,7 @@ from cogs.setup_ui import (
     MODULES,
     MAX_TICKET_REASON_OPTIONS,
     TICKET_PANEL_DEFAULTS,
+    get_module_settings,
     get_setting_value,
     setting_visible,
 )
@@ -892,7 +893,7 @@ class ActivityServer:
         for module in MODULES:
             self.bot.setup_store.refresh_module(guild.id, module.key)
             settings = []
-            for spec in module.settings:
+            for spec in get_module_settings(self.bot.setup_store, guild, module):
                 if not setting_visible(guild.id, module.key, spec.key):
                     continue
                 if spec.kind == "ticket_panel":
@@ -958,11 +959,17 @@ class ActivityServer:
         if module is None:
             raise web.HTTPBadRequest(text="Unknown feature")
         key = payload.get("key")
-        spec = next((item for item in module.settings if item.key == key), None)
+        store = self.bot.setup_store
+        spec = next(
+            (
+                item for item in get_module_settings(store, guild, module)
+                if item.key == key
+            ),
+            None,
+        )
         if spec is None or not setting_visible(guild.id, module.key, spec.key):
             raise web.HTTPBadRequest(text="Unknown setting")
         value = payload.get("value")
-        store = self.bot.setup_store
 
         if spec.kind == "ticket_panel":
             if not isinstance(value, dict):
