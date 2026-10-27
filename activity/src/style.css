@@ -436,6 +436,9 @@ body.modal-open { overflow: hidden; }
 .workflow-source:hover,.workflow-source span { color: var(--mint); }
 @media(max-width:900px) { .project-engineering-grid { gap: 17px; } .project-engineering-item { padding-right: 8px; } .workflow-steps>article { gap: 11px; padding-right: 12px; } .workflow-steps>article+article { padding-left: 14px; } }
 @media(max-width:650px) { .project-facts { width: calc(100% - 40px); min-height: auto; padding: 19px 0; gap: 10px 13px; flex-wrap: wrap; } .project-facts .facts-status { width: 100%; margin: 4px 0 0; } .engineering-section,.workflow-section { margin: 0 20px; padding: 65px 0; } .engineering-section .section-intro h2,.workflow-section .section-intro h2 { font-size: 29px; } .project-engineering-grid,.workflow-steps { grid-template-columns: 1fr; } .project-engineering-item { min-height: 0; padding: 19px 0; } .project-engineering-item h3 { margin: 12px 0 7px; } .workflow-steps>article,.workflow-steps>article+article { min-height: 0; padding: 19px 0; border-left: 0; } .workflow-action { align-items: flex-start; flex-direction: column; gap: 15px; } }
+.support-section { padding-bottom: 36px; }
+.about-section { padding-top: 48px; }
+@media(max-width:700px) { .support-section { padding-bottom: 30px; } .about-section { padding-top: 40px; } }
 .workflow-section { position: relative; padding: 98px 0 104px; }
 .workflow-intro { display: grid; grid-template-columns: minmax(0,1fr) minmax(260px,.56fr); align-items: end; gap: 50px; margin-bottom: 34px; }
 .workflow-intro .eyebrow { color: #9bb7a4; }
