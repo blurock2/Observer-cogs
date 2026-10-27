@@ -628,3 +628,18 @@ body.modal-open { overflow: hidden; }
 @media(prefers-reduced-motion:reduce) {
   [data-scroll-reveal] { opacity: 1; transform: none; transition: none; }
 }
+
+
+/* Landing page impact statistics */
+.impact-section{width:min(1172px,calc(100% - 68px));margin:0 auto;padding:76px 0 70px;border-bottom:1px solid #ffffff0c}
+.impact-section-head{display:flex;align-items:end;justify-content:space-between;gap:26px;margin-bottom:25px}
+.impact-heading h2{margin:11px 0 0;color:#f0f8f9;font:600 clamp(27px,3vw,36px)/1.15 system-ui;letter-spacing:-1.25px}
+.impact-section-head>p{max-width:340px;margin:0 0 2px;color:#94a2a4;font-size:11px;line-height:1.7}
+.impact-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.impact-stat{display:grid;gap:8px;min-width:0;min-height:142px;padding:19px 20px;border:1px solid #26383c;border-radius:9px;background:linear-gradient(145deg,#111719,#0e1113);transition:border-color .18s,background .18s,transform .18s}
+.impact-stat:hover{border-color:#42d7e89c;background:linear-gradient(145deg,#132126,#101416);transform:translateY(-2px)}
+.impact-stat>span{color:#85979a;font:8px ui-monospace,monospace;letter-spacing:1.1px}
+.impact-stat strong{color:#53d8e5;font:650 clamp(29px,3vw,38px)/1 system-ui;letter-spacing:-1.2px}
+.impact-stat small{align-self:end;color:#8b999b;font-size:10px;line-height:1.5}
+.impact-note{margin:13px 0 0;color:#657477;font-size:9px;line-height:1.6}
+@media(max-width:650px){.impact-section{width:calc(100% - 40px);padding:56px 0 50px}.impact-section-head{display:block}.impact-section-head>p{margin-top:12px}.impact-stats{grid-template-columns:1fr;gap:9px}.impact-stat{min-height:116px}}
