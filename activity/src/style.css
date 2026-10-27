@@ -706,3 +706,6 @@ body.home-report-open { overflow: hidden; }
   .update-item { grid-template-columns: 1fr; gap: 9px; padding: 20px 5px; }
   .update-copy p { font-size: 14px; }
 }
+
+.updates-loading { margin: 0; padding: 20px 8px; border-top: 1px solid #ffffff12; color: #94a2a4; font-size: 12px; }
+.update-copy p { white-space: pre-line; }
