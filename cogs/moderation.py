@@ -225,6 +225,7 @@ class PermanentBanDMView(ErrorHandledView):
         appeal_labels = {
             "accepted": "Appeal accepted",
             "rejected": "Appeal available in 7 days",
+            "closed": "Appeal closed",
         }
         appeal = discord.ui.Button(
             label=appeal_labels.get(appeal_state, "Appeal in app"),
@@ -485,7 +486,14 @@ class ModerationCog(ObserverCog):
     async def _reenable_due_appeal_buttons(self) -> None:
         for appeal in self.appeals.rejected_controls_due():
             ban_case = self.cases.get_case(appeal["ban_case_id"])
-            if await self._update_ban_appeal_dm(ban_case, None):
+            state = (
+                None
+                if ban_case is not None
+                and ban_case["status"] == "active"
+                and ban_case["expires_at"] is None
+                else "closed"
+            )
+            if await self._update_ban_appeal_dm(ban_case, state):
                 self.appeals.mark_controls_reenabled(appeal["id"])
 
     async def open_ban_appeal(
@@ -552,7 +560,7 @@ class ModerationCog(ObserverCog):
         channel = self.get_appeals_channel(guild) if guild else None
         if guild is None or channel is None:
             await interaction.response.send_message(
-                "This server's appeals channel is unavailable. Contact the moderator listed in your ban DM.",
+                "This server's appeals channel is unavailable. Ask its moderators to configure one before submitting an in-app appeal.",
                 ephemeral=True,
             )
             return
