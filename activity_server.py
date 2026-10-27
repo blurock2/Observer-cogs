@@ -171,6 +171,7 @@ class ActivityServer:
         app.router.add_get("/api/servers", self.servers)
         app.router.add_get("/api/control-panel/{guild_id}", self.control_panel)
         app.router.add_post("/api/control-panel/{guild_id}/setting", self.save_control_panel_setting)
+        app.router.add_post("/api/control-panel/{guild_id}/ticket-panel", self.send_ticket_panel)
         app.router.add_get("/api/custom-embed/{guild_id}", self.custom_embed_info)
         app.router.add_get("/api/custom-embed/{guild_id}/message", self.custom_embed_message)
         app.router.add_post("/api/custom-embed/{guild_id}", self.send_custom_embed)
@@ -1494,6 +1495,25 @@ class ActivityServer:
         store.set(guild.id, module.key, spec.key, value)
         return web.json_response({"ok": True, "value": value}, headers={"Cache-Control": "no-store"})
 
+    async def send_ticket_panel(self, request: web.Request) -> web.Response:
+        _, guild = self._dashboard_guild(request)
+        ticket_cog = self.bot.get_cog("TicketCog")
+        if ticket_cog is None:
+            raise web.HTTPServiceUnavailable(text="The ticket system is not loaded")
+        try:
+            channel = await ticket_cog.post_ticket_panel(guild)
+        except ValueError as error:
+            raise web.HTTPBadRequest(text=str(error))
+        except discord.Forbidden:
+            raise web.HTTPForbidden(text="Observer cannot send a panel in the configured channel")
+        except discord.HTTPException:
+            logger.exception("Could not post ticket panel in guild %s", guild.id)
+            raise web.HTTPBadGateway(text="Discord could not post the ticket panel")
+        return web.json_response({
+            "ok": True,
+            "channel_id": str(channel.id),
+            "channel_name": channel.name,
+        }, headers={"Cache-Control": "no-store"})
     def _bot_invite_url(self) -> str:
         if not self.client_id:
             return "https://discord.com/developers/applications"
