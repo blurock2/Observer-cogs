@@ -424,12 +424,28 @@ class AntiScam(ObserverCog):
     ) -> tuple[list[dict[str, str]], dict[str, list[dict[str, str]]]]:
         try:
             value = json.loads(SCAM_IMAGE_HASHES.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+        except FileNotFoundError:
+            return [], {}
+        except json.JSONDecodeError:
+            logger.exception(
+                "Trained scam image file is invalid JSON: %s", SCAM_IMAGE_HASHES
+            )
+            return [], {}
+        except OSError:
+            logger.exception(
+                "Could not read trained scam image file: %s", SCAM_IMAGE_HASHES
+            )
             return [], {}
         # Older versions stored one shared list; keep those fingerprints global.
         if isinstance(value, list):
-            return self._valid_image_hashes(value), {}
+            global_hashes = self._valid_image_hashes(value)
+            logger.info(
+                "Loaded %s trained scam image fingerprint(s) from %s",
+                len(global_hashes), SCAM_IMAGE_HASHES,
+            )
+            return global_hashes, {}
         if not isinstance(value, dict):
+            logger.error("Trained scam image file has an unsupported format: %s", SCAM_IMAGE_HASHES)
             return [], {}
         guilds = value.get("guilds", {})
         valid_guilds = {
@@ -437,7 +453,13 @@ class AntiScam(ObserverCog):
             for guild_id, hashes in guilds.items()
             if isinstance(guilds, dict)
         } if isinstance(guilds, dict) else {}
-        return self._valid_image_hashes(value.get("global", [])), valid_guilds
+        global_hashes = self._valid_image_hashes(value.get("global", []))
+        guild_hash_count = sum(len(items) for items in valid_guilds.values())
+        logger.info(
+            "Loaded %s global and %s server-specific scam image fingerprint(s) from %s",
+            len(global_hashes), guild_hash_count, SCAM_IMAGE_HASHES,
+        )
+        return global_hashes, valid_guilds
 
     def _save_scam_image_hashes(self) -> None:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -452,6 +474,8 @@ class AntiScam(ObserverCog):
                 output,
                 indent=2,
             )
+            output.flush()
+            os.fsync(output.fileno())
             temp_path = Path(output.name)
         os.replace(temp_path, SCAM_IMAGE_HASHES)
 
@@ -787,6 +811,11 @@ class AntiScam(ObserverCog):
             else:
                 self.guild_scam_image_hashes.setdefault(str(guild_id), []).append(item)
             await asyncio.to_thread(self._save_scam_image_hashes)
+            logger.info(
+                "Saved trained scam image fingerprint (scope=%s, file=%s)",
+                "global" if guild_id is None else f"guild:{guild_id}",
+                SCAM_IMAGE_HASHES,
+            )
         return True
 
     @app_commands.command(
