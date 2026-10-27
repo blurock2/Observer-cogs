@@ -660,12 +660,12 @@ class ReportMessage(ObserverCog):
                         (component.custom_id, component.label, component.disabled)
                         for row in message.components
                         for component in row.children
-                        if isinstance(component, discord.ui.Button)
+                        if getattr(component, "custom_id", None) is not None
                     }
                     expected_controls = {
                         (component.custom_id, component.label, component.disabled)
                         for component in view.children
-                        if isinstance(component, discord.ui.Button)
+                        if getattr(component, "custom_id", None) is not None
                     }
                     try:
                         # Refresh stale/legacy component layouts as well as
