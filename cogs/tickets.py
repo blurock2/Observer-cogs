@@ -525,19 +525,21 @@ class TicketCog(ObserverCog):
     ) -> None:
         guild = interaction.guild
         user = interaction.user
+        # Acknowledge the interaction before database and Discord lookups.
+        await interaction.response.defer(ephemeral=True)
 
         if (
             guild is None
             or not isinstance(user, discord.Member)
         ):
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "Tickets can only be created inside a server.",
                 ephemeral=True,
             )
             return
 
         if not self._is_enabled(guild.id):
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "The ticket system is disabled in this server.",
                 ephemeral=True,
             )
@@ -553,7 +555,7 @@ class TicketCog(ObserverCog):
             panel_channel_id is None
             or support_role_id is None
         ):
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 (
                     "The ticket system has not been "
                     "configured correctly yet."
@@ -571,7 +573,7 @@ class TicketCog(ObserverCog):
                 blacklisted_role is not None
                 and blacklisted_role in user.roles
             ):
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     (
                         "You are not allowed to create "
                         "support tickets."
@@ -591,7 +593,7 @@ class TicketCog(ObserverCog):
             panel_channel,
             discord.TextChannel,
         ):
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 (
                     "The configured panel channel is invalid "
                     "or no longer a text channel."
@@ -601,7 +603,7 @@ class TicketCog(ObserverCog):
             return
 
         if support_role is None:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 (
                     "The configured support role no longer "
                     "exists."
@@ -623,7 +625,7 @@ class TicketCog(ObserverCog):
         )
 
         if existing_ticket is not None:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 (
                     f"You already have an open ticket: "
                     f"{existing_ticket.mention}"
@@ -635,7 +637,7 @@ class TicketCog(ObserverCog):
         bot_member = guild.me
 
         if bot_member is None:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 (
                     "I could not find my server member "
                     "information."
@@ -645,14 +647,12 @@ class TicketCog(ObserverCog):
             return
 
         if reason is None:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "Choose a reason for opening your ticket:",
                 view=TicketReasonView(self, guild.id),
                 ephemeral=True,
             )
             return
-
-        await interaction.response.defer(ephemeral=True)
 
         overwrites: dict[
             discord.Role | discord.Member,
@@ -787,10 +787,11 @@ class TicketCog(ObserverCog):
                 ephemeral=True,
             )
 
-        except discord.HTTPException as error:
-            print(
-                f"[tickets] Error while creating ticket: "
-                f"{error}"
+        except discord.HTTPException:
+            logger.exception(
+                "Discord rejected ticket creation for user %s in guild %s",
+                user.id,
+                guild.id,
             )
 
             await interaction.followup.send(
@@ -798,6 +799,17 @@ class TicketCog(ObserverCog):
                     "Discord rejected the ticket creation "
                     "request."
                 ),
+                ephemeral=True,
+            )
+
+        except Exception:
+            logger.exception(
+                "Unexpected ticket creation failure for user %s in guild %s",
+                user.id,
+                guild.id,
+            )
+            await interaction.followup.send(
+                "Ticket creation failed unexpectedly. Please contact support.",
                 ephemeral=True,
             )
 
