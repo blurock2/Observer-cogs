@@ -233,8 +233,8 @@ body:has(.site-shell), body:has(.dashboard-shell) { background: #0b0b0d; color: 
 .server-dashboard-card strong { font-size: 10px; font-weight: 650; }
 .server-dashboard-card small { color: #8c9990; font-size: 8px; line-height: 1.5; }
 .server-card-arrow { position: absolute; top: 10px; right: 11px; color: #a6edc7; }
-.server-mod-card > a { margin-top: 2px; color: #a6edc7; font-size: 8px; text-decoration: none; }
-.server-mod-card > a:hover { color: #d0f6df; }
+.server-mod-link { margin-top: 2px; color: #a6edc7; font-size: 8px; }
+.server-mod-card:hover .server-mod-link { color: #d0f6df; }
 @media(max-width:620px) {
   .server-row.has-dashboard-cards { grid-template-columns: minmax(0, 1fr); }
   .server-dashboard-card { min-height: 76px; }
