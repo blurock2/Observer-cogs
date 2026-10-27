@@ -24,6 +24,21 @@ function safeImageUrl(value) {
   }
 }
 
+function renderDiscordText(value) {
+  const renderInline = (source) => esc(source)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/__([^_]+)__/g, '<u>$1</u>')
+    .replace(/~~([^~]+)~~/g, '<s>$1</s>')
+    .replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>');
+  return value.split("\n").map((line) => {
+    const heading = line.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) return `<div class="preview-v2-heading preview-v2-heading-${heading[1].length}">${renderInline(heading[2])}</div>`;
+    if (!line.trim()) return '<div class="preview-v2-spacer"></div>';
+    return `<div class="preview-v2-line">${renderInline(line)}</div>`;
+  }).join("");
+}
+
 async function start() {
   if (!guildId) { location.replace("/?dashboard=1"); return; }
   root.innerHTML = `<main class="dashboard-loading"><img class="loading-mark" src="/observer.png?v=3" alt="Observer logo"><p>Loading message sender...</p></main>`;
@@ -56,6 +71,7 @@ async function start() {
       const colorValue = /^#[\da-f]{6}$/i.test(values.color || "") ? values.color : "#42d7e8";
       const image = imageUrl ? `<img class="preview-message-image" src="${esc(imageUrl)}" alt="Message image preview">` : "";
       const footerMarkup = footer ? `<div class="preview-message-footer">${esc(footer)}</div>` : "";
+      const cardText = [title ? `# ${title}` : "", description].filter(Boolean).join("\n\n");
       const buttons = [1, 2, 3].map((index) => ({
         label: values[`button_${index}_label`]?.trim(),
         url: safeImageUrl(values[`button_${index}_url`]?.trim() || ""),
@@ -65,7 +81,7 @@ async function start() {
         ? `<div class="preview-message-buttons">${buttons.map((button) => `<span class="button-style-${esc(button.style)}">${esc(button.label)}</span>`).join("")}</div>`
         : "";
       const content = isCard
-        ? `<div class="preview-v2-card"><div class="preview-message-title">${esc(title)}</div><div class="preview-message-description">${esc(description)}</div>${footerMarkup}${image}${buttonMarkup}</div>`
+        ? `<div class="preview-v2-card">${renderDiscordText(cardText)}${footerMarkup}${image}</div>${buttonMarkup}`
         : `<div class="preview-embed" style="--preview-accent:${colorValue}"><div class="preview-message-title">${esc(title)}</div><div class="preview-message-description">${esc(description)}</div>${image}${footerMarkup}</div>`;
       preview.innerHTML = `<div class="preview-author"><img src="/observer.png?v=3" alt=""><span>Observer</span><small>APP</small><time>now</time></div>${content}`;
     };
