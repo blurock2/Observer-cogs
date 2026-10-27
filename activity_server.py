@@ -260,8 +260,56 @@ class ActivityServer:
             raise web.HTTPForbidden(text="Only the server owner can configure Observer from this page")
         return session, guild
 
+    def _migrate_legacy_autoroles(self, guild_id: int) -> None:
+        """Move the older autorole tables into the shared setup settings."""
+        store = self.bot.setup_store
+        store.refresh_module(guild_id, "autorole")
+        with connect_sqlite(DB_PATH) as db:
+            tables = {row["name"] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            config = db.execute(
+                "SELECT enabled, bot_enabled FROM guild_autorole_config WHERE guild_id = ?",
+                (guild_id,),
+            ).fetchone() if "guild_autorole_config" in tables else None
+            legacy_roles = db.execute(
+                "SELECT rowid, role_id, is_bot FROM guild_autoroles WHERE guild_id = ? ORDER BY rowid",
+                (guild_id,),
+            ).fetchall() if "guild_autoroles" in tables else []
+
+        if config is not None:
+            for key in ("enabled", "bot_enabled"):
+                if store.get(guild_id, "autorole", key, None) is None:
+                    store.set(guild_id, "autorole", key, bool(config[key]))
+
+        migrated: list[int] = []
+        for is_bot, prefix in ((0, "member_role_"), (1, "bot_role_")):
+            rows = [row for row in legacy_roles if int(row["is_bot"]) == is_bot]
+            configured: set[int] = set()
+            for index in range(1, 6):
+                raw = store.get(guild_id, "autorole", f"{prefix}{index}", None)
+                try:
+                    configured.add(int(raw))
+                except (TypeError, ValueError):
+                    pass
+            for row in rows:
+                role_id = int(row["role_id"])
+                if role_id in configured:
+                    migrated.append(int(row["rowid"]))
+                    continue
+                slot = next((index for index in range(1, 6)
+                             if store.get(guild_id, "autorole", f"{prefix}{index}", None) is None), None)
+                if slot is None:
+                    continue
+                store.set(guild_id, "autorole", f"{prefix}{slot}", role_id)
+                configured.add(role_id)
+                migrated.append(int(row["rowid"]))
+
+        if migrated and "guild_autoroles" in tables:
+            with connect_sqlite(DB_PATH) as db:
+                db.executemany("DELETE FROM guild_autoroles WHERE rowid = ?", [(row_id,) for row_id in migrated])
+
     async def control_panel(self, request: web.Request) -> web.Response:
         _, guild = self._dashboard_guild(request)
+        self._migrate_legacy_autoroles(guild.id)
         try:
             channels = await guild.fetch_channels()
         except discord.HTTPException:
@@ -275,6 +323,7 @@ class ActivityServer:
 
         modules = []
         for module in MODULES:
+            self.bot.setup_store.refresh_module(guild.id, module.key)
             settings = []
             for spec in module.settings:
                 if not setting_visible(guild.id, module.key, spec.key):
@@ -558,4 +607,3 @@ class ActivityServer:
 
     async def health(self, request: web.Request) -> web.Response:
         return web.json_response({"status": "online", "servers": len(self.bot.guilds)})
-
