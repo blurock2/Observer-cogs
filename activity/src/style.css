@@ -212,6 +212,11 @@ body:has(.site-shell), body:has(.dashboard-shell) { background: #0b0b0d; color: 
 .support-benefits { display: grid; gap: 8px; margin: 0 0 19px; padding: 0; list-style: none; }
 .support-benefits li { position: relative; padding-left: 19px; color: #aeb8bb; font-size: 10px; line-height: 1.55; }
 .support-benefits li::before { content: "+"; position: absolute; left: 0; color: #42d7e8; font-size: 13px; font-weight: 700; }
-.support-button { align-self: flex-start; margin-top: auto; }
+.support-button { --support-accent: #25b9f6; --support-glow: #25b9f64a; align-self: flex-start; margin-top: auto; border-color: #394044; background: #111215; color: #d6dddf; box-shadow: none; transition: color .18s,background .18s,border-color .18s,box-shadow .18s,transform .18s; }
+.support-button-one-time { --support-accent: #25b9f6; --support-glow: #25b9f64a; }
+.support-button-tier-1 { --support-accent: #a080ff; --support-glow: #a080ff55; }
+.support-button-tier-2 { --support-accent: #ff6e91; --support-glow: #ff6e9155; }
+.support-button-tier-3 { --support-accent: #ffb62e; --support-glow: #ffb62e55; }
+.support-button:hover, .support-button:focus-visible { border-color: var(--support-accent); background: var(--support-accent); color: #0b0b0d; box-shadow: 0 0 24px var(--support-glow),0 8px 24px #0006; transform: translateY(-2px); }
 .support-note { max-width: 1172px; margin: 17px auto 0; color: #737d80; font-size: 9px; line-height: 1.7; }
 @media(max-width:700px) { .support-section { padding: 65px 20px 70px; } .support-section .section-intro { display: block; } .support-section .section-intro>p { margin-top: 14px; } .support-grid { grid-template-columns: 1fr; } .support-card { min-height: 250px; padding: 19px; } }
