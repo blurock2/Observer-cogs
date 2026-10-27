@@ -17,8 +17,8 @@ function discordIcon() {
 
 function brand() { return `<a class="brand" href="/" aria-label="Observer home"><span class="brand-mark"><img src="/observer.png?v=3" alt=""></span><span>OBSERVER</span></a>`; }
 
-function openLandingReportDrawer(session) {
-  root.insertAdjacentHTML("beforeend", `<div class="home-report-drawer" id="home-report-drawer"><button class="home-report-backdrop" type="button" aria-label="Close recent reports"></button><aside class="home-report-panel" role="dialog" aria-modal="true" aria-labelledby="home-report-title"><div class="home-report-head"><div><div class="eyebrow">OBSERVER REPORTS</div><h2 id="home-report-title">Recent report reasons</h2><p>See the five latest reports from a server you can moderate.</p></div><button class="home-report-close" type="button" aria-label="Close">×</button></div><div class="home-report-content" id="home-report-content"><div class="home-report-loading">Loading servers…</div></div></aside></div>`);
+function openLandingReportDrawer() {
+  root.insertAdjacentHTML("beforeend", `<div class="home-report-drawer" id="home-report-drawer"><button class="home-report-backdrop" type="button" aria-label="Close recent reports"></button><aside class="home-report-panel" role="dialog" aria-modal="true" aria-labelledby="home-report-title"><div class="home-report-head"><div><div class="eyebrow">OBSERVER REPORTS</div><h2 id="home-report-title">Recent report reasons</h2><p>Up to five of the latest reasons from each server using Observer.</p></div><button class="home-report-close" type="button" aria-label="Close">×</button></div><div class="home-report-content" id="home-report-content"><div class="home-report-loading">Loading report reasons…</div></div></aside></div>`);
   const drawer = root.querySelector("#home-report-drawer");
   const close = () => {
     drawer.classList.remove("is-open");
@@ -38,45 +38,13 @@ function openLandingReportDrawer(session) {
   drawer.querySelector(".home-report-close").focus();
 
   const content = drawer.querySelector("#home-report-content");
-  if (!session.signed_in) {
-    content.innerHTML = `<div class="home-report-private"><span>◈</span><h3>Sign in to view reports</h3><p>Report reasons are private to each server. Sign in with Discord to see reports from servers you can moderate.</p><a class="button button-primary" href="${loginUrl}">Continue with Discord</a></div>`;
-    return;
-  }
-
-  const renderServerReports = (reports = []) => {
-    if (!reports.length) return `<div class="home-report-empty"><span>✓</span><h3>No reports found</h3><p>There are no reports in this server’s recent history.</p></div>`;
-    return `<div class="home-report-list">${reports.slice(0, 5).map((report) => {
-      const date = new Date(report.created_at);
-      const timestamp = Number.isNaN(date.getTime()) ? "Recently" : date.toLocaleString();
-      return `<article class="home-report-item"><div class="home-report-item-head"><span class="home-report-status ${report.status === "closed" ? "is-closed" : ""}">${report.status === "closed" ? "CLAIMED / CLOSED" : "OPEN"}</span><time>${esc(timestamp)}</time></div><p>${esc(report.reason || "No reason provided")}</p><small>Reported member <strong>${esc(report.target_name || "Unknown member")}</strong></small><a href="${esc(report.url)}" target="_blank" rel="noreferrer">Open in Discord ↗</a></article>`;
-    }).join("")}</div>`;
-  };
-
-  const loadGuildReports = async (guildId) => {
-    const list = content.querySelector("#home-report-list");
-    if (list) list.innerHTML = `<div class="home-report-loading">Loading report reasons…</div>`;
-    try {
-      const result = await api(`/api/mod-dashboard/${encodeURIComponent(guildId)}`);
-      const target = content.querySelector("#home-report-list");
-      if (target) target.innerHTML = renderServerReports(result.recent_report_reasons || []);
-    } catch (error) {
-      const target = content.querySelector("#home-report-list");
-      if (target) target.innerHTML = `<div class="home-report-empty"><span>!</span><h3>Couldn’t load reports</h3><p>${esc(error.message)}</p></div>`;
-    }
-  };
-
-  api("/api/servers").then((result) => {
-    const servers = (result.servers || []).filter((server) => server.bot_present && server.can_moderate);
-    if (!servers.length) {
-      content.innerHTML = `<div class="home-report-private"><span>◈</span><h3>No moderated servers with Observer</h3><p>Add Observer to a server you manage, then its recent reports will appear here.</p><a class="button button-primary" href="/?dashboard=1">Manage your servers</a></div>`;
-      return;
-    }
-    content.innerHTML = `<label class="home-report-server-label">SERVER<select id="home-report-server">${servers.map((server) => `<option value="${esc(server.id)}">${esc(server.name)}</option>`).join("")}</select></label><div id="home-report-list"></div>`;
-    const select = content.querySelector("#home-report-server");
-    select.addEventListener("change", () => loadGuildReports(select.value));
-    loadGuildReports(select.value);
+  api("/api/public-reports").then((result) => {
+    const reasons = result.reasons || [];
+    content.innerHTML = reasons.length
+      ? `<div class="home-report-list">${reasons.map((reason) => `<article class="home-report-item"><p>${esc(reason || "No reason provided")}</p></article>`).join("")}</div>`
+      : `<div class="home-report-empty"><span>✓</span><h3>No reports found</h3><p>No report reasons are available yet.</p></div>`;
   }).catch((error) => {
-    content.innerHTML = `<div class="home-report-empty"><span>!</span><h3>Couldn’t load your servers</h3><p>${esc(error.message)}</p></div>`;
+    content.innerHTML = `<div class="home-report-empty"><span>!</span><h3>Couldn’t load reports</h3><p>${esc(error.message)}</p></div>`;
   });
 }
 
@@ -129,7 +97,7 @@ async function loadLanding() {
       <section class="about-section" id="about"><div class="about-orb"></div><div class="about-copy"><div class="eyebrow">MADE FOR REAL COMMUNITIES</div><h2>Good moderation makes<br>everything else possible.</h2><p>Observer is an independent Discord bot project built to help community teams spend less time juggling tools and more time looking after their people.</p><a class="button button-primary" href="${loginUrl}">${discordIcon()} Get started with Discord</a></div><div class="about-details"><div class="detail-block"><span class="eyebrow">CREATED BY</span><a href="${esc(publicInfo.portfolio_url)}" target="_blank" rel="noreferrer">${esc(publicInfo.creator)} <span>↗</span></a><small>Independent developer and creator of Observer.</small></div><div class="detail-block"><span class="eyebrow">COME SAY HELLO</span><a href="${esc(publicInfo.support_url)}" target="_blank" rel="noreferrer">Observer Support <span>↗</span></a></div><div class="detail-block"><span class="eyebrow">SOURCE CODE</span><a href="${esc(publicInfo.source_url)}" target="_blank" rel="noreferrer">Observer on GitHub <span>↗</span></a></div></div></section>
     </main><footer class="site-footer"><div class="footer-brand">${brand()}<small>© ${new Date().getFullYear()} Observer. Independent community software.</small></div><div class="footer-links"><a href="${esc(publicInfo.source_url)}" target="_blank" rel="noreferrer">Source code</a><a href="${esc(publicInfo.portfolio_url)}" target="_blank" rel="noreferrer">Creator portfolio</a><a href="${esc(publicInfo.support_url)}" target="_blank" rel="noreferrer">Support</a><details class="footer-legal"><summary>Privacy &amp; terms</summary><div class="legal-copy"><section><h3>Privacy</h3><p>Sign-in uses Discord OAuth to identify you and list servers where you are an owner or have moderation permissions. Observer stores a protected sign-in session, your basic Discord profile, and that manageable-server list for up to seven days. Discord access tokens are not stored. Server configuration changes are saved in Observer’s database for the bot to use.</p><p>You can end your sign-in session with “Sign out”. Contact the creator through the support server for questions about stored information.</p></section><section><h3>Terms</h3><p>Use Observer only in servers you own or are authorized to manage. Dashboard changes apply to the connected server and may affect its members. You are responsible for reviewing settings, permissions, and applicable laws before enabling features.</p><p>Observer is provided as an independent community project and is not affiliated with or endorsed by Discord Inc. Service availability and features may change.</p></section></div></details></div><span class="footer-disclaimer">Not affiliated with Discord Inc.</span><a class="footer-top" href="#top" onclick="window.scrollTo({top:0,behavior:'smooth'});return false">BACK TO TOP ↑</a></footer>
   </div>`;
-  root.querySelector("#open-home-reports")?.addEventListener("click", () => openLandingReportDrawer(session));
+  root.querySelector("#open-home-reports")?.addEventListener("click", () => openLandingReportDrawer());
   initLandingScrollReveal();
   document.querySelectorAll("#open-dashboard, #open-dashboard-hero, #open-dashboard-workflow").forEach((button) => button.addEventListener("click", openDashboard));
 }
