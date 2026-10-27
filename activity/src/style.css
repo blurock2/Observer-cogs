@@ -348,3 +348,34 @@ body.modal-open { overflow: hidden; }
   .mod-review-link { grid-column: 3; grid-row: 2; }
   .mod-report-meta { flex-direction: column; gap: 4px; }
 }
+.mod-report { grid-template-columns: 36px minmax(0, 1fr) 170px; }
+.mod-report-controls { display: grid; justify-items: end; gap: 8px; }
+.mod-report-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 6px; }
+.mod-action-button { padding: 7px 9px; color: #d9f7fa; background: #152326; border: 1px solid #31545a; border-radius: 7px; font: 650 .7rem system-ui; cursor: pointer; }
+.mod-action-button:hover:not(:disabled) { color: #071113; background: #49d8e5; border-color: #49d8e5; }
+.mod-action-button.accept { color: #c7f4df; background: #14251d; border-color: #345845; }
+.mod-action-button.accept:hover:not(:disabled) { color: #07130c; background: #70dfad; border-color: #70dfad; }
+.mod-action-button.secondary { color: #c6d1d4; background: #191d20; border-color: #41494d; }
+.mod-action-button:disabled { opacity: .55; cursor: wait; }
+.mod-action-complete { color: #74e3bb; font-size: .75rem; }
+.mod-claim-note { display: block; margin-top: 6px; color: #8fdfe5; }
+.mod-action-history { display: grid; }
+.mod-history-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 14px 0; border-top: 1px solid var(--line, #292d32); }
+.mod-history-icon { display: grid; width: 32px; height: 32px; place-items: center; color: #80dce4; background: rgba(62,213,226,.1); border-radius: 9px; font-weight: 700; }
+.mod-history-copy { min-width: 0; }
+.mod-history-title { display: flex; justify-content: space-between; gap: 12px; }
+.mod-history-title strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mod-history-title span { flex: 0 0 auto; color: #819397; font: .62rem ui-monospace, monospace; }
+.mod-history-copy p { margin: 5px 0; color: #a5b0b2; font-size: .78rem; overflow-wrap: anywhere; }
+.mod-history-copy small { color: #778689; font-size: .7rem; }
+.mod-history-profile { padding: 7px 9px; border: 1px solid #354246; border-radius: 7px; color: #9ee6eb; text-decoration: none; font-size: .7rem; white-space: nowrap; }
+.mod-history-profile:hover { border-color: #49d8e5; }
+@media(max-width:720px) {
+  .mod-report { grid-template-columns: 34px minmax(0, 1fr); }
+  .mod-report-controls { grid-column: 2; justify-items: start; display: flex; flex-wrap: wrap; align-items: center; }
+  .mod-report-actions { justify-content: flex-start; }
+  .mod-report .mod-status { grid-column: auto; }
+  .mod-review-link { grid-column: auto; grid-row: auto; }
+  .mod-history-row { grid-template-columns: 32px minmax(0, 1fr); }
+  .mod-history-profile { grid-column: 2; justify-self: start; }
+}
