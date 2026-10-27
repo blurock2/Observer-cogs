@@ -384,8 +384,11 @@ class ActivityServer:
                     # Claiming is a work assignment, not a resolution. Reports
                     # stay open until staff accepts/closes them.
                     closed = "accepted by staff" in fields
-                    claimed_raw = fields.get("claimed by", "")
-                    claimed_id = _report_user_id(claimed_raw)
+                    claimed_fields = [field for field in embed.fields if field.name.casefold() == "claimed by"]
+                    claimed_id = next(
+                        (user_id for field in reversed(claimed_fields) if (user_id := _report_user_id(field.value))),
+                        None,
+                    )
                     claimed_member = guild.get_member(int(claimed_id)) if claimed_id else None
                     accepted_raw = fields.get("accepted by staff", "")
                     accepted_match = re.search(r"<@!?(\d{15,22})>", accepted_raw)
@@ -409,6 +412,7 @@ class ActivityServer:
                         "created_at": message.created_at.isoformat(),
                         "url": message.jump_url,
                         "status": "closed" if closed else "open",
+                        "claimed": bool(claimed_fields),
                         "claimed_by": claimed_id,
                         "claimed_by_name": claimed_member.display_name if claimed_member else (f"User {claimed_id}" if claimed_id else None),
                         "accepted": "accepted by staff" in fields,
@@ -673,9 +677,12 @@ class ActivityServer:
             raise web.HTTPBadRequest(text="That message is not an Observer report")
 
         embed = message.embeds[0]
-        claimed_field = next((field for field in embed.fields if field.name.casefold() == "claimed by"), None)
+        claimed_fields = [field for field in embed.fields if field.name.casefold() == "claimed by"]
         accepted = any(field.name.casefold() == "accepted by staff" for field in embed.fields)
-        claimed_id = _report_user_id(claimed_field.value) if claimed_field else None
+        claimed_id = next(
+            (user_id for field in reversed(claimed_fields) if (user_id := _report_user_id(field.value))),
+            None,
+        )
         claimed_by = int(claimed_id) if claimed_id else None
         if action not in {"claim", "unclaim"} and claimed_by != user_id:
             if claimed_by is None:
@@ -698,13 +705,13 @@ class ActivityServer:
         display_name = report_cog_member.display_name if report_cog_member else session["user"].get("global_name") or session["user"].get("username", "Moderator")
 
         if action == "claim":
-            if claimed_by is not None:
+            if claimed_fields:
                 raise web.HTTPConflict(text="This report has already been claimed")
             embed.add_field(name="Claimed by", value=f"<@{user_id}> (`{user_id}`)", inline=False)
             claimed_by = user_id
             report_cog.mod_stats.increment(guild.id, user_id, "reports_claimed")
         elif action == "unclaim":
-            if claimed_by is None:
+            if not claimed_fields:
                 raise web.HTTPConflict(text="This report is not currently claimed")
             if claimed_by != user_id and user_id != guild.owner_id:
                 try:
@@ -719,7 +726,8 @@ class ActivityServer:
                 reopened_accepted = True
                 accepted = False
             for index in reversed(range(len(embed.fields))):
-                if embed.fields[index].name.casefold() in {"claimed by", "accepted by staff"}:
+                field_name = embed.fields[index].name.casefold()
+                if field_name == "claimed by" or (reopened_accepted and field_name == "accepted by staff"):
                     embed.remove_field(index)
             claimed_by = None
         elif action in {"accept", "close"}:
