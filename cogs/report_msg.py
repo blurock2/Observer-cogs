@@ -4,6 +4,10 @@ from __future__ import annotations
 from error_handling import ErrorHandledModal, ErrorHandledView, ObserverCog
 
 import time
+import logging
+import re
+from contextlib import contextmanager
+from datetime import datetime, timezone
 
 import discord
 from discord import app_commands
@@ -11,20 +15,103 @@ from discord.ext import commands
 
 from cogs.mod_stats import ModerationStatsStore
 from cogs.setup_ui import DB_PATH, SetupConfigStore
+from database import connect_sqlite
 
 MODULE_KEY = "report_msg"
 MODERATION_MODULE_KEY = "moderation"
 
 NO_MENTIONS = discord.AllowedMentions.none()
+logger = logging.getLogger("observer.report_msg")
+
+
+class AcceptedReportStore:
+    """Persist report authors and staff acceptance timestamps."""
+
+    def __init__(self, db_path=DB_PATH):
+        self.db_path = db_path
+        with self._connect() as db:
+            db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS accepted_report_tracking (
+                    report_message_id INTEGER PRIMARY KEY,
+                    guild_id INTEGER NOT NULL,
+                    reporter_id INTEGER NOT NULL,
+                    accepted_at INTEGER
+                )
+                """
+            )
+
+    @contextmanager
+    def _connect(self):
+        db = connect_sqlite(self.db_path)
+        try:
+            yield db
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
+
+    def add_report(self, message_id: int, guild_id: int, reporter_id: int) -> None:
+        with self._connect() as db:
+            db.execute(
+                "INSERT OR IGNORE INTO accepted_report_tracking "
+                "(report_message_id, guild_id, reporter_id) VALUES (?, ?, ?)",
+                (message_id, guild_id, reporter_id),
+            )
+
+    def accept(self, message_id: int, guild_id: int) -> tuple[int | None, bool]:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT reporter_id, accepted_at FROM accepted_report_tracking "
+                "WHERE report_message_id = ? AND guild_id = ?",
+                (message_id, guild_id),
+            ).fetchone()
+            if row is None:
+                return None, False
+            if row["accepted_at"] is not None:
+                return int(row["reporter_id"]), False
+            db.execute(
+                "UPDATE accepted_report_tracking SET accepted_at = ? "
+                "WHERE report_message_id = ? AND accepted_at IS NULL",
+                (int(datetime.now(timezone.utc).timestamp()), message_id),
+            )
+            return int(row["reporter_id"]), True
+
+    def monthly_leader(self, guild_id: int, month: str) -> tuple[int | None, int]:
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT reporter_id, COUNT(*) AS total "
+                "FROM accepted_report_tracking "
+                "WHERE guild_id = ? AND accepted_at IS NOT NULL "
+                "AND strftime('%Y-%m', accepted_at, 'unixepoch') = ? "
+                "GROUP BY reporter_id ORDER BY total DESC, reporter_id ASC",
+                (guild_id, month),
+            ).fetchall()
+        if not rows:
+            return None, 0
+        return int(rows[0]["reporter_id"]), int(rows[0]["total"])
+
+    def monthly_counts(self, guild_id: int, month: str) -> list[tuple[int, int]]:
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT reporter_id, COUNT(*) AS total "
+                "FROM accepted_report_tracking "
+                "WHERE guild_id = ? AND accepted_at IS NOT NULL "
+                "AND strftime('%Y-%m', accepted_at, 'unixepoch') = ? "
+                "GROUP BY reporter_id ORDER BY total DESC, reporter_id ASC",
+                (guild_id, month),
+            ).fetchall()
+        return [(int(row["reporter_id"]), int(row["total"])) for row in rows]
 
 
 class ClaimReportView(ErrorHandledView):
     """
     Report-claim controls.
 
-    Claim state is held in memory. Moderation-stat totals are persisted,
-    but an individual report's claimed/unclaimed state is not restored
-    after a bot restart.
+    Claim state is mirrored in the report embed so it can be restored
+    when persistent views are registered after a bot restart.
     """
 
     def __init__(
@@ -33,20 +120,34 @@ class ClaimReportView(ErrorHandledView):
         staff_role_id: int | None,
         *,
         claimed_by: int | None = None,
+        accepted: bool = False,
     ):
         super().__init__(timeout=None)
         self.cog = cog
         self.staff_role_id = staff_role_id
         self.claimed_by = claimed_by
+        self.accepted = accepted
+        for child in self.children:
+            if not isinstance(child, discord.ui.Button):
+                continue
+            if child.custom_id == "report_claim" and claimed_by is not None:
+                child.disabled = True
+                child.label = "Report Claimed"
+            elif child.custom_id == "report_unclaim":
+                child.disabled = claimed_by is None
+            elif child.custom_id == "report_accept" and accepted:
+                child.disabled = True
+                child.label = "Accepted"
 
     def is_staff(self, member: discord.Member) -> bool:
         if member.guild_permissions.manage_messages:
             return True
 
+        staff_role_id = self.cog.get_staff_role_id(member.guild.id) or self.staff_role_id
         return (
-            self.staff_role_id is not None
+            staff_role_id is not None
             and any(
-                role.id == self.staff_role_id
+                role.id == staff_role_id
                 for role in member.roles
             )
         )
@@ -216,6 +317,59 @@ class ClaimReportView(ErrorHandledView):
             embed=embed,
             view=self,
         )
+
+    @discord.ui.button(
+        label="Accept Report",
+        style=discord.ButtonStyle.success,
+        emoji="✅",
+        custom_id="report_accept",
+    )
+    async def accept_report(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ) -> None:
+        if interaction.guild is None or interaction.message is None:
+            await interaction.response.send_message(
+                "This action can only be used on a report in a server.",
+                ephemeral=True,
+            )
+            return
+        if not isinstance(interaction.user, discord.Member) or not self.is_staff(interaction.user):
+            await interaction.response.send_message(
+                "Only staff can accept reports.", ephemeral=True
+            )
+            return
+
+        reporter_id, newly_accepted = self.cog.reports.accept(
+            interaction.message.id, interaction.guild.id
+        )
+        if reporter_id is None:
+            await interaction.response.send_message(
+                "I couldn't find this report in my records. Reports from before this feature was enabled cannot be accepted for the monthly award.",
+                ephemeral=True,
+            )
+            return
+        month = datetime.now(timezone.utc).strftime("%Y-%m")
+        winner_id, total, role_message = await self.cog.update_monthly_reporter_role(
+            interaction.guild, month
+        )
+        embed = interaction.message.embeds[0]
+        if newly_accepted:
+            embed.add_field(
+                name="Accepted by staff",
+                value=f"{interaction.user.mention} • <t:{int(datetime.now(timezone.utc).timestamp())}:f>",
+                inline=False,
+            )
+        self.accepted = True
+        button.disabled = True
+        button.label = "Accepted"
+        await interaction.response.edit_message(embed=embed, view=self)
+
+        status = role_message if newly_accepted else f"This report was already accepted. {role_message}"
+        if winner_id is not None:
+            status += f" Monthly leader: <@{winner_id}> with {total} accepted report(s)."
+        await interaction.followup.send(status, ephemeral=True, allowed_mentions=NO_MENTIONS)
 
 
 class ReportModal(ErrorHandledModal):
@@ -402,7 +556,7 @@ class ReportModal(ErrorHandledModal):
         )
 
         try:
-            await report_channel.send(
+            report_message = await report_channel.send(
                 content=ping_content or None,
                 embed=embed,
                 view=ClaimReportView(
@@ -432,6 +586,10 @@ class ReportModal(ErrorHandledModal):
             )
             return
 
+        self.cog.reports.add_report(
+            report_message.id, guild.id, interaction.user.id
+        )
+
         self.cog.start_cooldown(
             guild.id,
             interaction.user.id,
@@ -448,7 +606,9 @@ class ReportMessage(ObserverCog):
         self.bot = bot
         self.store = SetupConfigStore(DB_PATH)
         self.mod_stats = ModerationStatsStore(DB_PATH)
+        self.reports = AcceptedReportStore(DB_PATH)
         self.cooldowns: dict[tuple[int, int], float] = {}
+        self._report_views_restored = False
 
         self.report_command = app_commands.ContextMenu(
             name="Report message",
@@ -458,6 +618,80 @@ class ReportMessage(ObserverCog):
         self.bot.tree.add_command(
             self.report_command
         )
+        self.bot.add_view(ClaimReportView(self, None))
+
+    @commands.Cog.listener()
+    async def on_ready(self) -> None:
+        if self._report_views_restored:
+            return
+
+        for guild in self.bot.guilds:
+            channel_id = self.get_report_channel_id(guild.id)
+            channel = guild.get_channel(channel_id) if channel_id else None
+            if not isinstance(channel, discord.TextChannel):
+                continue
+
+            try:
+                async for message in channel.history(limit=None):
+                    if not any(
+                        embed.title == "New Message Report"
+                        for embed in message.embeds
+                    ):
+                        continue
+
+                    claimed_by = None
+                    accepted = False
+                    for embed in message.embeds:
+                        for field in embed.fields:
+                            if field.name == "Claimed by":
+                                match = re.search(r"\((\d+)\)", field.value)
+                                if match:
+                                    claimed_by = int(match.group(1))
+                            elif field.name == "Accepted by staff":
+                                accepted = True
+
+                    view = ClaimReportView(
+                        self,
+                        self.get_staff_role_id(guild.id),
+                        claimed_by=claimed_by,
+                        accepted=accepted,
+                    )
+                    current_controls = {
+                        (component.custom_id, component.label, component.disabled)
+                        for row in message.components
+                        for component in row.children
+                        if isinstance(component, discord.ui.Button)
+                    }
+                    expected_controls = {
+                        (component.custom_id, component.label, component.disabled)
+                        for component in view.children
+                        if isinstance(component, discord.ui.Button)
+                    }
+                    try:
+                        # Refresh stale/legacy component layouts as well as
+                        # restoring callbacks, so old report buttons respond.
+                        if current_controls != expected_controls:
+                            await message.edit(view=view)
+                        self.bot.add_view(view, message_id=message.id)
+                    except discord.HTTPException:
+                        logger.warning(
+                            "Could not restore report controls for message %s in guild %s",
+                            message.id,
+                            guild.id,
+                            exc_info=True,
+                        )
+            except discord.Forbidden:
+                logger.warning(
+                    "Cannot restore report controls in guild %s: missing history or message permissions",
+                    guild.id,
+                )
+            except discord.HTTPException:
+                logger.warning(
+                    "Could not restore report controls in guild %s",
+                    guild.id,
+                    exc_info=True,
+                )
+        self._report_views_restored = True
 
     async def cog_unload(self) -> None:
         self.bot.tree.remove_command(
@@ -561,13 +795,14 @@ class ReportMessage(ObserverCog):
         self,
         guild_id: int,
     ) -> bool:
-        return bool(
-            self.get_moderation_config(
+        setting = self.get_config(guild_id, "ping_mod_role")
+        if setting is None:
+            setting = self.get_moderation_config(
                 guild_id,
                 "ping_mod_role",
                 False,
             )
-        )
+        return bool(setting)
 
     def get_moderator_role_id(
         self,
@@ -595,8 +830,8 @@ class ReportMessage(ObserverCog):
         Return the optional moderator-role ping for a report.
 
         The report destination and claim role come from report_msg.
-        The optional notification uses moderation.mod_role and
-        moderation.ping_mod_role.
+        The notification toggle is report-specific, while the notified
+        role is shared with moderation.
         """
         if not self.is_moderator_role_ping_enabled(
             guild.id
@@ -661,6 +896,46 @@ class ReportMessage(ObserverCog):
         self.cooldowns[
             (guild_id, user_id)
         ] = time.monotonic()
+
+    async def update_monthly_reporter_role(
+        self, guild: discord.Guild, month: str
+    ) -> tuple[int | None, int, str]:
+        counts = self.reports.monthly_counts(guild.id, month)
+        if not counts:
+            return None, 0, "The report was accepted."
+
+        top_count = counts[0][1]
+        tied_ids = {user_id for user_id, count in counts if count == top_count}
+        role_id = self.get_config(guild.id, "monthly_top_reporter_role")
+        try:
+            role_id = int(role_id) if role_id is not None else None
+        except (TypeError, ValueError):
+            role_id = None
+        if role_id is None:
+            return None, top_count, "The report was accepted, but no monthly award role is configured."
+
+        role = guild.get_role(role_id)
+        if role is None:
+            return None, top_count, "The report was accepted, but the configured monthly award role no longer exists."
+
+        # Keep the existing holder on a tie. If the previous leader is no
+        # longer tied, the lowest user ID wins so the result is deterministic.
+        current_tied = sorted(member.id for member in role.members if member.id in tied_ids)
+        winner_id = current_tied[0] if current_tied else min(tied_ids)
+
+        for holder in list(role.members):
+            if holder.id != winner_id:
+                await holder.remove_roles(role, reason=f"Monthly accepted-report leader changed ({month})")
+
+        winner = guild.get_member(winner_id)
+        if winner is None:
+            try:
+                winner = await guild.fetch_member(winner_id)
+            except discord.NotFound:
+                return winner_id, top_count, "The report was accepted, but the monthly leader is no longer in this server."
+        if role not in winner.roles:
+            await winner.add_roles(role, reason=f"Monthly accepted-report leader ({month})")
+        return winner_id, top_count, "Monthly award role updated."
 
     async def report_message(
         self,
