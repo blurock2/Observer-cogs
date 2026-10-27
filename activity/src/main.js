@@ -36,7 +36,7 @@ async function loadLanding() {
           <h1>Keep your community<br><span>in good hands.</span></h1>
           <p class="hero-lede">Observer brings moderation, security, and useful server tools together in one thoughtful Discord bot.</p>
           <div class="hero-actions">${session.signed_in ? `<button type="button" class="button button-primary" id="open-dashboard-hero">Manage your servers</button>` : `<a class="button button-primary" href="${loginUrl}">${discordIcon()} Continue with Discord</a>`}<a class="button button-quiet" href="#features">Explore Observer <span>↓</span></a></div>
-          <div class="hero-note"><span class="note-check">✓</span> Discord profile + server list · only servers you own</div>
+          <div class="hero-note"><span class="note-check">✓</span> Discord sign-in · servers you own or moderate</div>
         </div>
         <div class="hero-art" aria-label="Preview of Observer moderation dashboard">
           <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
