@@ -120,6 +120,8 @@ class ActivityServer:
         self.public_base_url = os.getenv("PUBLIC_BASE_URL", "https://observer-dashboard.observer").rstrip("/")
         self.sessions: dict[str, dict] = {}
         self.oauth_states: dict[str, float] = {}
+        self._public_report_cache_until = 0.0
+        self._public_report_cache: list[str] = []
         with connect_sqlite(DB_PATH) as db:
             db.execute(
                 """CREATE TABLE IF NOT EXISTS activity_sessions (
@@ -178,6 +180,7 @@ class ActivityServer:
         app.router.add_get("/api/mod-dashboard/{guild_id}", self.mod_dashboard)
         app.router.add_post("/api/mod-dashboard/{guild_id}/reports/{message_id}/{action}", self.mod_report_action)
         app.router.add_get("/api/public-info", self.public_info)
+        app.router.add_get("/api/public-reports", self.public_reports)
         app.router.add_post("/api/token", self.exchange_code)
         app.router.add_get("/api/activity/{view}", self.activity_data)
         app.router.add_get("/healthz", self.health)
@@ -335,6 +338,65 @@ class ActivityServer:
             "stats": stats,
         }
         return web.json_response(info, headers={"Cache-Control": "public, max-age=300"})
+
+    async def public_reports(self, request: web.Request) -> web.Response:
+        """Return up to five recent report reasons per server, without identities."""
+        now = monotonic()
+        if now < self._public_report_cache_until:
+            return web.json_response(
+                {"reasons": self._public_report_cache},
+                headers={"Cache-Control": "public, max-age=60"},
+            )
+
+        async def latest_for_guild(guild: discord.Guild) -> list[tuple[float, str]]:
+            raw_channel_id = self.bot.setup_store.get(
+                guild.id, "report_msg", "report_channel"
+            )
+            try:
+                channel_id = int(raw_channel_id)
+            except (TypeError, ValueError):
+                return []
+            channel = guild.get_channel(channel_id)
+            if not isinstance(channel, (discord.TextChannel, discord.Thread)):
+                return []
+
+            latest: list[tuple[float, str]] = []
+            try:
+                async for message in channel.history(limit=500):
+                    if not message.embeds or message.embeds[0].title != "New Message Report":
+                        continue
+                    reason = next(
+                        (field.value.strip() for field in message.embeds[0].fields
+                         if field.name.casefold() == "reason" and field.value.strip()),
+                        "No reason provided",
+                    )
+                    latest.append((message.created_at.timestamp(), reason[:1000]))
+                    if len(latest) >= 5:
+                        break
+            except discord.Forbidden:
+                logger.info("Cannot read public report feed from guild %s", guild.id)
+            except discord.HTTPException:
+                logger.warning("Could not read reports for public feed from guild %s", guild.id)
+            return latest
+
+        results = await asyncio.gather(
+            *(latest_for_guild(guild) for guild in self.bot.guilds),
+            return_exceptions=True,
+        )
+        combined: list[tuple[float, str]] = []
+        for guild, result in zip(self.bot.guilds, results):
+            if isinstance(result, Exception):
+                logger.warning("Could not load public reports from guild %s: %s", guild.id, result)
+                continue
+            combined.extend(result)
+        combined.sort(key=lambda item: item[0], reverse=True)
+        reasons = [reason for _, reason in combined]
+        self._public_report_cache = reasons
+        self._public_report_cache_until = now + 60
+        return web.json_response(
+            {"reasons": reasons},
+            headers={"Cache-Control": "public, max-age=60"},
+        )
 
     def _get_session(self, request: web.Request) -> dict:
         key = request.cookies.get("observer_session", "")
