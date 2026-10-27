@@ -34,12 +34,15 @@ function controlFor(module, setting) {
     const isChannel = setting.kind === "channel";
     const options = isChannel ? panel.channels : panel.roles;
     const chosen = value == null ? "" : String(value).replace(/\D/g, "");
-    const optionHtml = options.map((option) => {
+    const displayOption = (option) => {
       const prefix = isChannel && option.type !== "category" ? "#" : "";
       const kind = isChannel ? option.type.replaceAll("_", " ") : (option.is_default ? "default role" : "role");
-      return `<option value="${esc(option.id)}" ${String(option.id) === chosen ? "selected" : ""}>${esc(prefix + option.name)} · ${esc(kind)}</option>`;
-    }).join("");
-    field = `<div class="search-picker"><input type="search" class="option-filter" data-filter-target="${id}" placeholder="Type ${isChannel ? "a channel" : "a role"} name to filter" autocomplete="off"><select id="${id}" data-setting-value="${module.key}|${setting.key}"><option value="">Not set</option>${optionHtml}</select>${save}</div>`;
+      return `${prefix}${option.name} · ${kind}`;
+    };
+    const selected = options.find((option) => String(option.id) === chosen);
+    const optionHtml = options.map((option) => `<option value="${esc(displayOption(option))}" data-id="${esc(option.id)}"></option>`).join("");
+    const inputValue = selected ? displayOption(selected) : (chosen ? `Unavailable ${isChannel ? "channel" : "role"} (${chosen})` : "Not set");
+    field = `<div class="searchable-picker"><input id="${id}" type="search" list="${id}-options" data-picker-input autocomplete="off" placeholder="Type to search ${isChannel ? "channels" : "roles"}…" value="${esc(inputValue)}"><datalist id="${id}-options"><option value="Not set" data-id=""></option>${optionHtml}</datalist><input type="hidden" data-setting-value="${module.key}|${setting.key}" value="${esc(chosen)}">${save}</div>`;
   } else if (setting.kind === "ticket_panel") {
     const panelSettings = value || {};
     field = `<div class="ticket-panel-fields"><label>Panel title<input data-ticket-field="panel_title" maxlength="256" value="${esc(panelSettings.panel_title || "")}"></label><label>Panel description<textarea data-ticket-field="panel_description" maxlength="2048">${esc(panelSettings.panel_description || "")}</textarea></label><label>Panel footer<textarea data-ticket-field="panel_footer" maxlength="2048">${esc(panelSettings.panel_footer || "")}</textarea></label><label>Ticket reasons <small>One per line; up to 24.</small><textarea data-ticket-field="reason_options">${esc((panelSettings.reason_options || []).join("\n"))}</textarea></label><button class="save-setting" data-save-ticket="${module.key}|${setting.key}">Save ticket panel</button></div>`;
@@ -114,16 +117,24 @@ function render() {
       try { await save(moduleKey, key, toggle.checked); } catch (error) { toggle.checked = !toggle.checked; alert(error.message); toggle.disabled = false; }
       return;
     }
-    const select = event.target.closest("[data-setting-value]");
-    if (select) select.parentElement.querySelector(".save-setting").disabled = false;
+    const picker = event.target.closest("[data-picker-input]");
+    if (picker) syncPicker(picker);
   });
   root.addEventListener("input", (event) => {
-    const filter = event.target.closest("[data-filter-target]");
-    if (!filter) return;
-    const select = document.getElementById(filter.dataset.filterTarget);
-    const query = filter.value.trim().toLowerCase();
-    if (select) for (const option of select.options) option.hidden = Boolean(query) && option.value !== "" && !option.textContent.toLowerCase().includes(query);
+    const picker = event.target.closest("[data-picker-input]");
+    if (picker) syncPicker(picker);
   });
+}
+
+function syncPicker(input) {
+  const wrapper = input.closest(".searchable-picker");
+  const options = document.getElementById(input.getAttribute("list"));
+  const match = [...(options?.options || [])].find((option) => option.value === input.value);
+  const hidden = wrapper.querySelector("[data-setting-value]");
+  const saveButton = wrapper.querySelector(".save-setting");
+  if (!match) { saveButton.disabled = true; return; }
+  hidden.value = match.dataset.id || "";
+  saveButton.disabled = false;
 }
 
 async function start() {
@@ -137,4 +148,3 @@ async function start() {
 }
 
 start();
-
