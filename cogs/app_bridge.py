@@ -60,7 +60,7 @@ class AppBridge(ObserverCog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.started_at = datetime.now(UTC)
-        self.commands_run = 0
+        self.commands_run = self._load_commands_run()
         self._guild_write_lock = asyncio.Lock()
         self._stats_write_lock = asyncio.Lock()
 
@@ -77,6 +77,14 @@ class AppBridge(ObserverCog):
 
     def write_stats(self) -> None:
         write_json_atomic(APP_STATS_FILE, self._stats_payload())
+
+    @staticmethod
+    def _load_commands_run() -> int:
+        try:
+            payload = json.loads(APP_STATS_FILE.read_text(encoding="utf-8"))
+            return max(0, int(payload.get("commands_run", 0)))
+        except (OSError, json.JSONDecodeError, TypeError, ValueError):
+            return 0
 
     def _stats_payload(self) -> dict[str, Any]:
         member_count = sum(guild.member_count or 0 for guild in self.bot.guilds)
@@ -210,6 +218,16 @@ class AppBridge(ObserverCog):
     @commands.Cog.listener()
     async def on_command_completion(self, context: commands.Context) -> None:
         self.commands_run += 1
+        await self.write_stats_async()
+
+    @commands.Cog.listener()
+    async def on_app_command_completion(
+        self,
+        interaction: discord.Interaction,
+        command: discord.app_commands.Command,
+    ) -> None:
+        self.commands_run += 1
+        await self.write_stats_async()
 
     @refresh_guild_data.before_loop
     async def before_refresh_guild_data(self) -> None:
