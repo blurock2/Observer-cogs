@@ -2,7 +2,6 @@ import json
 import logging
 import shutil
 import sqlite3
-import threading
 from contextlib import closing, contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,10 +11,6 @@ BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 DATABASE_PATH = DATA_DIR / "bot.db"
 logger = logging.getLogger("aquila.database")
-# WAL mode is persistent per SQLite database. Negotiating it on every
-# connection acquires locks unnecessarily under high write concurrency.
-_wal_initialized: set[str] = set()
-_wal_init_lock = threading.Lock()
 
 BACKUP_RETENTION_DAYS = 5
 BACKUP_PATTERNS = (
@@ -32,22 +27,10 @@ def connect_sqlite(
 ) -> sqlite3.Connection:
     """Open a project SQLite connection with contention-safe defaults."""
     connection = sqlite3.connect(database_path, timeout=timeout)
-    try:
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA busy_timeout = 10000")
-
-        # The journal mode is stored in the DB file. Initialize it once per
-        # process and DB path, not for each hot-path read or XP flush.
-        db_key = str(Path(database_path).resolve())
-        if db_key not in _wal_initialized:
-            with _wal_init_lock:
-                if db_key not in _wal_initialized:
-                    connection.execute("PRAGMA journal_mode = WAL")
-                    _wal_initialized.add(db_key)
-        return connection
-    except Exception:
-        connection.close()
-        raise
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA busy_timeout = 10000")
+    connection.execute("PRAGMA journal_mode = WAL")
+    return connection
 
 
 def cleanup_old_backups(
@@ -488,6 +471,11 @@ class ModerationCaseStore:
                     status TEXT NOT NULL DEFAULT 'open',
                     reporter_id INTEGER,
                     source_message_id INTEGER,
+                    action_id INTEGER,
+                    expires_at TEXT,
+                    appeal_message_id INTEGER,
+                    reverted_at TEXT,
+                    reverted_by INTEGER,
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     resolved_at TEXT,
                     UNIQUE (guild_id, case_number)
@@ -524,6 +512,27 @@ class ModerationCaseStore:
                 );
                 """
             )
+            existing_columns = {
+                row[1]
+                for row in connection.execute(
+                    "PRAGMA table_info(moderation_cases)"
+                ).fetchall()
+            }
+            for column, declaration in (
+                ("action_id", "INTEGER"),
+                ("expires_at", "TEXT"),
+                ("appeal_message_id", "INTEGER"),
+                ("reverted_at", "TEXT"),
+                ("reverted_by", "INTEGER"),
+            ):
+                if column not in existing_columns:
+                    connection.execute(
+                        f"ALTER TABLE moderation_cases ADD COLUMN {column} {declaration}"
+                    )
+            connection.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_cases_action_id "
+                "ON moderation_cases(guild_id, action_id) WHERE action_id IS NOT NULL"
+            )
 
     def create_case(
         self,
@@ -536,8 +545,17 @@ class ModerationCaseStore:
         reporter_id: int | None = None,
         source_message_id: int | None = None,
         status: str = "open",
+        action_id: int | None = None,
+        expires_at: str | None = None,
     ) -> int:
         with self._connect() as connection:
+            if action_id is not None:
+                existing = connection.execute(
+                    "SELECT id FROM moderation_cases WHERE guild_id = ? AND action_id = ?",
+                    (guild_id, action_id),
+                ).fetchone()
+                if existing is not None:
+                    return int(existing["id"])
             next_number = connection.execute(
                 "SELECT COALESCE(MAX(case_number), 0) + 1 FROM moderation_cases "
                 "WHERE guild_id = ?",
@@ -547,21 +565,165 @@ class ModerationCaseStore:
                 """
                 INSERT INTO moderation_cases
                     (guild_id, case_number, case_type, target_id, moderator_id,
-                     reason, status, reporter_id, source_message_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     reason, status, reporter_id, source_message_id, action_id,
+                     expires_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     guild_id, next_number, case_type, target_id, moderator_id,
-                    reason, status, reporter_id, source_message_id,
+                    reason, status, reporter_id, source_message_id, action_id,
+                    expires_at,
                 ),
             )
             return int(cursor.lastrowid)
+
+    def import_legacy_actions(self) -> int:
+        """Create timeline cases for undo actions recorded before case linking."""
+        with self._connect() as connection:
+            table = connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='moderation_actions'"
+            ).fetchone()
+            if table is None:
+                return 0
+            actions = connection.execute(
+                "SELECT * FROM moderation_actions ORDER BY id"
+            ).fetchall()
+            imported = 0
+            for action in actions:
+                exists = connection.execute(
+                    "SELECT 1 FROM moderation_cases WHERE guild_id = ? AND action_id = ?",
+                    (action["guild_id"], action["id"]),
+                ).fetchone()
+                if exists:
+                    continue
+                next_number = connection.execute(
+                    "SELECT COALESCE(MAX(case_number), 0) + 1 FROM moderation_cases "
+                    "WHERE guild_id = ?",
+                    (action["guild_id"],),
+                ).fetchone()[0]
+                connection.execute(
+                    "INSERT INTO moderation_cases "
+                    "(guild_id, case_number, case_type, target_id, moderator_id, "
+                    "reason, status, action_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        action["guild_id"],
+                        next_number,
+                        action["action_type"],
+                        action["target_id"],
+                        action["moderator_id"],
+                        None,
+                        "resolved",
+                        action["id"],
+                    ),
+                )
+                imported += 1
+            return imported
+
+    def link_unlinked_cases(self) -> int:
+        """Assign action IDs to older cases that predate action linking."""
+        with self._connect() as connection:
+            actions_table = connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' "
+                "AND name='moderation_actions'"
+            ).fetchone()
+            if actions_table is None:
+                return 0
+            rows = connection.execute(
+                "SELECT id, guild_id, case_type, target_id, moderator_id, status "
+                "FROM moderation_cases WHERE action_id IS NULL "
+                "AND moderator_id IS NOT NULL ORDER BY id"
+            ).fetchall()
+            for row in rows:
+                action_status = {
+                    "active": "active",
+                    "reverted": "undone",
+                    "undone": "undone",
+                    "expired": "expired",
+                }.get(row["status"], "resolved")
+                cursor = connection.execute(
+                    "INSERT INTO moderation_actions "
+                    "(guild_id, action_type, target_id, moderator_id, status) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (
+                        row["guild_id"],
+                        row["case_type"],
+                        row["target_id"],
+                        row["moderator_id"],
+                        action_status,
+                    ),
+                )
+                connection.execute(
+                    "UPDATE moderation_cases SET action_id=? WHERE id=?",
+                    (cursor.lastrowid, row["id"]),
+                )
+            return len(rows)
 
     def get_case(self, case_id: int) -> sqlite3.Row | None:
         with self._connect() as connection:
             return connection.execute(
                 "SELECT * FROM moderation_cases WHERE id = ?", (case_id,)
             ).fetchone()
+
+    def get_case_by_action_id(
+        self, guild_id: int, action_id: int
+    ) -> sqlite3.Row | None:
+        with self._connect() as connection:
+            return connection.execute(
+                "SELECT * FROM moderation_cases WHERE guild_id = ? AND action_id = ?",
+                (guild_id, action_id),
+            ).fetchone()
+
+    def get_case_by_appeal_message(self, message_id: int) -> sqlite3.Row | None:
+        with self._connect() as connection:
+            return connection.execute(
+                "SELECT * FROM moderation_cases WHERE appeal_message_id = ?",
+                (message_id,),
+            ).fetchone()
+
+    def set_appeal_message(self, case_id: int, message_id: int) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE moderation_cases SET appeal_message_id = ? WHERE id = ?",
+                (message_id, case_id),
+            )
+
+    def find_active_ban(self, guild_id: int, target_id: int) -> sqlite3.Row | None:
+        with self._connect() as connection:
+            return connection.execute(
+                "SELECT * FROM moderation_cases WHERE guild_id = ? AND target_id = ? "
+                "AND case_type = 'ban' AND (status = 'active' OR "
+                "(status = 'resolved' AND action_id IS NOT NULL AND EXISTS "
+                "(SELECT 1 FROM moderation_actions WHERE id = action_id "
+                "AND status = 'active'))) "
+                "ORDER BY id DESC LIMIT 1",
+                (guild_id, target_id),
+            ).fetchone()
+
+    def list_due_cases(self, now: str) -> list[sqlite3.Row]:
+        with self._connect() as connection:
+            return connection.execute(
+                "SELECT * FROM moderation_cases WHERE status = 'active' "
+                "AND case_type IN ('ban', 'timeout') AND expires_at IS NOT NULL "
+                "AND expires_at <= ? ORDER BY expires_at",
+                (now,),
+            ).fetchall()
+
+    def set_case_status(
+        self,
+        case_id: int,
+        status: str,
+        *,
+        actor_id: int | None = None,
+    ) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE moderation_cases SET status = ?, "
+                "reverted_at = CASE WHEN ? = 'reverted' THEN CURRENT_TIMESTAMP ELSE reverted_at END, "
+                "reverted_by = CASE WHEN ? = 'reverted' THEN ? ELSE reverted_by END, "
+                "resolved_at = CASE WHEN ? IN ('resolved', 'expired', 'reverted') "
+                "THEN CURRENT_TIMESTAMP ELSE resolved_at END WHERE id = ?",
+                (status, status, status, actor_id, status, case_id),
+            )
 
     def list_user_history(self, guild_id: int, user_id: int) -> list[sqlite3.Row]:
         with self._connect() as connection:
@@ -675,6 +837,145 @@ class ModerationCaseStore:
             "open_reports": int(open_reports),
             "response_minutes": round(float(row["response_minutes"] or 0), 1),
         }
+
+
+class BanAppealStore:
+    """Persist one reviewable in-app appeal per permanent-ban case."""
+
+    def __init__(self, db_path: str | Path = DATABASE_PATH):
+        self.db_path = str(db_path)
+        self._init()
+
+    @contextmanager
+    def _connect(self):
+        connection = connect_sqlite(self.db_path)
+        try:
+            yield connection
+        except Exception:
+            connection.rollback()
+            raise
+        else:
+            connection.commit()
+        finally:
+            connection.close()
+
+    def _init(self) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS moderation_ban_appeals (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id INTEGER NOT NULL,
+                    ban_case_id INTEGER NOT NULL,
+                    appeal_case_id INTEGER NOT NULL,
+                    target_id INTEGER NOT NULL,
+                    reason TEXT NOT NULL,
+                    evidence_filenames TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    staff_channel_id INTEGER,
+                    staff_message_id INTEGER,
+                    submitted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    reviewed_by INTEGER,
+                    reviewed_at TEXT,
+                    UNIQUE (guild_id, ban_case_id)
+                )
+                """
+            )
+
+    def get(self, appeal_id: int) -> sqlite3.Row | None:
+        with self._connect() as connection:
+            return connection.execute(
+                "SELECT * FROM moderation_ban_appeals WHERE id = ?",
+                (appeal_id,),
+            ).fetchone()
+
+    def get_for_ban_case(self, guild_id: int, ban_case_id: int) -> sqlite3.Row | None:
+        with self._connect() as connection:
+            return connection.execute(
+                "SELECT * FROM moderation_ban_appeals "
+                "WHERE guild_id = ? AND ban_case_id = ?",
+                (guild_id, ban_case_id),
+            ).fetchone()
+
+    def get_by_staff_message(self, message_id: int) -> sqlite3.Row | None:
+        with self._connect() as connection:
+            return connection.execute(
+                "SELECT * FROM moderation_ban_appeals WHERE staff_message_id = ?",
+                (message_id,),
+            ).fetchone()
+
+    def create(
+        self,
+        guild_id: int,
+        ban_case_id: int,
+        appeal_case_id: int,
+        target_id: int,
+        reason: str,
+        evidence_filenames: str,
+        staff_channel_id: int,
+    ) -> tuple[int, bool]:
+        with self._connect() as connection:
+            existing = connection.execute(
+                "SELECT id FROM moderation_ban_appeals "
+                "WHERE guild_id = ? AND ban_case_id = ?",
+                (guild_id, ban_case_id),
+            ).fetchone()
+            if existing is not None:
+                return int(existing["id"]), False
+            cursor = connection.execute(
+                "INSERT INTO moderation_ban_appeals "
+                "(guild_id, ban_case_id, appeal_case_id, target_id, reason, "
+                "evidence_filenames, staff_channel_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    guild_id,
+                    ban_case_id,
+                    appeal_case_id,
+                    target_id,
+                    reason,
+                    evidence_filenames,
+                    staff_channel_id,
+                ),
+            )
+            return int(cursor.lastrowid), True
+
+    def set_staff_message(self, appeal_id: int, message_id: int) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE moderation_ban_appeals SET staff_message_id = ? WHERE id = ?",
+                (message_id, appeal_id),
+            )
+
+    def claim_review(self, appeal_id: int) -> bool:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "UPDATE moderation_ban_appeals SET status = 'reviewing' "
+                "WHERE id = ? AND status = 'pending'",
+                (appeal_id,),
+            )
+            return cursor.rowcount == 1
+
+    def set_status(
+        self,
+        appeal_id: int,
+        status: str,
+        *,
+        reviewer_id: int | None = None,
+    ) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE moderation_ban_appeals SET status = ?, "
+                "reviewed_by = CASE WHEN ? = 'pending' THEN NULL ELSE ? END, "
+                "reviewed_at = CASE WHEN ? = 'pending' THEN NULL "
+                "ELSE CURRENT_TIMESTAMP END WHERE id = ?",
+                (status, status, reviewer_id, status, appeal_id),
+            )
+
+    def delete(self, appeal_id: int) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "DELETE FROM moderation_ban_appeals WHERE id = ?",
+                (appeal_id,),
+            )
 
 
 class TagStore:
@@ -812,15 +1113,17 @@ class ModerationActionStore:
         action_type: str,
         target_id: int,
         moderator_id: int,
+        *,
+        status: str = "active",
     ) -> int:
         with self._connect() as connection:
             cursor = connection.execute(
                 """
                 INSERT INTO moderation_actions
-                    (guild_id, action_type, target_id, moderator_id)
-                VALUES (?, ?, ?, ?)
+                    (guild_id, action_type, target_id, moderator_id, status)
+                VALUES (?, ?, ?, ?, ?)
                 """,
-                (guild_id, action_type, target_id, moderator_id),
+                (guild_id, action_type, target_id, moderator_id, status),
             )
             return int(cursor.lastrowid)
 
@@ -859,13 +1162,40 @@ class ModerationActionStore:
 
     def complete(self, action_id: int, user_id: int) -> None:
         with self._connect() as connection:
-            connection.execute(
+            cursor = connection.execute(
                 """
                 UPDATE moderation_actions
                 SET status = 'undone', undone_at = CURRENT_TIMESTAMP, undone_by = ?
                 WHERE id = ? AND status = 'undoing'
                 """,
                 (user_id, action_id),
+            )
+            has_cases = connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' "
+                "AND name='moderation_cases'"
+            ).fetchone()
+            if cursor.rowcount == 1 and has_cases:
+                connection.execute(
+                    "UPDATE moderation_cases SET status = 'undone', "
+                    "reverted_at = CURRENT_TIMESTAMP, reverted_by = ? "
+                    "WHERE action_id = ?",
+                    (user_id, action_id),
+                )
+
+    def mark_undone(self, action_id: int, user_id: int) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE moderation_actions SET status = 'undone', "
+                "undone_at = CURRENT_TIMESTAMP, undone_by = ? "
+                "WHERE id = ? AND status = 'active'",
+                (user_id, action_id),
+            )
+
+    def set_status(self, action_id: int, status: str) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE moderation_actions SET status = ? WHERE id = ?",
+                (status, action_id),
             )
 
 
@@ -1058,3 +1388,105 @@ class RelayConfigStore:
                             "INSERT OR IGNORE INTO relay_target_channels VALUES (?, ?, ?)",
                             (source_id, target_id_int, int(channel_id)),
                         )
+
+
+class AntiScamActivityStore:
+    """Keep a short privacy-conscious activity window for scam risk context."""
+
+    RETENTION_SECONDS = 600
+
+    def __init__(self, db_path: str):
+        self.db_path = db_path
+        self._init()
+
+    @contextmanager
+    def _connect(self):
+        connection = connect_sqlite(self.db_path)
+        try:
+            yield connection
+        except Exception:
+            connection.rollback()
+            raise
+        else:
+            connection.commit()
+        finally:
+            connection.close()
+
+    def _init(self) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS anti_scam_activity (
+                    guild_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    channel_id INTEGER,
+                    message_id INTEGER,
+                    created_at REAL NOT NULL,
+                    has_image INTEGER NOT NULL DEFAULT 0,
+                    normal_text INTEGER NOT NULL DEFAULT 0
+                )
+                """
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_anti_scam_activity_user_time "
+                "ON anti_scam_activity (guild_id, user_id, created_at)"
+            )
+            columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(anti_scam_activity)"
+                ).fetchall()
+            }
+            if "message_id" not in columns:
+                connection.execute(
+                    "ALTER TABLE anti_scam_activity ADD COLUMN message_id INTEGER"
+                )
+            connection.execute(
+                "DELETE FROM anti_scam_activity WHERE created_at < ?",
+                (time() - self.RETENTION_SECONDS,),
+            )
+
+    def record(
+        self,
+        guild_id: int,
+        user_id: int,
+        channel_id: int | None,
+        message_id: int,
+        created_at: float,
+        has_image: bool,
+        normal_text: bool,
+    ) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO anti_scam_activity
+                    (guild_id, user_id, channel_id, message_id, created_at, has_image, normal_text)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    guild_id,
+                    user_id,
+                    channel_id,
+                    message_id,
+                    created_at,
+                    int(has_image),
+                    int(normal_text),
+                ),
+            )
+            connection.execute(
+                "DELETE FROM anti_scam_activity WHERE created_at < ?",
+                (created_at - self.RETENTION_SECONDS,),
+            )
+
+    def load(self, guild_id: int, user_id: int, since: float) -> list[sqlite3.Row]:
+        with self._connect() as connection:
+            return connection.execute(
+                """
+                SELECT channel_id, message_id, created_at, has_image, normal_text
+                FROM anti_scam_activity
+                WHERE guild_id = ? AND user_id = ? AND created_at >= ?
+                ORDER BY created_at DESC
+                LIMIT 50
+                """,
+                (guild_id, user_id, since),
+            ).fetchall()
