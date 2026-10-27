@@ -309,7 +309,7 @@ body:has(.site-shell), body:has(.dashboard-shell) { background: #0b0b0d; color: 
 .server-embed-card:hover { border-color: #42d7e8; }
 .server-embed-action { border: 1px solid #31545a; color: #9debf1; }
 .server-embed-action:hover { border-color: #42d7e8; color: #d3fbff; }
-.embed-sender-page { width: min(760px, calc(100% - 48px)); margin: 0 auto; padding: 54px 0 100px; }
+.embed-sender-page { width: min(1120px, calc(100% - 48px)); margin: 0 auto; padding: 54px 0 100px; }
 .embed-sender-page>.back-link { margin-bottom: 30px; }
 .embed-sender-page>.eyebrow { margin-bottom: 12px; }
 .embed-sender-page h1 { margin: 0 0 8px; font-size: clamp(30px, 4vw, 42px); }
@@ -347,6 +347,28 @@ body:has(.site-shell), body:has(.dashboard-shell) { background: #0b0b0d; color: 
 .saved-message-item strong { overflow: hidden; color: #e7f0f1; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .saved-message-item small,.saved-message-item>span:last-child { color: #809194; font-size: 9px; }
 .saved-message-empty { margin: 0; color: #738386; font-size: 10px; }
+.embed-composer-layout { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(310px, .85fr); align-items: start; gap: 18px; }
+.embed-composer-layout .embed-form { min-width: 0; }
+.message-preview-panel { position: sticky; top: 22px; min-width: 0; padding: 20px; border: 1px solid #2b3539; border-radius: 12px; background: linear-gradient(145deg, #15191b, #101315); }
+.message-preview-panel>.eyebrow { margin-bottom: 9px; }
+.message-preview-panel h2 { margin: 0 0 18px; color: #e8f0f1; font-size: 17px; }
+.message-preview { min-height: 148px; padding: 15px; border: 1px solid #252a2e; border-radius: 9px; background: #313338; color: #dbdee1; font-family: Arial, sans-serif; }
+.preview-author { display: flex; align-items: center; gap: 7px; margin-bottom: 11px; color: #f2f3f5; font-size: 12px; font-weight: 700; }
+.preview-author img { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; }
+.preview-author small { padding: 2px 4px; border-radius: 3px; background: #5865f2; color: #fff; font-size: 8px; }
+.preview-author time { color: #aeb3ba; font-size: 10px; font-weight: 400; }
+.preview-message-title { margin-bottom: 7px; color: #fff; font-size: 14px; font-weight: 700; line-height: 1.35; overflow-wrap: anywhere; }
+.preview-message-description { color: #dbdee1; font-size: 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.preview-embed { max-width: 100%; padding: 12px 13px 13px; border-left: 4px solid var(--preview-accent, #42d7e8); border-radius: 4px; background: #2b2d31; }
+.preview-embed .preview-message-title { color: #00a8fc; }
+.preview-v2-card { padding: 13px; border: 1px solid #44474d; border-radius: 8px; background: #2b2d31; }
+.preview-v2-card .preview-message-title { font-size: 15px; }
+.preview-message-footer { margin-top: 10px; padding-top: 9px; border-top: 1px solid #44474d; color: #b5bac1; font-size: 10px; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; }
+.preview-message-image { display: block; max-width: 100%; max-height: 260px; margin-top: 11px; border-radius: 5px; object-fit: contain; object-position: left center; }
+.preview-message-buttons { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+.preview-message-buttons span { padding: 7px 11px; border-radius: 5px; background: #5865f2; color: #fff; font-size: 10px; font-weight: 650; }
+.preview-disclaimer { margin: 11px 0 0; color: #718084; font-size: 9px; line-height: 1.5; }
+@media(max-width:980px) { .embed-composer-layout { grid-template-columns: 1fr; } .message-preview-panel { position: static; grid-row: 1; } }
 @media(max-width:850px) { .server-dashboard-cards:has(.server-config-card):has(.server-embed-card) { grid-template-columns: 1fr; } }
 @media(max-width:620px) { .embed-sender-page { width: calc(100% - 36px); padding: 38px 0 70px; } .embed-form { padding: 17px; } .embed-form-row { grid-template-columns: 1fr; } .embed-form-actions { align-items: flex-start; flex-direction: column; } }
 .module-editor.is-open .module-editor-dialog { transform: translate3d(0, 0, 0); }

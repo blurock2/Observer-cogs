@@ -15,6 +15,15 @@ function brand() {
   return `<a class="brand" href="/" aria-label="Observer home"><span class="brand-mark"><img src="/observer.png" alt=""></span><span>OBSERVER</span></a>`;
 }
 
+function safeImageUrl(value) {
+  try {
+    const url = new URL(value);
+    return ["http:", "https:"].includes(url.protocol) ? url.href : "";
+  } catch {
+    return "";
+  }
+}
+
 async function start() {
   if (!guildId) { location.replace("/?dashboard=1"); return; }
   root.innerHTML = `<main class="dashboard-loading"><img class="loading-mark" src="/observer.png" alt="Observer logo"><p>Loading message sender...</p></main>`;
@@ -22,7 +31,7 @@ async function start() {
     const data = await api(`/api/custom-embed/${encodeURIComponent(guildId)}`);
     const channels = data.channels || [];
     const savedMessages = data.messages || [];
-    root.innerHTML = `<div class="dashboard-shell"><nav class="topbar">${brand()}<div class="topnav"><span class="signed-in-label">SERVER TOOLS</span><button class="signout-button" id="signout">Sign out</button></div></nav><main class="embed-sender-page"><a class="back-link" href="/?dashboard=1">← All servers</a><div class="eyebrow"><span class="live-mark"></span> ${esc(data.guild.name)}</div><h1>Custom message sender</h1><p class="embed-sender-lede">Create a Discord embed or a clean card, then reopen saved messages by pasting their Discord link.</p><form id="embed-form" class="embed-form"><div class="saved-message-picker"><label>Discord message URL <span>Paste the link to a message sent with this tool to load and edit it.</span><input name="message_url" type="url" maxlength="500" placeholder="https://discord.com/channels/server/channel/message"></label><div class="saved-message-actions"><button class="button button-secondary" id="load-message" type="button">Load message</button><button class="button button-secondary" id="new-message" type="button">New message</button></div><div class="saved-message-list-wrap"><div class="saved-message-heading">Recent saved messages</div><div id="saved-message-list" class="saved-message-list"></div></div></div><label>Message style<select name="style"><option value="embed">Standard embed</option><option value="card">Clean card (Components V2)</option></select><span>Cards can include an image and optional link buttons.</span></label><label>Channel<select name="channel_id" required ${channels.length ? "" : "disabled"}><option value="">Choose a channel</option>${channels.map((channel) => `<option value="${esc(channel.id)}" data-can-embed="${channel.can_embed ? "true" : "false"}">${channel.category ? `${esc(channel.category)} / ` : ""}#${esc(channel.name)}${channel.can_embed ? "" : " (card only)"}</option>`).join("")}</select></label><label>Title <span>Optional · up to 256 characters</span><input name="title" maxlength="256" placeholder="Announcement title"></label><label>Description <span>Optional · up to 4,096 characters</span><textarea name="description" maxlength="4096" rows="7" placeholder="Write your message..."></textarea></label><div class="embed-only"><div class="embed-form-row"><label>Embed color<input name="color" type="color" value="#42d7e8"></label></div></div><div class="card-only" hidden><p class="embed-form-note">The card uses Discord's native Components V2 layout and has no embed color stripe.</p><h2>Optional link buttons</h2>${[1, 2, 3].map((i) => `<div class="embed-form-row embed-button-row"><label>Button ${i} label<input name="button_${i}_label" maxlength="80" placeholder="e.g. Read more"></label><label>Button ${i} URL<input name="button_${i}_url" type="url" maxlength="512" placeholder="https://example.com"></label></div>`).join("")}</div><label>Footer <span>Optional · appears in either message style</span><input name="footer" maxlength="2048" placeholder="Footer text"></label><label>Image URL <span>Optional · direct image URL (works in both styles)</span><input name="image_url" type="url" maxlength="1000" placeholder="https://example.com/image.png"></label>${channels.length ? "" : `<p class="embed-sender-empty">Observer needs a text channel with View Channel, Send Messages, and Read Message History.</p>`}<div class="embed-form-actions"><p id="embed-status" role="status" aria-live="polite"></p><button class="button button-primary" type="submit" ${channels.length ? "" : "disabled"}>Send embed <span>↗</span></button></div></form></main></div>`;
+    root.innerHTML = `<div class="dashboard-shell"><nav class="topbar">${brand()}<div class="topnav"><span class="signed-in-label">SERVER TOOLS</span><button class="signout-button" id="signout">Sign out</button></div></nav><main class="embed-sender-page"><a class="back-link" href="/?dashboard=1">← All servers</a><div class="eyebrow"><span class="live-mark"></span> ${esc(data.guild.name)}</div><h1>Custom message sender</h1><p class="embed-sender-lede">Create a Discord embed or a clean card, then reopen saved messages by pasting their Discord link.</p><div class="embed-composer-layout"><form id="embed-form" class="embed-form"><div class="saved-message-picker"><label>Discord message URL <span>Paste the link to a message sent with this tool to load and edit it.</span><input name="message_url" type="url" maxlength="500" placeholder="https://discord.com/channels/server/channel/message"></label><div class="saved-message-actions"><button class="button button-secondary" id="load-message" type="button">Load message</button><button class="button button-secondary" id="new-message" type="button">New message</button></div><div class="saved-message-list-wrap"><div class="saved-message-heading">Recent saved messages</div><div id="saved-message-list" class="saved-message-list"></div></div></div><label>Message style<select name="style"><option value="embed">Standard embed</option><option value="card">Clean card (Components V2)</option></select><span>Cards can include an image and optional link buttons.</span></label><label>Channel<select name="channel_id" required ${channels.length ? "" : "disabled"}><option value="">Choose a channel</option>${channels.map((channel) => `<option value="${esc(channel.id)}" data-can-embed="${channel.can_embed ? "true" : "false"}">${channel.category ? `${esc(channel.category)} / ` : ""}#${esc(channel.name)}${channel.can_embed ? "" : " (card only)"}</option>`).join("")}</select></label><label>Title <span>Optional · up to 256 characters</span><input name="title" maxlength="256" placeholder="Announcement title"></label><label>Description <span>Optional · up to 4,096 characters</span><textarea name="description" maxlength="4096" rows="7" placeholder="Write your message..."></textarea></label><div class="embed-only"><div class="embed-form-row"><label>Embed color<input name="color" type="color" value="#42d7e8"></label></div></div><div class="card-only" hidden><p class="embed-form-note">The card uses Discord's native Components V2 layout and has no embed color stripe.</p><h2>Optional link buttons</h2>${[1, 2, 3].map((i) => `<div class="embed-form-row embed-button-row"><label>Button ${i} label<input name="button_${i}_label" maxlength="80" placeholder="e.g. Read more"></label><label>Button ${i} URL<input name="button_${i}_url" type="url" maxlength="512" placeholder="https://example.com"></label></div>`).join("")}</div><label>Footer <span>Optional · appears in either message style</span><input name="footer" maxlength="2048" placeholder="Footer text"></label><label>Image URL <span>Optional · direct image URL (works in both styles)</span><input name="image_url" type="url" maxlength="1000" placeholder="https://example.com/image.png"></label>${channels.length ? "" : `<p class="embed-sender-empty">Observer needs a text channel with View Channel, Send Messages, and Read Message History.</p>`}<div class="embed-form-actions"><p id="embed-status" role="status" aria-live="polite"></p><button class="button button-primary" type="submit" ${channels.length ? "" : "disabled"}>Send embed <span>↗</span></button></div></form><aside class="message-preview-panel"><div class="eyebrow">LIVE PREVIEW</div><h2>Message appearance</h2><div id="message-preview" class="message-preview"></div><p class="preview-disclaimer">Preview approximates Discord's layout. Discord may render text and media slightly differently.</p></aside></div></main></div>`;
 
     document.querySelector("#signout").addEventListener("click", async () => {
       await api("/auth/logout", { method: "POST" });
@@ -35,6 +44,30 @@ async function start() {
     const status = document.querySelector("#embed-status");
     const submit = form.querySelector('[type="submit"]');
     const savedList = document.querySelector("#saved-message-list");
+    const preview = document.querySelector("#message-preview");
+
+    const renderPreview = () => {
+      const values = Object.fromEntries(new FormData(form));
+      const isCard = styleSelect.value === "card";
+      const title = values.title?.trim() || "Your message title";
+      const description = values.description?.trim() || "Your message text will appear here as you write it.";
+      const footer = values.footer?.trim();
+      const imageUrl = safeImageUrl(values.image_url?.trim() || "");
+      const colorValue = /^#[\da-f]{6}$/i.test(values.color || "") ? values.color : "#42d7e8";
+      const image = imageUrl ? `<img class="preview-message-image" src="${esc(imageUrl)}" alt="Message image preview">` : "";
+      const footerMarkup = footer ? `<div class="preview-message-footer">${esc(footer)}</div>` : "";
+      const buttons = [1, 2, 3].map((index) => ({
+        label: values[`button_${index}_label`]?.trim(),
+        url: safeImageUrl(values[`button_${index}_url`]?.trim() || ""),
+      })).filter((button) => button.label && button.url);
+      const buttonMarkup = buttons.length
+        ? `<div class="preview-message-buttons">${buttons.map((button) => `<span>${esc(button.label)}</span>`).join("")}</div>`
+        : "";
+      const content = isCard
+        ? `<div class="preview-v2-card"><div class="preview-message-title">${esc(title)}</div><div class="preview-message-description">${esc(description)}</div>${footerMarkup}${image}${buttonMarkup}</div>`
+        : `<div class="preview-embed" style="--preview-accent:${colorValue}"><div class="preview-message-title">${esc(title)}</div><div class="preview-message-description">${esc(description)}</div>${image}${footerMarkup}</div>`;
+      preview.innerHTML = `<div class="preview-author"><img src="/observer.png" alt=""><span>Observer</span><small>APP</small><time>now</time></div>${content}`;
+    };
 
     const renderSavedMessages = () => {
       savedList.innerHTML = savedMessages.length
@@ -53,9 +86,12 @@ async function start() {
         if (option.value) option.disabled = !isCard && option.dataset.canEmbed !== "true";
       }
       if (channelSelect.selectedOptions[0]?.disabled) channelSelect.value = "";
+      renderPreview();
     };
     styleSelect.addEventListener("change", updateStyle);
     form.elements.message_url.addEventListener("input", updateStyle);
+    form.addEventListener("input", renderPreview);
+    form.addEventListener("change", renderPreview);
     updateStyle();
 
     const loadMessage = async (messageUrl) => {
