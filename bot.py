@@ -89,6 +89,7 @@ class MyBot(commands.Bot):
         "cogs.weather",
         "cogs.spotify_show",
         "cogs.app_bridge",
+        "cogs.supporter_roles",
     )
 
     def __init__(self) -> None:
