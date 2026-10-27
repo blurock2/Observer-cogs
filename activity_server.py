@@ -388,6 +388,30 @@ class ActivityServer:
             except discord.HTTPException:
                 raise web.HTTPBadGateway(text="Could not load reports from Discord")
         open_reports = sum(report["status"] == "open" for report in reports)
+        recent_actions = []
+        with connect_sqlite(DB_PATH) as db:
+            case_table = db.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='moderation_cases'"
+            ).fetchone()
+            if case_table:
+                rows = db.execute(
+                    "SELECT case_number, case_type, target_id, moderator_id, reason, status, created_at "
+                    "FROM moderation_cases WHERE guild_id=? AND case_type!='report' "
+                    "ORDER BY id DESC LIMIT 6",
+                    (guild.id,),
+                ).fetchall()
+                for row in rows:
+                    target = guild.get_member(int(row["target_id"]))
+                    moderator = guild.get_member(int(row["moderator_id"])) if row["moderator_id"] else None
+                    recent_actions.append({
+                        "case_number": row["case_number"],
+                        "case_type": row["case_type"],
+                        "target_name": target.display_name if target else str(row["target_id"]),
+                        "moderator_name": moderator.display_name if moderator else (str(row["moderator_id"]) if row["moderator_id"] else "Observer"),
+                        "reason": row["reason"] or "No reason recorded",
+                        "status": row["status"],
+                        "created_at": row["created_at"],
+                    })
         return web.json_response({
             "guild": {"id": str(guild.id), "name": guild.name, "icon": guild.icon.key if guild.icon else None,
                       "is_owner": str(guild.owner_id) == str(session["user"].get("id", ""))},
@@ -395,6 +419,7 @@ class ActivityServer:
             "member_count": guild.member_count or 0,
             "open_reports": open_reports,
             "reports": reports,
+            "recent_actions": recent_actions,
             "reports_configured": bool(channel_id),
             "reports_channel": channel.name if channel else None,
         }, headers={"Cache-Control": "no-store"})
