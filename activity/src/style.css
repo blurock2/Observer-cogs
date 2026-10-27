@@ -411,3 +411,28 @@ body.modal-open { overflow: hidden; }
 .mod-action-submit:disabled { opacity: .6; cursor: wait; }
 @media(max-width:720px) { .mod-report { grid-template-columns: 34px minmax(0, 1fr); } .mod-report-controls { align-items: flex-start; } .mod-report-actions { max-width: none; } }
 @media(prefers-reduced-motion:reduce) { .mod-action-modal,.mod-action-dialog { transition-duration: .01ms; } }
+
+.project-facts { width: min(1172px, calc(100% - 68px)); min-height: 72px; margin: 0 auto; display: flex; align-items: center; gap: 18px; border-bottom: 1px solid #ffffff0c; color: #aab5ad; }
+.project-facts > span:first-child { color: #78877d; font: 8px ui-monospace,monospace; letter-spacing: 1.1px; }
+.project-facts b { color: #c4d3c9; font-size: 11px; font-weight: 550; }
+.project-facts i { width: 4px; height: 4px; border-radius: 50%; background: #8fe6b6; }
+.project-facts .facts-status { margin-left: auto; color: #8da899; font: 8px ui-monospace,monospace; letter-spacing: .8px; }
+.engineering-section,.workflow-section { max-width: 1172px; margin: 0 auto; padding: 88px 0; border-bottom: 1px solid #ffffff0c; }
+.engineering-section .section-intro,.workflow-section .section-intro { margin-bottom: 38px; }
+.engineering-section .section-intro h2,.workflow-section .section-intro h2 { margin: 13px 0 0; font: 600 clamp(28px,3vw,38px)/1.18 system-ui; letter-spacing: -1.5px; }
+.project-engineering-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 28px; }
+.project-engineering-item { min-height: 190px; padding: 20px 18px 10px 0; border-top: 1px solid #334139; }
+.project-engineering-item>span,.workflow-steps>article>span { color: #a6edc7; font: 9px ui-monospace,monospace; letter-spacing: 1px; }
+.project-engineering-item h3,.workflow-steps h3 { margin: 23px 0 9px; color: #e8f0ea; font-size: 15px; font-weight: 590; letter-spacing: -.2px; }
+.project-engineering-item p,.workflow-steps p { max-width: 330px; margin: 0; color: #929d94; font-size: 11px; line-height: 1.8; }
+.engineering-note { margin: 27px 0 0; color: #77857b; font-size: 10px; line-height: 1.7; }
+.workflow-section { border-bottom: 0; }
+.workflow-steps { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); border-top: 1px solid #ffffff12; border-bottom: 1px solid #ffffff12; }
+.workflow-steps>article { display: flex; gap: 16px; min-height: 148px; padding: 23px 20px 23px 0; }
+.workflow-steps>article+article { padding-left: 22px; border-left: 1px solid #ffffff12; }
+.workflow-steps h3 { margin: 0 0 8px; }
+.workflow-action { display: flex; align-items: center; gap: 20px; margin-top: 25px; }
+.workflow-source { color: #aab5ad; font-size: 11px; text-decoration: none; }
+.workflow-source:hover,.workflow-source span { color: var(--mint); }
+@media(max-width:900px) { .project-engineering-grid { gap: 17px; } .project-engineering-item { padding-right: 8px; } .workflow-steps>article { gap: 11px; padding-right: 12px; } .workflow-steps>article+article { padding-left: 14px; } }
+@media(max-width:650px) { .project-facts { width: calc(100% - 40px); min-height: auto; padding: 19px 0; gap: 10px 13px; flex-wrap: wrap; } .project-facts .facts-status { width: 100%; margin: 4px 0 0; } .engineering-section,.workflow-section { margin: 0 20px; padding: 65px 0; } .engineering-section .section-intro h2,.workflow-section .section-intro h2 { font-size: 29px; } .project-engineering-grid,.workflow-steps { grid-template-columns: 1fr; } .project-engineering-item { min-height: 0; padding: 19px 0; } .project-engineering-item h3 { margin: 12px 0 7px; } .workflow-steps>article,.workflow-steps>article+article { min-height: 0; padding: 19px 0; border-left: 0; } .workflow-action { align-items: flex-start; flex-direction: column; gap: 15px; } }
