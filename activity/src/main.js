@@ -59,7 +59,7 @@ async function openDashboard() {
     const rows = result.servers.map((server) => {
       const icon = server.icon ? `<img src="https://cdn.discordapp.com/icons/${encodeURIComponent(server.id)}/${encodeURIComponent(server.icon)}.png?size=96" alt="">` : `<span class="server-avatar-fallback">${esc(server.name.slice(0, 1).toUpperCase())}</span>`;
       const action = server.bot_present
-        ? `<a class="server-action server-configure" href="https://discord.com/channels/${encodeURIComponent(server.id)}" target="_blank" rel="noreferrer">Configure in Discord <span>↗</span></a>`
+        ? `<a class="server-action server-configure" href="/setup?guild_id=${encodeURIComponent(server.id)}">Open control panel <span>↗</span></a>`
         : `<a class="server-action server-add" href="${esc(result.invite_url)}&guild_id=${encodeURIComponent(server.id)}&disable_guild_select=true">Add Observer <span>+</span></a>`;
       return `<article class="server-row">${icon}<div class="server-copy"><strong>${esc(server.name)}</strong><span>${server.bot_present ? `<i class="presence-dot"></i> Observer is in this server` : `<i class="presence-dot presence-off"></i> Observer isn’t here yet`}</span></div>${action}</article>`;
     }).join("");
@@ -70,23 +70,11 @@ async function openDashboard() {
   }
 }
 
-async function setupLanding() {
-  const session = await api("/api/session");
-  if (!session.signed_in) { location.replace(loginUrl); return; }
-  const guildId = new URLSearchParams(location.search).get("guild_id");
-  if (!guildId) { await openDashboard(); return; }
-  const data = await api("/api/servers");
-  const server = data.servers.find((item) => item.id === guildId && item.bot_present);
-  if (!server) { await openDashboard(); return; }
-  root.innerHTML = `<div class="dashboard-shell"><nav class="topbar">${brand()}<div class="topnav"><button class="signout-button" id="back-servers">All servers</button></div></nav><main class="server-picker setup-ready"><div class="eyebrow"><span class="live-mark"></span> SERVER VERIFIED</div><h1>${esc(server.name)}</h1><p class="picker-lede">You own this server and Observer is connected. The web setup editor is the next step; for now, open the server and run <code>/setup</code>.</p><a class="button button-primary" href="https://discord.com/channels/${encodeURIComponent(server.id)}" target="_blank" rel="noreferrer">Open server <span>↗</span></a><button class="back-link back-button" id="back-servers2">← Choose another server</button></main></div>`;
-  document.querySelector("#back-servers")?.addEventListener("click", openDashboard);
-  document.querySelector("#back-servers2")?.addEventListener("click", openDashboard);
-}
-
 async function start() {
   try {
     if (location.pathname === "/staff") { await import("./staff.js"); return; }
-    if (location.pathname === "/setup") { await setupLanding(); return; }
+    if (location.pathname === "/setup") { await import("./control_panel.js"); return; }
+    if (new URLSearchParams(location.search).has("dashboard")) { await openDashboard(); return; }
     await loadLanding();
   } catch (error) {
     root.innerHTML = `<main class="server-error"><div class="error-mark">!</div><h1>Observer is taking a moment.</h1><p>${esc(error.message)}</p><a class="back-link" href="/">Try again</a></main>`;

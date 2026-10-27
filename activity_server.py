@@ -11,10 +11,18 @@ from time import monotonic
 from urllib.parse import urlencode
 
 import aiohttp
+import discord
 from aiohttp import web
 
 from cogs.config import BOT_OWNER_ID
-from cogs.setup_ui import DB_PATH
+from cogs.setup_ui import (
+    DB_PATH,
+    MODULES,
+    MAX_TICKET_REASON_OPTIONS,
+    TICKET_PANEL_DEFAULTS,
+    get_setting_value,
+    setting_visible,
+)
 from database import connect_sqlite
 
 logger = logging.getLogger("observer.activity")
@@ -45,6 +53,8 @@ class ActivityServer:
         app.router.add_post("/auth/logout", self.logout)
         app.router.add_get("/api/session", self.session_info)
         app.router.add_get("/api/servers", self.servers)
+        app.router.add_get("/api/control-panel/{guild_id}", self.control_panel)
+        app.router.add_post("/api/control-panel/{guild_id}/setting", self.save_control_panel_setting)
         app.router.add_get("/api/public-info", self.public_info)
         app.router.add_post("/api/token", self.exchange_code)
         app.router.add_get("/api/activity/{view}", self.activity_data)
@@ -144,7 +154,7 @@ class ActivityServer:
         except (aiohttp.ClientError, asyncio.TimeoutError):
             logger.exception("Discord OAuth callback failed")
             raise web.HTTPBadGateway(text="Discord sign-in is temporarily unavailable")
-        response = web.HTTPFound("/")
+        response = web.HTTPFound("/?dashboard=1")
         response.del_cookie("observer_oauth_state", path="/")
         response.set_cookie("observer_session", key, max_age=7 * 24 * 3600, httponly=True, secure=self._secure_cookie(), samesite="Lax", path="/")
         return response
@@ -236,6 +246,157 @@ class ActivityServer:
             })
         items.sort(key=lambda item: (not item["bot_present"], item["name"].casefold()))
         return web.json_response({"servers": items, "invite_url": self._bot_invite_url()}, headers={"Cache-Control": "no-store"})
+
+    def _dashboard_guild(self, request: web.Request) -> tuple[dict, discord.Guild]:
+        session = self._get_session(request)
+        try:
+            guild_id = int(request.match_info["guild_id"])
+        except (KeyError, TypeError, ValueError):
+            raise web.HTTPBadRequest(text="A valid server ID is required")
+        guild = self.bot.get_guild(guild_id)
+        if guild is None:
+            raise web.HTTPNotFound(text="Observer is not in that server")
+        if str(guild.owner_id) != str(session["user"].get("id", "")):
+            raise web.HTTPForbidden(text="Only the server owner can configure Observer from this page")
+        return session, guild
+
+    async def control_panel(self, request: web.Request) -> web.Response:
+        _, guild = self._dashboard_guild(request)
+        try:
+            channels = await guild.fetch_channels()
+        except discord.HTTPException:
+            logger.info("Could not refresh channels for dashboard guild %s; using cache", guild.id)
+            channels = list(guild.channels)
+        try:
+            roles = await guild.fetch_roles()
+        except discord.HTTPException:
+            logger.info("Could not refresh roles for dashboard guild %s; using cache", guild.id)
+            roles = list(guild.roles)
+
+        modules = []
+        for module in MODULES:
+            settings = []
+            for spec in module.settings:
+                if not setting_visible(guild.id, module.key, spec.key):
+                    continue
+                if spec.kind == "ticket_panel":
+                    value = {
+                        key: self.bot.setup_store.get(
+                            guild.id, module.key, key, default=default
+                        )
+                        for key, default in TICKET_PANEL_DEFAULTS.items()
+                    }
+                else:
+                    value = get_setting_value(
+                        self.bot.setup_store, guild, module, spec
+                    )
+                settings.append({
+                    "key": spec.key,
+                    "label": spec.label,
+                    "kind": spec.kind,
+                    "description": spec.description,
+                    "default": spec.default,
+                    "value": value,
+                })
+            modules.append({
+                "key": module.key,
+                "label": module.label,
+                "emoji": module.emoji,
+                "description": module.description,
+                "settings": settings,
+            })
+
+        channel_items = [{
+            "id": str(channel.id),
+            "name": channel.name,
+            "type": getattr(channel.type, "name", str(channel.type)),
+            "category_id": str(getattr(channel, "category_id", None)) if getattr(channel, "category_id", None) else None,
+        } for channel in sorted(channels, key=lambda item: (item.position, item.name.casefold()))]
+        role_items = [{
+            "id": str(role.id),
+            "name": role.name,
+            "position": role.position,
+            "is_default": role.is_default(),
+        } for role in sorted(roles, key=lambda item: (item.position, item.name.casefold()), reverse=True) if not role.is_default()]
+        return web.json_response({
+            "guild": {"id": str(guild.id), "name": guild.name, "icon": guild.icon.key if guild.icon else None},
+            "modules": modules,
+            "channels": channel_items,
+            "roles": role_items,
+        }, headers={"Cache-Control": "no-store"})
+
+    async def save_control_panel_setting(self, request: web.Request) -> web.Response:
+        _, guild = self._dashboard_guild(request)
+        try:
+            payload = await request.json()
+        except (ValueError, web.HTTPException):
+            raise web.HTTPBadRequest(text="Invalid request body")
+        if not isinstance(payload, dict):
+            raise web.HTTPBadRequest(text="Invalid setting")
+        module = next((item for item in MODULES if item.key == payload.get("module")), None)
+        if module is None:
+            raise web.HTTPBadRequest(text="Unknown feature")
+        key = payload.get("key")
+        spec = next((item for item in module.settings if item.key == key), None)
+        if spec is None or not setting_visible(guild.id, module.key, spec.key):
+            raise web.HTTPBadRequest(text="Unknown setting")
+        value = payload.get("value")
+        store = self.bot.setup_store
+
+        if spec.kind == "ticket_panel":
+            if not isinstance(value, dict):
+                raise web.HTTPBadRequest(text="Invalid ticket panel settings")
+            title = value.get("panel_title")
+            description = value.get("panel_description")
+            footer = value.get("panel_footer")
+            reasons = value.get("reason_options")
+            if not isinstance(title, str) or not title.strip() or len(title) > 256:
+                raise web.HTTPBadRequest(text="Panel title must be 1–256 characters")
+            if not isinstance(description, str) or len(description) > 2048:
+                raise web.HTTPBadRequest(text="Panel description must be at most 2048 characters")
+            if not isinstance(footer, str) or len(footer) > 2048:
+                raise web.HTTPBadRequest(text="Panel footer must be at most 2048 characters")
+            if (not isinstance(reasons, list) or not 1 <= len(reasons) <= MAX_TICKET_REASON_OPTIONS
+                    or any(not isinstance(reason, str) or not reason.strip() or len(reason) > 100 for reason in reasons)):
+                raise web.HTTPBadRequest(text=f"Add 1–{MAX_TICKET_REASON_OPTIONS} ticket reasons of up to 100 characters each")
+            for field, field_value in (("panel_title", title.strip()), ("panel_description", description), ("panel_footer", footer), ("reason_options", [reason.strip() for reason in reasons])):
+                store.set(guild.id, module.key, field, field_value)
+            return web.json_response({"ok": True, "value": value}, headers={"Cache-Control": "no-store"})
+
+        if spec.kind == "toggle":
+            if not isinstance(value, bool):
+                raise web.HTTPBadRequest(text="Toggle value must be true or false")
+        elif spec.kind == "integer":
+            if type(value) is not int or not 0 <= value <= 1_000_000:
+                raise web.HTTPBadRequest(text="Enter a whole number between 0 and 1,000,000")
+        elif spec.kind == "text":
+            if not isinstance(value, str) or len(value) > 4000:
+                raise web.HTTPBadRequest(text="Text values must be 4,000 characters or fewer")
+        elif spec.kind == "channel":
+            if value in (None, ""):
+                value = None
+            else:
+                try:
+                    value = int(value)
+                except (TypeError, ValueError):
+                    raise web.HTTPBadRequest(text="Choose a valid channel")
+                if guild.get_channel(value) is None:
+                    raise web.HTTPBadRequest(text="That channel is not in this server")
+        elif spec.kind == "role":
+            if value in (None, ""):
+                value = None
+            else:
+                try:
+                    value = int(value)
+                except (TypeError, ValueError):
+                    raise web.HTTPBadRequest(text="Choose a valid role")
+                if guild.get_role(value) is None or value == guild.default_role.id:
+                    raise web.HTTPBadRequest(text="That role cannot be selected")
+        else:
+            raise web.HTTPBadRequest(text="This setting is not available in the web panel")
+
+        store.set(guild.id, module.key, spec.key, value)
+        return web.json_response({"ok": True, "value": value}, headers={"Cache-Control": "no-store"})
 
     def _bot_invite_url(self) -> str:
         if not self.client_id:
