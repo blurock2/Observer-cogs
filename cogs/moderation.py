@@ -1433,7 +1433,7 @@ class ModerationCog(ObserverCog):
                 expires_at=expires_at,
             )
             ban_dm_view = None
-            if ban_expires_at is None and self.get_appeals_channel(interaction.guild):
+            if ban_expires_at is None:
                 ban_dm_view = PermanentBanDMView(
                     self,
                     moderator_id=interaction.user.id,
