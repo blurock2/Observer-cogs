@@ -20,14 +20,19 @@ class SupporterRoleKeeper(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.role_names = {
-            os.getenv("OBSERVER_KOFI_ONE_TIME_ROLE_NAME", "One-Time Supporter").strip(),
+            "Supporter <3",
+            "Monthly Supporter <3",
+            "Tier 1 - Cookie :3",
+            "Tier 2 - Cutie <3",
+            "Tier 3 - Goated",
+            os.getenv("OBSERVER_KOFI_ONE_TIME_ROLE_NAME", "Supporter <3").strip(),
             os.getenv("OBSERVER_KOFI_TIER_1_ROLE_NAME", "Tier 1 - Cookie :3").strip(),
             os.getenv("OBSERVER_KOFI_TIER_2_ROLE_NAME", "Tier 2 - Cutie <3").strip(),
             os.getenv("OBSERVER_KOFI_TIER_3_ROLE_NAME", "Tier 3 - Goated").strip(),
         }
-        legacy_monthly_role = os.getenv("OBSERVER_KOFI_MONTHLY_ROLE_NAME", "").strip()
-        if legacy_monthly_role:
-            self.role_names.add(legacy_monthly_role)
+        self.role_names.add(
+            os.getenv("OBSERVER_KOFI_MONTHLY_ROLE_NAME", "Monthly Supporter <3").strip()
+        )
         self.role_names.discard("")
         with connect_sqlite(DB_PATH) as db:
             db.execute(
