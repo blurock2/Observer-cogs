@@ -340,6 +340,8 @@ body:has(.site-shell), body:has(.dashboard-shell) { background: #0b0b0d; color: 
 .saved-message-picker>label span { color: #7f9092; font-size: 9px; font-weight: 400; }
 .saved-message-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .saved-message-actions .button { min-height: 34px; padding: 0 12px; font-size: 10px; }
+.saved-message-actions .button-secondary { border-color: #354247; background: #151b1e; color: #d6e0e2; }
+.saved-message-actions .button-secondary:hover { border-color: #42d7e8; background: #1a272b; color: #effcff; }
 .saved-message-list-wrap { display: grid; gap: 7px; padding-top: 9px; border-top: 1px solid #222b2e; }
 .saved-message-heading { color: #7f9092; font-size: 9px; letter-spacing: .12em; text-transform: uppercase; }
 .saved-message-list { display: grid; gap: 6px; max-height: 210px; overflow: auto; }
