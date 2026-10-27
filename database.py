@@ -699,6 +699,23 @@ class ModerationCaseStore:
                 (guild_id, target_id),
             ).fetchone()
 
+    def find_cross_server_scam_ban(
+        self, target_id: int, *, exclude_guild_id: int
+    ) -> sqlite3.Row | None:
+        """Find a still-active automatic scam ban recorded in another server."""
+        with self._connect() as connection:
+            return connection.execute(
+                "SELECT guild_id, reason, created_at FROM moderation_cases "
+                "WHERE target_id = ? AND guild_id != ? AND case_type = 'ban' "
+                "AND reason LIKE 'High-confidence scam detection:%' "
+                "AND (status = 'active' OR (status = 'resolved' AND action_id IS NOT NULL "
+                "AND EXISTS (SELECT 1 FROM moderation_actions "
+                "WHERE moderation_actions.id = moderation_cases.action_id "
+                "AND moderation_actions.status = 'active'))) "
+                "ORDER BY id DESC LIMIT 1",
+                (target_id, exclude_guild_id),
+            ).fetchone()
+
     def list_due_cases(self, now: str) -> list[sqlite3.Row]:
         with self._connect() as connection:
             return connection.execute(
