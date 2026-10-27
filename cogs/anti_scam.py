@@ -1206,6 +1206,7 @@ class AntiScam(ObserverCog):
         reason = None
         title = None
         result = "not applied"
+        enforcement_cache_seconds = 600
         if confirmed_enabled:
             source = await asyncio.to_thread(
                 self.cases.find_cross_server_scam_ban,
@@ -1223,6 +1224,8 @@ class AntiScam(ObserverCog):
                 timeout_minutes = self._int_setting(
                     guild.id, "cross_server_scam_timeout_minutes", 1440, 1, 40320
                 )
+                if not ban:
+                    enforcement_cache_seconds = max(600, timeout_minutes * 60)
                 result = await self.restrict(
                     member, reason, ban=ban, minutes=timeout_minutes
                 )
@@ -1242,6 +1245,7 @@ class AntiScam(ObserverCog):
                 timeout_minutes = self._int_setting(
                     guild.id, "cross_server_report_timeout_minutes", 60, 1, 40320
                 )
+                enforcement_cache_seconds = max(600, timeout_minutes * 60)
                 reason = (
                     f"Staff-accepted reports in {report_guilds} other Observer servers "
                     "within the last 30 days"
@@ -1256,7 +1260,7 @@ class AntiScam(ObserverCog):
             return False
 
         if "failed" not in result and "not applied" not in result:
-            self.cross_server_enforcements[key] = now + 600
+            self.cross_server_enforcements[key] = now + enforcement_cache_seconds
         await self._alert(
             guild,
             title or "Cross-server account check",
