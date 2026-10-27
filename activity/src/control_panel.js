@@ -20,7 +20,7 @@ function renderCards() {
   document.querySelector("#module-grid").innerHTML = modules.map((module) => {
     const enabled = module.settings.find((setting) => setting.key === "enabled");
     const state = enabled ? (enabled.value ? "Enabled" : "Disabled") : "Configure options";
-    return `<article class="control-module"><div class="module-card-top"><span class="module-emoji">${esc(module.emoji)}</span><span class="module-count">${module.settings.length} SETTINGS</span></div><h2>${esc(module.label)}</h2><p>${esc(module.description)}</p><div class="module-card-actions">${enabled ? `<label class="web-toggle"><input type="checkbox" data-toggle-setting="${module.key}|enabled" ${enabled.value ? "checked" : ""}><span></span><b>${state}</b></label>` : `<span class="module-state">${state}</span>`}<button class="configure-module" data-config-module="${module.key}">Advanced menu <span>→</span></button></div></article>`;
+    return `<article class="control-module" data-open-module="${module.key}" tabindex="0"><div class="module-card-top"><span class="module-emoji">${esc(module.emoji)}</span><span class="module-count">${module.settings.length} SETTINGS</span></div><h2>${esc(module.label)}</h2><p>${esc(module.description)}</p><div class="module-card-actions">${enabled ? `<label class="web-toggle"><input type="checkbox" data-toggle-setting="${module.key}|enabled" ${enabled.value ? "checked" : ""}><span></span><b>${state}</b></label>` : `<span class="module-state">${state}</span>`}<button class="configure-module" data-config-module="${module.key}">Advanced menu <span>→</span></button></div></article>`;
   }).join("") || `<p class="empty-settings">No features match that search.</p>`;
 }
 
@@ -60,14 +60,25 @@ function controlFor(module, setting) {
   return `<section class="setting-row${warning}"><div class="setting-copy"><label for="${id}">${esc(setting.label)}</label>${setting.description ? `<small>${esc(setting.description)}</small>` : ""}</div><div class="setting-widget">${field}</div></section>`;
 }
 
-function renderEditor(key) {
+function renderEditor(key, animate = true) {
   selectedModule = key;
   const module = panel.modules.find((item) => item.key === key);
   const editor = document.querySelector("#module-editor");
   const enabled = module.settings.find((setting) => setting.key === "enabled");
   editor.hidden = false;
-  editor.innerHTML = `<div class="editor-head"><div><div class="eyebrow">ADVANCED SETTINGS</div><h2>${esc(module.emoji)} ${esc(module.label)}</h2><p>${esc(module.description)}</p></div><button id="close-module-editor" class="editor-close" aria-label="Close settings">×</button></div><div class="editor-enable">${enabled ? `<span>${esc(enabled.label)}</span><label class="web-toggle"><input type="checkbox" data-toggle-setting="${module.key}|enabled" ${enabled.value ? "checked" : ""}><span></span><b>${enabled.value ? "Enabled" : "Disabled"}</b></label>` : `<span>This cog has no master switch. Configure its options below.</span>`}</div><div class="settings-list">${module.settings.map((setting) => controlFor(module, setting)).join("") || `<p class="empty-settings">No web settings are defined for this cog yet.</p>`}</div>`;
-  editor.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (animate) editor.classList.remove("is-open");
+  editor.innerHTML = `<div class="module-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="module-editor-title"><div class="editor-head"><div><div class="eyebrow">ADVANCED SETTINGS</div><h2 id="module-editor-title">${esc(module.emoji)} ${esc(module.label)}</h2><p>${esc(module.description)}</p></div><button id="close-module-editor" class="editor-close" aria-label="Close settings">×</button></div><div class="editor-enable">${enabled ? `<span>${esc(enabled.label)}</span><label class="web-toggle"><input type="checkbox" data-toggle-setting="${module.key}|enabled" ${enabled.value ? "checked" : ""}><span></span><b>${enabled.value ? "Enabled" : "Disabled"}</b></label>` : `<span>This cog has no master switch. Configure its options below.</span>`}</div><div class="settings-list">${module.settings.map((setting) => controlFor(module, setting)).join("") || `<p class="empty-settings">No web settings are defined for this cog yet.</p>`}</div></div>`;
+  document.body.classList.add("modal-open");
+  if (animate) requestAnimationFrame(() => editor.classList.add("is-open"));
+}
+
+function closeEditor() {
+  const editor = document.querySelector("#module-editor");
+  if (!editor || editor.hidden) return;
+  editor.classList.remove("is-open");
+  document.body.classList.remove("modal-open");
+  selectedModule = null;
+  setTimeout(() => { if (!editor.classList.contains("is-open")) editor.hidden = true; }, 240);
 }
 
 function activityPanel() {
@@ -93,7 +104,7 @@ async function save(moduleKey, key, value) {
   const setting = module?.settings.find((item) => item.key === key);
   if (setting) setting.value = value;
   renderCards();
-  if (selectedModule) renderEditor(selectedModule);
+  if (selectedModule) renderEditor(selectedModule, false);
   const notice = document.querySelector("#save-notice");
   notice.textContent = "Saved to Observer";
   notice.classList.add("is-visible");
@@ -107,9 +118,11 @@ function render() {
   document.querySelector("#module-search").addEventListener("input", renderCards);
   document.querySelector("#signout").addEventListener("click", async () => { await api("/auth/logout", { method: "POST" }); location.assign("/"); });
   root.addEventListener("click", async (event) => {
+    const card = event.target.closest("[data-open-module]");
+    if (card && !event.target.closest("button, input, label, a, textarea, select")) { renderEditor(card.dataset.openModule); return; }
     const config = event.target.closest("[data-config-module]");
     if (config) { renderEditor(config.dataset.configModule); return; }
-    if (event.target.closest("#close-module-editor")) { document.querySelector("#module-editor").hidden = true; selectedModule = null; return; }
+    if (event.target.closest("#close-module-editor") || event.target.id === "module-editor") { closeEditor(); return; }
     const saveButton = event.target.closest("[data-save-setting]");
     if (saveButton) {
       const [moduleKey, key] = saveButton.dataset.saveSetting.split("|");
@@ -141,6 +154,16 @@ function render() {
   root.addEventListener("input", (event) => {
     const picker = event.target.closest("[data-picker-input]");
     if (picker) syncPicker(picker);
+  });
+  root.addEventListener("keydown", (event) => {
+    const card = event.target.closest("[data-open-module]");
+    if (card && event.target === card && (event.key === "Enter" || event.key === " ")) {
+      event.preventDefault();
+      renderEditor(card.dataset.openModule);
+    }
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeEditor();
   });
 }
 
