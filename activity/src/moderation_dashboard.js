@@ -23,10 +23,14 @@ function reportRows() {
     const date = new Date(report.created_at);
     const time = Number.isNaN(date.getTime()) ? "Recently" : date.toLocaleString();
     const actionButton = (action, label, className = "") => `<button class="mod-action-button ${className}" data-report-action="${action}" data-report-id="${esc(report.id)}">${label}</button>`;
+    const isClaimant = String(data.viewer_id) === String(report.claimed_by || "");
     const claimControl = report.claimed_by
       ? actionButton("unclaim", "↩ Unclaim Report", "secondary")
-      : (report.status === "open" && !report.accepted ? actionButton("claim", "Claim", "secondary") : "");
-    const reportActions = `${claimControl}${actionButton("warn", "Warn", "warn")}${actionButton("timeout", "Timeout", "timeout")}${actionButton("delete", "Delete", "danger")}${!report.accepted ? actionButton("close", "Close Report", "secondary") : `<span class="mod-action-complete">Closed</span>`}${!report.escalated_by_name ? actionButton("escalate", "Escalate", "escalate") : `<span class="mod-action-complete">Escalated</span>`}`;
+      : actionButton("claim", "Claim", "secondary");
+    const claimantActions = isClaimant
+      ? `${actionButton("warn", "Warn", "warn")}${actionButton("timeout", "Timeout", "timeout")}${actionButton("delete", "Delete", "danger")}${!report.accepted ? actionButton("close", "Close Report", "secondary") : `<span class="mod-action-complete">Closed</span>`}${!report.escalated_by_name ? actionButton("escalate", "Escalate", "escalate") : `<span class="mod-action-complete">Escalated</span>`}`
+      : `<span class="mod-action-complete">${report.claimed_by ? `Actions reserved for ${esc(report.claimed_by_name || "the claimant")}` : "Claim to take report actions"}</span>`;
+    const reportActions = `${claimControl}${claimantActions}`;
     const claimNote = report.claimed_by_name ? `<small class="mod-claim-note">Claimed by ${esc(report.claimed_by_name)}</small>` : "";
     const linkedActionText = (report.linked_actions || []).map((action) => `Case #${action.case_number} ${action.case_type} by ${action.moderator_name}`).join(" · ");
     const resolution = report.status === "closed"
