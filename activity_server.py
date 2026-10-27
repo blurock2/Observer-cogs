@@ -378,6 +378,15 @@ class ActivityServer:
                     claimed_match = re.search(r"\((\d{15,22})\)", claimed_raw)
                     claimed_id = claimed_match.group(1) if claimed_match else None
                     claimed_member = guild.get_member(int(claimed_id)) if claimed_id else None
+                    accepted_raw = fields.get("accepted by staff", "")
+                    accepted_match = re.search(r"<@!?(\d{15,22})>", accepted_raw)
+                    accepted_id = accepted_match.group(1) if accepted_match else None
+                    accepted_member = guild.get_member(int(accepted_id)) if accepted_id else None
+                    message_link = fields.get("message link", "")
+                    linked_message_match = re.search(
+                        r"https?://(?:canary\.|ptb\.)?discord(?:app)?\.com/channels/\d+/\d+/(\d{15,22})",
+                        message_link,
+                    )
                     reports.append({
                         "id": str(message.id),
                         "target_name": member.display_name if member else (f"User {target_id}" if target_id else "Unknown member"),
@@ -388,13 +397,46 @@ class ActivityServer:
                         "url": message.jump_url,
                         "status": "closed" if closed else "open",
                         "claimed_by": claimed_id,
-                        "claimed_by_name": claimed_member.display_name if claimed_member else None,
+                        "claimed_by_name": claimed_member.display_name if claimed_member else (f"User {claimed_id}" if claimed_id else None),
                         "accepted": "accepted by staff" in fields,
+                        "accepted_by_name": accepted_member.display_name if accepted_member else (f"User {accepted_id}" if accepted_id else None),
+                        "reported_message_id": linked_message_match.group(1) if linked_message_match else None,
+                        "linked_actions": [],
                     })
             except discord.Forbidden:
                 raise web.HTTPServiceUnavailable(text="Observer needs permission to view the configured reports channel")
             except discord.HTTPException:
                 raise web.HTTPBadGateway(text="Could not load reports from Discord")
+        source_ids = sorted({report["reported_message_id"] for report in reports if report["reported_message_id"]})
+        if source_ids:
+            with connect_sqlite(DB_PATH) as db:
+                case_table = db.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='moderation_cases'"
+                ).fetchone()
+                if case_table:
+                    placeholders = ",".join("?" for _ in source_ids)
+                    rows = db.execute(
+                        "SELECT case_number, case_type, target_id, moderator_id, reason, status, created_at, source_message_id "
+                        f"FROM moderation_cases WHERE guild_id=? AND source_message_id IN ({placeholders}) "
+                        "ORDER BY id DESC",
+                        (guild.id, *[int(source_id) for source_id in source_ids]),
+                    ).fetchall()
+                    linked_by_message = {}
+                    for row in rows:
+                        target = guild.get_member(int(row["target_id"]))
+                        moderator = guild.get_member(int(row["moderator_id"])) if row["moderator_id"] else None
+                        linked_by_message.setdefault(str(row["source_message_id"]), []).append({
+                            "case_number": row["case_number"],
+                            "case_type": row["case_type"],
+                            "target_name": target.display_name if target else str(row["target_id"]),
+                            "moderator_name": moderator.display_name if moderator else (str(row["moderator_id"]) if row["moderator_id"] else "Observer"),
+                            "reason": row["reason"] or "No reason recorded",
+                            "status": row["status"],
+                            "created_at": row["created_at"],
+                        })
+                    for report in reports:
+                        report["linked_actions"] = linked_by_message.get(report["reported_message_id"], [])
+
         open_reports = sum(report["status"] == "open" for report in reports)
         recent_actions = []
         with connect_sqlite(DB_PATH) as db:
