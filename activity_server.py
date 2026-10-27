@@ -294,12 +294,44 @@ class ActivityServer:
 
     async def public_info(self, request: web.Request) -> web.Response:
         support_guild_id = os.getenv("OBSERVER_SUPPORT_GUILD_ID", "1535974879554437210")
+        stats = {"reports": 0, "honeypot_bans": 0, "image_scam_bans": 0}
+        try:
+            with connect_sqlite(DB_PATH) as db:
+                tables = {
+                    row["name"]
+                    for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+                }
+                if "accepted_report_tracking" in tables:
+                    stats["reports"] = int(db.execute("SELECT COUNT(*) FROM accepted_report_tracking").fetchone()[0])
+                elif "reports" in tables:
+                    stats["reports"] = int(db.execute("SELECT COUNT(*) FROM reports").fetchone()[0])
+                if "moderation_cases" in tables:
+                    stats["honeypot_bans"] = int(db.execute(
+                        """SELECT COUNT(*) FROM moderation_cases
+                           WHERE case_type = 'ban'
+                           AND reason = 'Posted in the configured do-not-post honeypot channel'"""
+                    ).fetchone()[0])
+                    stats["image_scam_bans"] = int(db.execute(
+                        """SELECT COUNT(*) FROM moderation_cases
+                           WHERE case_type = 'ban'
+                           AND reason LIKE 'High-confidence scam detection:%'
+                           AND (
+                               reason LIKE '%image text:%'
+                               OR reason LIKE '%scam phrase in image:%'
+                               OR reason LIKE '%image resembles confirmed scam:%'
+                               OR reason LIKE '%MrBeast-style image giveaway bait%'
+                               OR reason LIKE '%suspicious Nitro gift claim image%'
+                           )"""
+                    ).fetchone()[0])
+        except Exception:
+            logger.exception("Could not load public Observer statistics")
         info = {
             "creator": os.getenv("OBSERVER_CREATOR_NAME", "").strip() or "Rocky / Rockus26",
             "support_url": os.getenv("OBSERVER_SUPPORT_URL", f"https://discord.com/channels/{support_guild_id}"),
             "source_url": os.getenv("OBSERVER_SOURCE_URL", "").strip() or "https://github.com/blurock2/Observer-cogs",
             "portfolio_url": os.getenv("OBSERVER_PORTFOLIO_URL", "").strip() or "https://my-website.rockus26.workers.dev/#projects",
             "kofi_url": os.getenv("OBSERVER_KOFI_URL", "").strip() or "https://ko-fi.com/supporting_observer",
+            "stats": stats,
         }
         return web.json_response(info, headers={"Cache-Control": "public, max-age=300"})
 
