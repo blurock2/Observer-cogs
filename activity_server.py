@@ -50,6 +50,7 @@ class ActivityServer:
         app.router.add_get("/api/activity/{view}", self.activity_data)
         app.router.add_get("/healthz", self.health)
         app.router.add_get("/observer.png", self.observer_icon)
+        app.router.add_get("/observer-icon.svg", self.observer_favicon)
         app.router.add_get("/", self.index)
         app.router.add_get("/staff", self.index)
         app.router.add_get("/setup", self.index)
@@ -260,6 +261,12 @@ class ActivityServer:
 
     async def observer_icon(self, request: web.Request) -> web.StreamResponse:
         icon = ACTIVITY_DIR / "dist" / "observer.png"
+        if not icon.is_file():
+            raise web.HTTPNotFound()
+        return web.FileResponse(icon, headers={"Cache-Control": "public, max-age=86400"})
+
+    async def observer_favicon(self, request: web.Request) -> web.StreamResponse:
+        icon = ACTIVITY_DIR / "dist" / "observer-icon.svg"
         if not icon.is_file():
             raise web.HTTPNotFound()
         return web.FileResponse(icon, headers={"Cache-Control": "public, max-age=86400"})

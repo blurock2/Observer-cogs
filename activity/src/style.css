@@ -93,4 +93,19 @@ body:has(.site-shell), body:has(.dashboard-shell) { background: #0b0b0d; color: 
   object-position: center;
   transform: none;
 }
+.brand-mark, .mini-mark {
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: none;
+  overflow: hidden;
+}
+.brand-mark img, .mini-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  transform: none;
+  border-radius: 50%;
+}
 
