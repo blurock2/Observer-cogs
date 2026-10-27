@@ -105,7 +105,20 @@ class SupporterRoleKeeper(commands.Cog):
         guild = self.bot.get_guild(OBSERVER_SUPPORT_GUILD_ID)
         if guild is None:
             return
+        supporter_role_ids = {
+            role.id for role in guild.roles if role.name in self.role_names
+        }
         with connect_sqlite(DB_PATH) as db:
+            existing_supporters = [
+                (guild.id, member.id, role.id)
+                for member in guild.members
+                for role in member.roles
+                if role.id in supporter_role_ids
+            ]
+            db.executemany(
+                "INSERT OR IGNORE INTO activity_supporter_roles (guild_id, member_id, role_id) VALUES (?, ?, ?)",
+                existing_supporters,
+            )
             rows = db.execute(
                 "SELECT member_id, role_id FROM activity_supporter_roles WHERE guild_id = ?",
                 (guild.id,),
