@@ -710,6 +710,13 @@ class ReportMessage(ObserverCog):
                     if embed is None:
                         continue
 
+                    # A previous integration or another bot may have posted
+                    # report embeds in this channel. Discord only lets the
+                    # author edit a message, so skip those instead of logging
+                    # a Forbidden traceback on every startup.
+                    if self.bot.user is None or message.author.id != self.bot.user.id:
+                        continue
+
                     claimed_by = _report_claimed_by(embed)
                     accepted = _report_is_accepted(embed)
 
