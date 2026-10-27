@@ -894,6 +894,7 @@ class BanAppealStore:
                     submitted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     reviewed_by INTEGER,
                     reviewed_at TEXT,
+                    controls_disabled_at TEXT,
                     controls_reenabled_at TEXT,
                     UNIQUE (guild_id, ban_case_id)
                 )
@@ -905,11 +906,11 @@ class BanAppealStore:
                     "PRAGMA table_info(moderation_ban_appeals)"
                 ).fetchall()
             }
-            if "controls_reenabled_at" not in columns:
-                connection.execute(
-                    "ALTER TABLE moderation_ban_appeals "
-                    "ADD COLUMN controls_reenabled_at TEXT"
-                )
+            for column in ("controls_disabled_at", "controls_reenabled_at"):
+                if column not in columns:
+                    connection.execute(
+                        f"ALTER TABLE moderation_ban_appeals ADD COLUMN {column} TEXT"
+                    )
 
     def get(self, appeal_id: int) -> sqlite3.Row | None:
         with self._connect() as connection:
@@ -941,6 +942,24 @@ class BanAppealStore:
                 "AND datetime(reviewed_at) <= datetime('now', '-7 days') "
                 "AND controls_reenabled_at IS NULL"
             ).fetchall()
+
+    def reviewed_controls_to_disable(self) -> list[sqlite3.Row]:
+        with self._connect() as connection:
+            return connection.execute(
+                "SELECT * FROM moderation_ban_appeals "
+                "WHERE controls_disabled_at IS NULL AND ("
+                "(status = 'accepted') OR (status = 'rejected' "
+                "AND reviewed_at IS NOT NULL "
+                "AND datetime(reviewed_at) > datetime('now', '-7 days')))"
+            ).fetchall()
+
+    def mark_controls_disabled(self, appeal_id: int) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE moderation_ban_appeals SET controls_disabled_at = CURRENT_TIMESTAMP "
+                "WHERE id = ? AND status IN ('accepted', 'rejected')",
+                (appeal_id,),
+            )
 
     def mark_controls_reenabled(self, appeal_id: int) -> None:
         with self._connect() as connection:
@@ -1004,7 +1023,8 @@ class BanAppealStore:
                 "UPDATE moderation_ban_appeals SET appeal_case_id = ?, reason = ?, "
                 "evidence_filenames = ?, status = 'pending', staff_channel_id = ?, "
                 "staff_message_id = NULL, submitted_at = CURRENT_TIMESTAMP, "
-                "reviewed_by = NULL, reviewed_at = NULL, controls_reenabled_at = NULL "
+                "reviewed_by = NULL, reviewed_at = NULL, controls_disabled_at = NULL, "
+                "controls_reenabled_at = NULL "
                 "WHERE id = ? AND status = 'rejected' AND reviewed_at IS NOT NULL "
                 "AND datetime(reviewed_at) <= datetime('now', '-7 days')",
                 (
@@ -1038,7 +1058,8 @@ class BanAppealStore:
                 "UPDATE moderation_ban_appeals SET status = ?, "
                 "reviewed_by = CASE WHEN ? = 'pending' THEN NULL ELSE ? END, "
                 "reviewed_at = CASE WHEN ? = 'pending' THEN NULL "
-                "ELSE CURRENT_TIMESTAMP END, controls_reenabled_at = NULL WHERE id = ?",
+                "ELSE CURRENT_TIMESTAMP END, controls_disabled_at = NULL, "
+                "controls_reenabled_at = NULL WHERE id = ?",
                 (status, status, reviewer_id, status, appeal_id),
             )
 
