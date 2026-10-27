@@ -79,6 +79,24 @@ class AcceptedReportStore:
             )
             return int(row["reporter_id"]), True
 
+    def unaccept(self, message_id: int, guild_id: int) -> tuple[int | None, int | None]:
+        """Clear an accepted report and return its reporter and acceptance time."""
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT reporter_id, accepted_at FROM accepted_report_tracking "
+                "WHERE report_message_id = ? AND guild_id = ?",
+                (message_id, guild_id),
+            ).fetchone()
+            if row is None or row["accepted_at"] is None:
+                return (int(row["reporter_id"]) if row else None), None
+            accepted_at = int(row["accepted_at"])
+            db.execute(
+                "UPDATE accepted_report_tracking SET accepted_at = NULL "
+                "WHERE report_message_id = ? AND guild_id = ?",
+                (message_id, guild_id),
+            )
+            return int(row["reporter_id"]), accepted_at
+
     def monthly_leader(self, guild_id: int, month: str) -> tuple[int | None, int]:
         with self._connect() as db:
             rows = db.execute(
@@ -301,7 +319,9 @@ class ClaimReportView(ErrorHandledView):
             )
             return
 
+        was_accepted = self.accepted
         self.claimed_by = None
+        self.accepted = False
 
         claim_button = discord.utils.get(
             self.children,
@@ -320,16 +340,30 @@ class ClaimReportView(ErrorHandledView):
         button.disabled = True
 
         embed = interaction.message.embeds[0]
+        was_accepted = was_accepted or any(
+            field.name.casefold() == "accepted by staff" for field in embed.fields
+        )
+        self.cog.reports.unaccept(interaction.message.id, interaction.guild.id)
 
-        for index, field in enumerate(embed.fields):
-            if field.name == "Claimed by":
+        for index in reversed(range(len(embed.fields))):
+            if embed.fields[index].name.casefold() in {"claimed by", "accepted by staff"}:
                 embed.remove_field(index)
-                break
 
         await interaction.response.edit_message(
             embed=embed,
             view=self,
         )
+        if was_accepted:
+            try:
+                await self.cog.update_monthly_reporter_role(
+                    interaction.guild, datetime.now(timezone.utc).strftime("%Y-%m")
+                )
+            except discord.HTTPException:
+                logger.warning(
+                    "Report %s was reopened, but its monthly role update failed",
+                    interaction.message.id,
+                    exc_info=True,
+                )
 
     @discord.ui.button(
         label="Accept Report",
@@ -928,23 +962,26 @@ class ReportMessage(ObserverCog):
     async def update_monthly_reporter_role(
         self, guild: discord.Guild, month: str
     ) -> tuple[int | None, int, str]:
-        counts = self.reports.monthly_counts(guild.id, month)
-        if not counts:
-            return None, 0, "The report was accepted."
-
-        top_count = counts[0][1]
-        tied_ids = {user_id for user_id, count in counts if count == top_count}
         role_id = self.get_config(guild.id, "monthly_top_reporter_role")
         try:
             role_id = int(role_id) if role_id is not None else None
         except (TypeError, ValueError):
             role_id = None
         if role_id is None:
-            return None, top_count, "The report was accepted, but no monthly award role is configured."
+            return None, 0, "No monthly award role is configured."
 
         role = guild.get_role(role_id)
         if role is None:
-            return None, top_count, "The report was accepted, but the configured monthly award role no longer exists."
+            return None, 0, "The configured monthly award role no longer exists."
+
+        counts = self.reports.monthly_counts(guild.id, month)
+        if not counts:
+            for holder in list(role.members):
+                await holder.remove_roles(role, reason=f"No accepted-report leader remains ({month})")
+            return None, 0, "No accepted reports remain this month; the monthly award role was cleared."
+
+        top_count = counts[0][1]
+        tied_ids = {user_id for user_id, count in counts if count == top_count}
 
         # Keep the existing holder on a tie. If the previous leader is no
         # longer tied, the lowest user ID wins so the result is deterministic.
