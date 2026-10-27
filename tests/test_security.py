@@ -1,6 +1,6 @@
 import unittest
 
-from cogs.security import detect_scam_signals
+from cogs.anti_scam import detect_scam_signals
 
 
 class SecurityDetectorTests(unittest.TestCase):

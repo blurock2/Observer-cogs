@@ -4,10 +4,14 @@ const guildId = new URLSearchParams(location.search).get("guild_id");
 let data;
 let filter = "open";
 let actionInFlight = 0;
+let actionNotice = "";
 
 async function api(path, options = {}) {
   const response = await fetch(path, { credentials: "same-origin", ...options });
-  const body = await response.json().catch(() => ({}));
+  const raw = await response.text();
+  let body = {};
+  try { body = raw ? JSON.parse(raw) : {}; }
+  catch { body = { message: raw }; }
   if (!response.ok) {
     const error = new Error(body.error || body.message || `Request failed (${response.status})`);
     error.status = response.status;
@@ -103,7 +107,7 @@ function actionHistory() {
 function render() {
   const guild = data.guild;
   const icon = guild.icon ? `<img src="https://cdn.discordapp.com/icons/${encodeURIComponent(guild.id)}/${encodeURIComponent(guild.icon)}.png?size=96" alt="">` : `<span class="control-server-fallback">${esc(guild.name.slice(0, 1).toUpperCase())}</span>`;
-  root.innerHTML = `<div class="dashboard-shell"><nav class="topbar">${brand()}<div class="topnav"><span class="signed-in-label">MODERATOR DASHBOARD</span><button class="signout-button" id="signout">Sign out</button></div></nav><main class="mod-dashboard"><a class="back-link" href="/?dashboard=1">← All servers</a><header class="mod-header">${icon}<div><div class="eyebrow">SERVER OVERVIEW</div><h1>${esc(guild.name)}</h1><p>Reports and moderation activity for your community.</p></div></header><section class="mod-metrics"><article class="mod-metric metric-attention"><div class="eyebrow">OPEN REPORTS</div><strong>${data.open_reports}</strong><small>${data.reports_configured ? "Need a moderator’s review" : "Configure a reports channel to begin"}</small></article><article class="mod-metric metric-closed"><div class="eyebrow">CLOSED / CLAIMED</div><strong>${data.closed_reports || 0}</strong><small>Claimed or accepted reports</small></article><article class="mod-metric"><div class="eyebrow">MEMBERS</div><strong>${Number(data.member_count).toLocaleString()}</strong><small>In this Discord server</small></article><article class="mod-metric"><div class="eyebrow">BOT STATUS</div><strong class="online-text">${data.bot_online ? "Online" : "Offline"}</strong><small>${data.bot_online ? "Ready when you are" : "Observer is reconnecting"}</small></article></section><section class="mod-queue"><div class="mod-section-head"><div><div class="eyebrow">MODERATION QUEUE</div><h2>Recent reports</h2><p>${data.reports_configured ? `From ${esc(data.reports_channel || "the configured channel")}` : "Reports are not configured yet."}</p></div><div class="mod-filters"><button data-filter="open" class="${filter === "open" ? "active" : ""}">Open</button><button data-filter="all" class="${filter === "all" ? "active" : ""}">All recent</button></div></div>${!data.reports_configured ? `<div class="mod-empty"><span>i</span><h3>No reports channel configured</h3><p>A server owner can set one up in Observer’s control panel.</p>${guild.is_owner ? `<a class="server-action server-configure" href="/setup?guild_id=${encodeURIComponent(guild.id)}">Configure Observer ↗</a>` : ""}</div>` : reportRows()}<p class="mod-footnote">Claim and accept reports here, or open one in Discord for the original report controls.</p></section><section class="mod-queue"><div class="mod-section-head"><div><div class="eyebrow">CASE LOG</div><h2>Moderation action history</h2><p>Recent warnings, timeouts, kicks, bans, and other recorded cases.</p></div></div>${actionHistory()}</section></main></div>`;
+  root.innerHTML = `<div class="dashboard-shell"><nav class="topbar">${brand()}<div class="topnav"><span class="signed-in-label">MODERATOR DASHBOARD</span><button class="signout-button" id="signout">Sign out</button></div></nav><main class="mod-dashboard"><a class="back-link" href="/?dashboard=1">← All servers</a><header class="mod-header">${icon}<div><div class="eyebrow">SERVER OVERVIEW</div><h1>${esc(guild.name)}</h1><p>Reports and moderation activity for your community.</p></div></header>${actionNotice ? `<div class="mod-action-notice" role="status">${esc(actionNotice)}</div>` : ""}<section class="mod-metrics"><article class="mod-metric metric-attention"><div class="eyebrow">OPEN REPORTS</div><strong>${data.open_reports}</strong><small>${data.reports_configured ? "Need a moderator’s review" : "Configure a reports channel to begin"}</small></article><article class="mod-metric metric-closed"><div class="eyebrow">CLOSED / CLAIMED</div><strong>${data.closed_reports || 0}</strong><small>Claimed or accepted reports</small></article><article class="mod-metric"><div class="eyebrow">MEMBERS</div><strong>${Number(data.member_count).toLocaleString()}</strong><small>In this Discord server</small></article><article class="mod-metric"><div class="eyebrow">BOT STATUS</div><strong class="online-text">${data.bot_online ? "Online" : "Offline"}</strong><small>${data.bot_online ? "Ready when you are" : "Observer is reconnecting"}</small></article></section><section class="mod-queue"><div class="mod-section-head"><div><div class="eyebrow">MODERATION QUEUE</div><h2>Recent reports</h2><p>${data.reports_configured ? `From ${esc(data.reports_channel || "the configured channel")}` : "Reports are not configured yet."}</p></div><div class="mod-filters"><button data-filter="open" class="${filter === "open" ? "active" : ""}">Open</button><button data-filter="all" class="${filter === "all" ? "active" : ""}">All recent</button></div></div>${!data.reports_configured ? `<div class="mod-empty"><span>i</span><h3>No reports channel configured</h3><p>A server owner can set one up in Observer’s control panel.</p>${guild.is_owner ? `<a class="server-action server-configure" href="/setup?guild_id=${encodeURIComponent(guild.id)}">Configure Observer ↗</a>` : ""}</div>` : reportRows()}<p class="mod-footnote">Claim and accept reports here, or open one in Discord for the original report controls.</p></section><section class="mod-queue"><div class="mod-section-head"><div><div class="eyebrow">CASE LOG</div><h2>Moderation action history</h2><p>Recent warnings, timeouts, kicks, bans, and other recorded cases.</p></div></div>${actionHistory()}</section></main></div>`;
   root.querySelector("#signout").addEventListener("click", async () => { await api("/auth/logout", { method: "POST" }); location.assign("/"); });
   root.querySelectorAll("[data-filter]").forEach((button) => button.addEventListener("click", () => { filter = button.dataset.filter; render(); }));
   root.querySelectorAll("[data-report-action]").forEach((button) => button.addEventListener("click", async () => {
@@ -117,6 +121,15 @@ function render() {
     try {
       await api(`/api/mod-dashboard/${encodeURIComponent(guildId)}/reports/${encodeURIComponent(reportId)}/${action}`, { method: "POST" });
       data = await api(`/api/mod-dashboard/${encodeURIComponent(guildId)}`);
+      if (action === "claim") {
+        const message = "Report claimed. It is now counted under Closed / Claimed and removed from the open queue.";
+        actionNotice = message;
+        setTimeout(() => {
+          if (actionNotice !== message) return;
+          actionNotice = "";
+          root.querySelector(".mod-action-notice")?.remove();
+        }, 5000);
+      }
       render();
     } catch (error) {
       if (error.status === 409) {

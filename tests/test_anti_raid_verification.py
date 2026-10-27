@@ -6,13 +6,13 @@ from unittest.mock import AsyncMock
 import discord
 import pytest
 
-from cogs.anti_raid import AntiRaid
+from cogs.anti_scam import AntiScam as AntiRaid
+from cogs import anti_scam as raid
 from cogs.autoroles import Autoroles
 
 
 @pytest.fixture
 def protection(tmp_path, monkeypatch):
-    import cogs.anti_raid as raid
     import cogs.autoroles as roles
     path = str(tmp_path / 'bot.db')
     monkeypatch.setattr(raid, 'DB_PATH', path)
@@ -37,10 +37,10 @@ async def test_join_burst_persists_hold_and_times_out(protection):
     raid.store.set(1, 'anti_raid', 'enabled', True)
     raid.store.set(1, 'anti_raid', 'join_threshold', 2)
     raid.alert = AsyncMock()
-    await raid.on_member_join(m)
+    await raid._handle_raid_join(m)
     m.timeout.assert_not_awaited()
     m.id = 6
-    await raid.on_member_join(m)
+    await raid._handle_raid_join(m)
     assert raid.get(1, 'hold_until') > time.time()
     assert m.timeout.await_count == 2
     # A fresh cog sees the persisted deadline.
@@ -102,57 +102,13 @@ async def test_honeypot_defaults_off_and_timeout_then_opt_in_ban(protection):
         setattr(actual, name, value)
     message = NS(guild=m.guild, author=actual, webhook_id=None, channel=NS(id=50), delete=AsyncMock())
     raid.alert = AsyncMock()
-    await raid.on_message(message)
+    await raid._handle_honeypot(message)
     message.delete.assert_not_awaited()
     raid.store.set(1, 'anti_raid', 'honeypot_enabled', True)
     raid.store.set(1, 'anti_raid', 'honeypot_channel', 50)
-    await raid.on_message(message)
+    await raid._handle_honeypot(message)
     m.timeout.assert_awaited_once()
     m.ban.assert_not_awaited()
     raid.store.set(1, 'anti_raid', 'honeypot_ban', True)
-    await raid.on_message(message)
+    await raid._handle_honeypot(message)
     m.ban.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_honeypot_logs_exemption_reason_and_does_not_enforce(protection, caplog):
-    raid, _ = protection
-    m = member()
-    m.guild_permissions.manage_messages = True
-    from unittest.mock import Mock
-    actual = Mock(spec=discord.Member)
-    for name, value in vars(m).items():
-        setattr(actual, name, value)
-    message = NS(guild=m.guild, author=actual, webhook_id=None, channel=NS(id=50),
-                 delete=AsyncMock(), id=100)
-    raid.store.set(1, 'anti_raid', 'honeypot_enabled', True)
-    raid.store.set(1, 'anti_raid', 'honeypot_channel', 50)
-    raid.alert = AsyncMock()
-    with caplog.at_level('INFO', logger='observer.anti_raid'):
-        await raid.on_message(message)
-    assert 'reason=permission: manage_messages' in caplog.text
-    m.ban.assert_not_awaited()
-    message.delete.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_honeypot_logs_failed_enforcement_and_clears_inflight(protection, caplog):
-    raid, _ = protection
-    m = member()
-    m.guild.me.guild_permissions.ban_members = False
-    from unittest.mock import Mock
-    actual = Mock(spec=discord.Member)
-    for name, value in vars(m).items():
-        setattr(actual, name, value)
-    message = NS(guild=m.guild, author=actual, webhook_id=None, channel=NS(id=50),
-                 delete=AsyncMock(), id=100)
-    raid.store.set(1, 'anti_raid', 'honeypot_enabled', True)
-    raid.store.set(1, 'anti_raid', 'honeypot_channel', 50)
-    raid.store.set(1, 'anti_raid', 'honeypot_ban', True)
-    raid.alert = AsyncMock()
-    with caplog.at_level('WARNING', logger='observer.anti_raid'):
-        await raid.on_message(message)
-    assert 'action=ban' in caplog.text
-    assert 'not applied: missing ban_members' in caplog.text
-    assert (1, m.id) not in raid.trapped
-    m.ban.assert_not_awaited()

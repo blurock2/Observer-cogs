@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-from cogs.security import MODULE_KEY, SecurityCog
+from cogs.anti_scam import MODULE_KEY, AntiScam as SecurityCog
 from cogs.setup_ui import SetupConfigStore
 
 

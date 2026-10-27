@@ -56,7 +56,9 @@ def log_error(error: Exception, *, source: str, user_id=None, guild_id=None,
                                      app_commands.CheckFailure, app_commands.TransformerError,
                                      app_commands.CommandOnCooldown))
     if expected:
-        logger.warning("Rejected %s user=%s guild=%s channel=%s reference=%s: %s",
+        # Expected user-side rejections are not runtime warnings and should not
+        # flood the support error channel.
+        logger.info("Rejected %s user=%s guild=%s channel=%s reference=%s: %s",
                        source, user_id, guild_id, channel_id, reference, type(original).__name__)
         return None
     else:

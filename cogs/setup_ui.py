@@ -402,6 +402,12 @@ MODULES: list[ModuleSpec] = [
             ),
             SettingSpec("staff_role", "Command staff role", "role"),
             SettingSpec("tester_role", "Command tester role", "role"),
+            SettingSpec(
+                "custom_embed_role",
+                "Custom embed sender role",
+                "role",
+                description="Members with this role can send custom embeds from the website. The server owner and Observer bot owner can always send.",
+            ),
         ],
     ),
     ModuleSpec(

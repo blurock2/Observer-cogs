@@ -63,7 +63,49 @@ async function loadLanding() {
       <section class="about-section" id="about"><div class="about-orb"></div><div class="about-copy"><div class="eyebrow">MADE FOR REAL COMMUNITIES</div><h2>Good moderation makes<br>everything else possible.</h2><p>Observer is an independent Discord bot project built to help community teams spend less time juggling tools and more time looking after their people.</p><a class="button button-primary" href="${loginUrl}">${discordIcon()} Get started with Discord</a></div><div class="about-details"><div class="detail-block"><span class="eyebrow">CREATED BY</span><a href="${esc(publicInfo.portfolio_url)}" target="_blank" rel="noreferrer">${esc(publicInfo.creator)} <span>↗</span></a><small>Independent developer and creator of Observer.</small></div><div class="detail-block"><span class="eyebrow">COME SAY HELLO</span><a href="${esc(publicInfo.support_url)}" target="_blank" rel="noreferrer">Observer Support <span>↗</span></a></div><div class="detail-block"><span class="eyebrow">SOURCE CODE</span><a href="${esc(publicInfo.source_url)}" target="_blank" rel="noreferrer">Observer on GitHub <span>↗</span></a></div></div></section>
     </main><footer class="site-footer"><div class="footer-brand">${brand()}<small>© ${new Date().getFullYear()} Observer. Independent community software.</small></div><div class="footer-links"><a href="${esc(publicInfo.source_url)}" target="_blank" rel="noreferrer">Source code</a><a href="${esc(publicInfo.portfolio_url)}" target="_blank" rel="noreferrer">Creator portfolio</a><a href="${esc(publicInfo.support_url)}" target="_blank" rel="noreferrer">Support</a><details class="footer-legal"><summary>Privacy &amp; terms</summary><div class="legal-copy"><section><h3>Privacy</h3><p>Sign-in uses Discord OAuth to identify you and list servers where you are an owner or have moderation permissions. Observer stores a protected sign-in session, your basic Discord profile, and that manageable-server list for up to seven days. Discord access tokens are not stored. Server configuration changes are saved in Observer’s database for the bot to use.</p><p>You can end your sign-in session with “Sign out”. Contact the creator through the support server for questions about stored information.</p></section><section><h3>Terms</h3><p>Use Observer only in servers you own or are authorized to manage. Dashboard changes apply to the connected server and may affect its members. You are responsible for reviewing settings, permissions, and applicable laws before enabling features.</p><p>Observer is provided as an independent community project and is not affiliated with or endorsed by Discord Inc. Service availability and features may change.</p></section></div></details></div><span class="footer-disclaimer">Not affiliated with Discord Inc.</span><a class="footer-top" href="#top" onclick="window.scrollTo({top:0,behavior:'smooth'});return false">BACK TO TOP ↑</a></footer>
   </div>`;
+  initLandingScrollReveal();
   document.querySelectorAll("#open-dashboard, #open-dashboard-hero, #open-dashboard-workflow").forEach((button) => button.addEventListener("click", openDashboard));
+}
+
+function initLandingScrollReveal() {
+  const revealGroups = [
+    [".project-facts", 0],
+    [".feature-section .section-intro", 0],
+    [".feature-card", 90],
+    [".engineering-section .section-intro", 0],
+    [".project-engineering-item", 80],
+    [".engineering-note", 0],
+    [".workflow-intro", 0],
+    [".workflow-steps > article", 90],
+    [".workflow-action", 0],
+    [".support-section .section-intro", 0],
+    [".support-card", 80],
+    [".support-note", 0],
+    [".about-copy", 0],
+    [".about-details", 100],
+  ];
+  const targets = new Set();
+  for (const [selector, stagger] of revealGroups) {
+    document.querySelectorAll(selector).forEach((element, index) => {
+      element.dataset.scrollReveal = "";
+      element.style.setProperty("--reveal-delay", `${index * stagger}ms`);
+      targets.add(element);
+    });
+  }
+
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || !("IntersectionObserver" in window)) {
+    targets.forEach((element) => element.classList.add("is-visible"));
+    return;
+  }
+
+  const observer = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      entry.target.classList.add("is-visible");
+      observer.unobserve(entry.target);
+    }
+  }, { threshold: 0.12, rootMargin: "0px 0px -6% 0px" });
+  targets.forEach((element) => observer.observe(element));
 }
 
 async function openDashboard() {
@@ -80,7 +122,14 @@ async function openDashboard() {
         : server.is_owner
           ? `<a class="server-action server-add" href="${esc(result.invite_url)}&guild_id=${encodeURIComponent(server.id)}&disable_guild_select=true">Add Observer <span>+</span></a>`
           : `<span class="server-action server-secondary">Ask an owner to add Observer</span>`;
-      return `<article class="server-row${server.bot_present && server.is_owner ? " has-dashboard-cards" : ""}"><div class="server-identity">${icon}<div class="server-copy"><strong>${esc(server.name)}</strong><span>${server.bot_present ? `<i class="presence-dot"></i> Observer is in this server` : `<i class="presence-dot presence-off"></i> Observer isn’t here yet`}</span></div></div>${action}</article>`;
+      const embedCard = `<a class="server-dashboard-card server-embed-card" href="/embeds?guild_id=${encodeURIComponent(server.id)}"><span class="server-card-kicker">SERVER TOOLS</span><strong>Send a custom embed</strong><small>Compose and post an embed to a channel</small><span class="server-card-arrow">↗</span></a>`;
+      const hasEmbedCard = server.bot_present && server.can_send_embeds;
+      let serverAction = action;
+      if (hasEmbedCard && server.is_owner) serverAction = action.replace("</div>", `${embedCard}</div>`);
+      else if (hasEmbedCard && server.can_moderate) serverAction = `<div class="server-dashboard-cards"><a class="server-dashboard-card server-mod-card" href="/moderate?guild_id=${encodeURIComponent(server.id)}"><span class="server-card-kicker">REPORTS &amp; MODERATION</span><strong>Review server activity</strong><small>Reports, claims, and moderation actions</small><span class="server-mod-link">View moderation page ↗</span></a>${embedCard}</div>`;
+      else if (hasEmbedCard) serverAction = `<a class="server-action server-embed-action" href="/embeds?guild_id=${encodeURIComponent(server.id)}">Send a custom embed <span>↗</span></a>`;
+      const hasCards = server.bot_present && (server.is_owner || (hasEmbedCard && server.can_moderate));
+      return `<article class="server-row${hasCards ? " has-dashboard-cards" : ""}"><div class="server-identity">${icon}<div class="server-copy"><strong>${esc(server.name)}</strong><span>${server.bot_present ? `<i class="presence-dot"></i> Observer is in this server` : `<i class="presence-dot presence-off"></i> Observer isn’t here yet`}</span></div></div>${serverAction}</article>`;
     }).join("");
     root.innerHTML = `<div class="dashboard-shell"><nav class="topbar">${brand()}<div class="topnav"><span class="signed-in-label">SIGNED IN AS ${esc(session.user.username).toUpperCase()}</span><button class="signout-button" id="signout">Sign out</button></div></nav><main class="server-picker"><a class="back-link" href="/">← Back to Observer</a><div class="eyebrow"><span class="live-mark"></span> DISCORD CONNECTION</div><h1>Your communities.</h1><p class="picker-lede">Choose a server where you’re an owner or moderator. Moderators can review reports; owners can also configure Observer.</p><div class="server-list">${rows || `<div class="server-empty"><span class="empty-shape">◈</span><h2>No servers found</h2><p>No servers with moderation access were found for this Discord account.</p></div>`}</div><p class="picker-footnote">${rows ? `Showing ${result.servers.length} server${result.servers.length === 1 ? "" : "s"} where you can moderate.` : "You can switch Discord accounts by signing out."}</p></main></div>`;
     document.querySelector("#signout")?.addEventListener("click", async () => { await api("/auth/logout", { method: "POST" }); location.assign("/"); });
@@ -93,6 +142,7 @@ async function start() {
   try {
     if (location.pathname === "/staff") { await import("./staff.js"); return; }
     if (location.pathname === "/setup") { await import("./control_panel.js"); return; }
+    if (location.pathname === "/embeds") { await import("./embed_sender.js"); return; }
     if (location.pathname === "/moderate") { await import("./moderation_dashboard.js"); return; }
     if (new URLSearchParams(location.search).has("dashboard")) { await openDashboard(); return; }
     await loadLanding();

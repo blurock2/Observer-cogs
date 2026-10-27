@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from cogs.security import SecurityCog
+from cogs.anti_scam import AntiScam as SecurityCog
 
 
 @pytest.mark.asyncio

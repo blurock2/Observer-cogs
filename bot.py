@@ -76,11 +76,10 @@ class MyBot(commands.Bot):
         "cogs.rules",
         "cogs.tickets",
         "cogs.reminder",
-        "cogs.steam_free",
         "cogs.message_relay",
         "cogs.moderation",
-        "cogs.security",
-        "cogs.anti_raid",
+        "cogs.cases",
+        "cogs.anti_scam",
         "cogs.tags",
         "cogs.mentions",
         "cogs.member_commands",
@@ -178,6 +177,7 @@ class MyBot(commands.Bot):
         """
 
         self.error_reporter.start()
+
         await self.activity_server.start()
 
         for extension in self.EXTENSIONS:
@@ -205,9 +205,11 @@ bot = MyBot()
 
 async def require_bot_mention(ctx: commands.Context) -> bool:
     """Require owner commands to explicitly mention this bot."""
-    if bot.user is not None and any(
-        user.id == bot.user.id for user in ctx.message.mentions
-    ):
+    mentioned_bots = [user for user in ctx.message.mentions if user.bot]
+    if bot.user is not None and any(user.id != bot.user.id for user in mentioned_bots):
+        return False
+
+    if bot.user is not None and any(user.id == bot.user.id for user in mentioned_bots):
         return True
 
     await ctx.send("Mention me to run this owner command.")
@@ -230,6 +232,33 @@ async def reload_cogs(ctx: commands.Context) -> None:
         return
 
     importlib.invalidate_caches()
+
+    # Extensions import shared code with ``from ... import ...``. Reload these
+    # non-extension modules before refreshing cogs so their current definitions
+    # are available to every extension during this pass.
+    database_module = sys.modules.get("database")
+    if database_module is not None:
+        try:
+            importlib.reload(database_module)
+        except Exception as error:
+            logger.exception("Failed to reload shared database module")
+            await ctx.send(
+                "❌ `database` failed to reload: "
+                f"`{type(error).__name__}: {error}`"
+            )
+            return
+
+    stats_module = sys.modules.get("cogs.mod_stats")
+    if stats_module is not None:
+        try:
+            importlib.reload(stats_module)
+        except Exception as error:
+            logger.exception("Failed to reload shared moderation stats module")
+            await ctx.send(
+                "❌ `cogs.mod_stats` failed to reload: "
+                f"`{type(error).__name__}: {error}`"
+            )
+            return
 
     extensions = tuple(
         dict.fromkeys(

@@ -20,7 +20,7 @@ def new_error_id() -> str:
 class ErrorIdFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         if not hasattr(record, "error_id"):
-            record.error_id = new_error_id() if record.levelno >= logging.ERROR else "-"
+            record.error_id = new_error_id() if record.levelno >= logging.WARNING else "-"
         return True
 
 
@@ -38,6 +38,7 @@ class ErrorReport:
     guild_id: int | None
     user_id: int | None
     occurred_at: int
+    level: int = logging.ERROR
 
     @classmethod
     def from_record(cls, record: logging.LogRecord) -> ErrorReport:
@@ -53,18 +54,26 @@ class ErrorReport:
                 location = f"{safe_name(tb.tb_frame.f_code.co_name, 40)}:{tb.tb_lineno}"
         return cls(record.error_id, safe_name(getattr(record, "error_source", record.name)),
                    exception, location, getattr(record, "error_guild_id", None),
-                   getattr(record, "error_user_id", None), int(record.created))
+                   getattr(record, "error_user_id", None), int(record.created), record.levelno)
+
+    @property
+    def severity(self) -> str:
+        if self.level >= logging.CRITICAL:
+            return "Full break error"
+        if self.level >= logging.ERROR:
+            return "Minor error"
+        return "Warning"
 
     def line(self) -> str:
         context = f"server={self.guild_id or 'DM/unknown'} user={self.user_id or 'unknown'}"
-        return (f"**`{self.error_id}`** • <t:{self.occurred_at}:T>\n"
+        return (f"**{self.severity}** • **`{self.error_id}`** • <t:{self.occurred_at}:T>\n"
                 f"`{self.source}` • `{self.exception}` • `{self.location}`\n"
                 f"{context}")
 
 
 class DiscordErrorHandler(logging.Handler):
     def __init__(self, reporter: ErrorReporter):
-        super().__init__(logging.ERROR)
+        super().__init__(logging.WARNING)
         self.reporter = reporter
         self.addFilter(ErrorIdFilter())
 
@@ -121,17 +130,26 @@ class ErrorReporter:
                 channel = await guild.fetch_channel(int(channel_id))
             if not isinstance(channel, discord.TextChannel) or channel.guild.id != self.support_guild_id:
                 return
-            embed = discord.Embed(
-                title="Observer error reports",
-                description="\n\n".join(report.line() for report in reports),
-                color=0xED4245,
-                timestamp=datetime.now(timezone.utc),
-            )
             footer = "Match an error ID with the VPS logs. Full traces and message contents stay private."
-            if self.dropped:
-                footer += f" {self.dropped} overflow reports stayed in VPS logs."
-            embed.set_footer(text=footer)
-            await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+            for is_error, title, color in (
+                (False, "Observer warning reports", 0xF1C40F),
+                (True, "Observer error reports", 0xED4245),
+            ):
+                selected = [report for report in reports
+                            if (report.level >= logging.ERROR) == is_error]
+                for start in range(0, len(selected), self.BATCH_SIZE):
+                    batch = selected[start:start + self.BATCH_SIZE]
+                    embed = discord.Embed(
+                        title=title,
+                        description="\n\n".join(report.line() for report in batch),
+                        color=color,
+                        timestamp=datetime.now(timezone.utc),
+                    )
+                    batch_footer = footer
+                    if self.dropped:
+                        batch_footer += f" {self.dropped} overflow reports stayed in VPS logs."
+                    embed.set_footer(text=batch_footer)
+                    await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
             self.dropped = 0
         except Exception:
             logger.exception("Could not send error reports to Observer Support; IDs remain in VPS logs")

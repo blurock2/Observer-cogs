@@ -1,4 +1,4 @@
-discord.py>=2.5.0
+discord.py>=2.7.0
 audioop-lts; python_version >= "3.13"
 PyNaCl
 davey
@@ -7,4 +7,5 @@ pytest
 pytest-asyncio
 ruff
 Pillow
-pytesseract>=0.3.13
+pytesseract
+opencv-python-headless

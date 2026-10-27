@@ -11,7 +11,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from time import monotonic
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 import aiohttp
 import discord
@@ -82,6 +82,8 @@ class ActivityServer:
         app.router.add_get("/api/servers", self.servers)
         app.router.add_get("/api/control-panel/{guild_id}", self.control_panel)
         app.router.add_post("/api/control-panel/{guild_id}/setting", self.save_control_panel_setting)
+        app.router.add_get("/api/custom-embed/{guild_id}", self.custom_embed_info)
+        app.router.add_post("/api/custom-embed/{guild_id}", self.send_custom_embed)
         app.router.add_get("/api/mod-dashboard/{guild_id}", self.mod_dashboard)
         app.router.add_post("/api/mod-dashboard/{guild_id}/reports/{message_id}/{action}", self.mod_report_action)
         app.router.add_get("/api/public-info", self.public_info)
@@ -94,6 +96,7 @@ class ActivityServer:
         app.router.add_get("/", self.index)
         app.router.add_get("/staff", self.index)
         app.router.add_get("/setup", self.index)
+        app.router.add_get("/embeds", self.index)
         app.router.add_get("/moderate", self.index)
         assets = ACTIVITY_DIR / "dist" / "assets"
         if assets.is_dir():
@@ -300,23 +303,174 @@ class ActivityServer:
             await asyncio.wait_for(self.bot.wait_until_ready(), timeout=15)
         except asyncio.TimeoutError:
             raise web.HTTPServiceUnavailable(text="Observer is connecting to Discord. Try again shortly.")
-        manageable = [guild for guild in await self._user_guilds(session) if self._oauth_can_moderate(guild)]
         items = []
-        for guild in manageable:
+        user_id = int(session["user"].get("id", 0))
+        for guild in await self._user_guilds(session):
             try:
                 guild_id = int(guild["id"])
             except (KeyError, TypeError, ValueError):
                 continue
             bot_guild = self.bot.get_guild(guild_id)
+            can_moderate = self._oauth_can_moderate(guild)
+            can_send_embeds = bool(bot_guild and (
+                user_id == BOT_OWNER_ID
+                or guild.get("owner") is True
+                or await self._has_custom_embed_role(bot_guild, user_id)
+            ))
+            if not can_moderate and not can_send_embeds:
+                continue
             items.append({
                 "id": str(guild_id),
                 "name": guild.get("name", "Discord server"),
                 "icon": guild.get("icon"),
                 "bot_present": bot_guild is not None,
                 "is_owner": guild.get("owner") is True,
+                "can_moderate": can_moderate,
+                "can_send_embeds": can_send_embeds,
             })
         items.sort(key=lambda item: (not item["bot_present"], item["name"].casefold()))
         return web.json_response({"servers": items, "invite_url": self._bot_invite_url()}, headers={"Cache-Control": "no-store"})
+
+    async def _has_custom_embed_role(self, guild: discord.Guild, user_id: int) -> bool:
+        try:
+            role_id = int(self.bot.setup_store.get(guild.id, "bot", "custom_embed_role"))
+        except (TypeError, ValueError):
+            return False
+        member = guild.get_member(user_id)
+        if member is None:
+            try:
+                member = await guild.fetch_member(user_id)
+            except (discord.HTTPException, ValueError):
+                return False
+        return any(role.id == role_id for role in member.roles)
+
+    async def _require_custom_embed_access(
+        self, request: web.Request, guild_id: int | None = None
+    ) -> tuple[dict, discord.Guild]:
+        session = self._get_session(request)
+        try:
+            resolved_guild_id = guild_id or int(request.match_info["guild_id"])
+        except (KeyError, TypeError, ValueError):
+            raise web.HTTPBadRequest(text="A valid server ID is required")
+        guild = self.bot.get_guild(resolved_guild_id)
+        if guild is None:
+            raise web.HTTPNotFound(text="Observer is not in that server")
+        user_id = int(session["user"].get("id", 0))
+        if user_id not in (BOT_OWNER_ID, guild.owner_id) and not await self._has_custom_embed_role(guild, user_id):
+            raise web.HTTPForbidden(text="Only the configured custom embed role, server owner, or Observer bot owner can send embeds")
+        return session, guild
+
+    async def custom_embed_info(self, request: web.Request) -> web.Response:
+        _, guild = await self._require_custom_embed_access(request)
+        bot_member = guild.me
+        channels = []
+        for channel in guild.text_channels:
+            permissions = channel.permissions_for(bot_member) if bot_member else None
+            if permissions and permissions.send_messages:
+                channels.append({"id": str(channel.id), "name": channel.name, "category": channel.category.name if channel.category else "", "can_embed": permissions.embed_links})
+        return web.json_response({
+            "guild": {"id": str(guild.id), "name": guild.name, "icon": guild.icon.key if guild.icon else None},
+            "channels": channels,
+        }, headers={"Cache-Control": "no-store"})
+
+    async def send_custom_embed(self, request: web.Request) -> web.Response:
+        _, guild = await self._require_custom_embed_access(request)
+        try:
+            payload = await request.json()
+        except (ValueError, web.HTTPException):
+            raise web.HTTPBadRequest(text="Invalid request body")
+        if not isinstance(payload, dict):
+            raise web.HTTPBadRequest(text="Invalid embed details")
+
+        style = payload.get("style", "embed")
+        if style not in {"embed", "card"}:
+            raise web.HTTPBadRequest(text="Choose either embed or card format")
+        title = payload.get("title", "")
+        description = payload.get("description", "")
+        footer = payload.get("footer", "")
+        image_url = payload.get("image_url", "")
+        color = payload.get("color", "#42d7e8")
+        if not all(isinstance(value, str) for value in (title, description, footer, image_url, color)):
+            raise web.HTTPBadRequest(text="Embed fields must be text")
+        if len(title) > 256 or len(description) > 4096 or len(footer) > 2048:
+            raise web.HTTPBadRequest(text="Title, description, or footer is too long")
+        if style == "embed" and len(title) + len(description) + len(footer) > 6000:
+            raise web.HTTPBadRequest(text="Embed text must total 6,000 characters or fewer")
+        if not title.strip() and not description.strip():
+            raise web.HTTPBadRequest(text="Add a title or description")
+        if len(image_url) > 1000:
+            raise web.HTTPBadRequest(text="Image URL is too long")
+        if image_url:
+            parsed_url = urlparse(image_url)
+            if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
+                raise web.HTTPBadRequest(text="Image URL must start with http:// or https://")
+        try:
+            channel_id = int(payload.get("channel_id", ""))
+        except (TypeError, ValueError):
+            raise web.HTTPBadRequest(text="Choose a channel")
+        channel = guild.get_channel(channel_id)
+        if not isinstance(channel, discord.TextChannel):
+            raise web.HTTPBadRequest(text="Choose a text channel in this server")
+        permissions = channel.permissions_for(guild.me) if guild.me else None
+        if not permissions or not permissions.send_messages:
+            raise web.HTTPForbidden(text="Observer needs Send Messages permission in that channel")
+
+        if style == "embed":
+            if not permissions.embed_links:
+                raise web.HTTPForbidden(text="Observer needs Embed Links permission in that channel")
+            if not re.fullmatch(r"#?[0-9a-fA-F]{6}", color):
+                raise web.HTTPBadRequest(text="Choose a valid six-digit hex color")
+            message_embed = discord.Embed(
+                title=title.strip() or None,
+                description=description.strip() or None,
+                color=int(color.removeprefix("#"), 16),
+            )
+            if footer.strip():
+                message_embed.set_footer(text=footer.strip())
+            if image_url:
+                message_embed.set_image(url=image_url)
+            send_kwargs = {"embed": message_embed}
+        else:
+            card_text = "\n\n".join(part for part in (
+                f"# {title.strip()}" if title.strip() else "",
+                description.strip(),
+            ) if part)
+            if len(card_text) > 4000:
+                raise web.HTTPBadRequest(text="Card title and description must total 4,000 characters or fewer")
+            view = discord.ui.LayoutView(timeout=None)
+            card = discord.ui.Container(discord.ui.TextDisplay(card_text))
+            if footer.strip():
+                card.add_item(discord.ui.Separator())
+                card.add_item(discord.ui.TextDisplay(footer.strip()))
+            if image_url:
+                card.add_item(discord.ui.MediaGallery(discord.MediaGalleryItem(image_url)))
+            view.add_item(card)
+
+            buttons = []
+            for index in range(1, 4):
+                label = payload.get(f"button_{index}_label", "")
+                url = payload.get(f"button_{index}_url", "")
+                if not isinstance(label, str) or not isinstance(url, str):
+                    raise web.HTTPBadRequest(text="Button labels and links must be text")
+                label, url = label.strip(), url.strip()
+                if bool(label) != bool(url):
+                    raise web.HTTPBadRequest(text="Each link button needs both a label and a URL")
+                if label:
+                    parsed_button_url = urlparse(url)
+                    if len(label) > 80 or len(url) > 512 or parsed_button_url.scheme not in {"http", "https"} or not parsed_button_url.netloc:
+                        raise web.HTTPBadRequest(text="Link buttons need a label under 80 characters and a valid http(s) URL")
+                    buttons.append(discord.ui.Button(style=discord.ButtonStyle.link, label=label, url=url))
+            send_kwargs = {"view": view}
+            if buttons:
+                view.add_item(discord.ui.ActionRow(*buttons))
+        try:
+            message = await channel.send(**send_kwargs, allowed_mentions=discord.AllowedMentions.none())
+        except discord.Forbidden:
+            raise web.HTTPForbidden(text="Observer cannot send this message in that channel")
+        except discord.HTTPException:
+            logger.exception("Failed to send custom %s in guild %s", style, guild.id)
+            raise web.HTTPBadGateway(text="Discord could not send the message")
+        return web.json_response({"ok": True, "message_url": message.jump_url}, headers={"Cache-Control": "no-store"})
 
     @staticmethod
     def _oauth_can_moderate(guild: dict) -> bool:
@@ -700,9 +854,9 @@ class ActivityServer:
             raise web.HTTPForbidden(text="Only the moderator who claimed this report can take action")
         fields = {field.name.casefold(): field.value for field in embed.fields}
         target_match = re.search(r"\((\d{15,22})\)", fields.get("message author", ""))
-        if not target_match:
+        target_id = int(target_match.group(1)) if target_match else None
+        if action in {"warn", "timeout", "delete"} and target_id is None:
             raise web.HTTPConflict(text="The report does not contain a valid reported member ID")
-        target_id = int(target_match.group(1))
         link_match = re.search(r"discord(?:app)?\.com/channels/\d+/(\d+)/(\d{15,22})", fields.get("message link", ""))
         source_channel_id = int(link_match.group(1)) if link_match else None
         source_message_id = int(link_match.group(2)) if link_match else None
@@ -772,7 +926,7 @@ class ActivityServer:
             embed.add_field(name="Escalated by", value=f"<@{user_id}> (`{user_id}`)", inline=False)
         elif action in {"warn", "timeout", "delete"}:
             actor = member
-            if not isinstance(actor, discord.Member):
+            if not isinstance(actor, discord.Member) or target_id is None:
                 raise web.HTTPForbidden(text="Could not verify your moderator account")
             reason = payload["reason"] or fields.get("reason", "No reason provided")
             action_result = await self._web_moderation_action(
@@ -1072,7 +1226,7 @@ class ActivityServer:
         return web.FileResponse(icon, headers={"Cache-Control": "public, max-age=86400"})
 
     async def og_card(self, request: web.Request) -> web.StreamResponse:
-        image = ACTIVITY_DIR / "dist" / "og-card.png"
+        image = ACTIVITY_DIR / "dist" / "og-card-v2.png"
         if not image.is_file():
             raise web.HTTPNotFound()
         return web.FileResponse(image, headers={"Cache-Control": "public, max-age=86400"})
