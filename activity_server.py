@@ -686,6 +686,7 @@ class ActivityServer:
         escalated = any(field.name.casefold() == "escalated by" for field in embed.fields)
         reporter_id = None
         newly_accepted = False
+        reopened_accepted = False
         report_cog_member = guild.get_member(user_id)
         display_name = report_cog_member.display_name if report_cog_member else session["user"].get("global_name") or session["user"].get("username", "Moderator")
 
@@ -707,10 +708,12 @@ class ActivityServer:
                 is_configured_staff = staff_role is not None and any(role.id == staff_role for role in moderator.roles)
                 if not moderator.guild_permissions.manage_messages and not is_configured_staff:
                     raise web.HTTPForbidden(text="Only the claimant or a moderator can unclaim this report")
-            for index, field in enumerate(embed.fields):
-                if field.name.casefold() == "claimed by":
+            if accepted:
+                reopened_accepted = True
+                accepted = False
+            for index in reversed(range(len(embed.fields))):
+                if embed.fields[index].name.casefold() in {"claimed by", "accepted by staff"}:
                     embed.remove_field(index)
-                    break
             claimed_by = None
         elif action in {"accept", "close"}:
             if accepted:
@@ -782,6 +785,18 @@ class ActivityServer:
             raise web.HTTPServiceUnavailable(text="Observer cannot update report messages in the configured channel")
         except discord.HTTPException:
             raise web.HTTPBadGateway(text="Discord could not update this report")
+        if reopened_accepted:
+            report_cog.reports.unaccept(message.id, guild.id)
+            try:
+                await report_cog.update_monthly_reporter_role(
+                    guild, datetime.now(timezone.utc).strftime("%Y-%m")
+                )
+            except discord.HTTPException:
+                logger.warning(
+                    "Report %s was reopened, but its monthly role update failed",
+                    message.id,
+                    exc_info=True,
+                )
         return web.json_response({"ok": True, "action": action, "accepted": accepted or action in {"accept", "close"}, "claimed_by": str(claimed_by) if claimed_by else None, "case": action_result})
 
     def _dashboard_guild(self, request: web.Request) -> tuple[dict, discord.Guild]:
