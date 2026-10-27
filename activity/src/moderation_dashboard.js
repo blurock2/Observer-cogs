@@ -3,6 +3,7 @@ const esc = (value = "") => String(value).replace(/[&<>"']/g, (c) => ({ "&": "&a
 const guildId = new URLSearchParams(location.search).get("guild_id");
 let data;
 let filter = "open";
+let actionInFlight = 0;
 
 async function api(path, options = {}) {
   const response = await fetch(path, { credentials: "same-origin", ...options });
@@ -58,6 +59,7 @@ function openActionDialog(report, action) {
     if (action === "timeout") body.duration_minutes = Number(form.elements.duration_minutes.value);
     if (action === "delete") body.confirm = form.elements.confirm.checked;
     submit.disabled = true;
+    actionInFlight += 1;
     submit.textContent = action === "delete" ? "Deleting…" : "Applying…";
     try {
       await api(`/api/mod-dashboard/${encodeURIComponent(guildId)}/reports/${encodeURIComponent(report.id)}/${action}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -68,6 +70,8 @@ function openActionDialog(report, action) {
       alert(error.message);
       submit.disabled = false;
       submit.textContent = action === "delete" ? "Delete message" : `Confirm ${action}`;
+    } finally {
+      actionInFlight = Math.max(0, actionInFlight - 1);
     }
   });
 }
@@ -94,6 +98,7 @@ function render() {
     const report = (data.reports || []).find((item) => String(item.id) === String(reportId));
     if (["warn", "timeout", "delete"].includes(action)) { openActionDialog(report, action); return; }
     button.disabled = true;
+    actionInFlight += 1;
     button.textContent = action === "close" ? "Closing…" : action === "claim" ? "Claiming…" : action === "escalate" ? "Escalating…" : "Updating…";
     try {
       await api(`/api/mod-dashboard/${encodeURIComponent(guildId)}/reports/${encodeURIComponent(reportId)}/${action}`, { method: "POST" });
@@ -103,8 +108,24 @@ function render() {
       alert(error.message);
       button.disabled = false;
       button.textContent = action === "close" ? "Close Report" : action === "escalate" ? "Escalate" : action[0].toUpperCase() + action.slice(1);
+    } finally {
+      actionInFlight = Math.max(0, actionInFlight - 1);
     }
   }));
+}
+
+async function refreshDashboard() {
+  if (document.hidden || actionInFlight || root.querySelector("#mod-action-modal")) return;
+  try {
+    const latest = await api(`/api/mod-dashboard/${encodeURIComponent(guildId)}`);
+    if (JSON.stringify(latest) !== JSON.stringify(data)) {
+      data = latest;
+      render();
+    }
+  } catch (error) {
+    // Keep the current dashboard visible during brief network or Discord API
+    // hiccups; the next poll will retry.
+  }
 }
 
 async function start() {
@@ -118,3 +139,4 @@ async function start() {
 }
 
 start();
+window.setInterval(refreshDashboard, 5000);
