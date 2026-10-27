@@ -88,4 +88,9 @@ body:has(.site-shell), body:has(.dashboard-shell) { background: #0b0b0d; color: 
 @media (max-width: 600px) {
   .brand-mark { width: 31px; height: 31px; }
 }
+.brand-mark img, .mini-mark img {
+  object-fit: contain;
+  object-position: center;
+  transform: none;
+}
 
