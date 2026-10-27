@@ -78,6 +78,7 @@ class ActivityServer:
         app.router.add_get("/healthz", self.health)
         app.router.add_get("/observer.png", self.observer_icon)
         app.router.add_get("/observer-icon.svg", self.observer_favicon)
+        app.router.add_get("/og-card.png", self.og_card)
         app.router.add_get("/", self.index)
         app.router.add_get("/staff", self.index)
         app.router.add_get("/setup", self.index)
@@ -541,6 +542,12 @@ class ActivityServer:
         if not icon.is_file():
             raise web.HTTPNotFound()
         return web.FileResponse(icon, headers={"Cache-Control": "public, max-age=86400"})
+
+    async def og_card(self, request: web.Request) -> web.StreamResponse:
+        image = ACTIVITY_DIR / "dist" / "og-card.png"
+        if not image.is_file():
+            raise web.HTTPNotFound()
+        return web.FileResponse(image, headers={"Cache-Control": "public, max-age=86400"})
 
     async def exchange_code(self, request: web.Request) -> web.Response:
         try:
