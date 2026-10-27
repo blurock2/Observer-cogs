@@ -278,8 +278,8 @@ body:has(.site-shell), body:has(.dashboard-shell) { background: #0b0b0d; color: 
 .activity-panel-link { color: #42d7e8; font-size: 11px; text-decoration: none; }
 .activity-panel-section { padding-top: 15px; }
 .activity-panel-section h3 { margin: 0 0 8px; color: #a8b4b5; font: 700 9px ui-monospace, monospace; letter-spacing: 1px; text-transform: uppercase; }
-.activity-entry { display: grid; gap: 5px; padding: 11px 0; border-top: 1px solid #ffffff0b; border-radius: 6px; color: #e9eff0; text-decoration: none; transition: background-color .16s ease, outline-color .16s ease; }
-.activity-entry:hover,.activity-entry:focus-visible { outline: 1px solid #42d7e875; outline-offset: 0; background: #42d7e80a; }
+.activity-entry { display: grid; gap: 5px; margin: 2px -8px; padding: 13px 8px; border-top: 1px solid #ffffff0b; border-radius: 7px; color: #e9eff0; text-decoration: none; transition: background-color .16s ease, outline-color .16s ease; }
+.activity-entry:hover,.activity-entry:focus-visible { outline: 1px solid #42d7e89a; outline-offset: 1px; background: #42d7e81c; }
 .activity-entry-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .activity-entry-top b { overflow: hidden; color: #e4eeee; font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .activity-entry-summary { display: -webkit-box; overflow: hidden; color: #9ba7a8; font-size: 10px; line-height: 1.5; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
