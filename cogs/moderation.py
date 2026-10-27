@@ -484,6 +484,10 @@ class ModerationCog(ObserverCog):
             return False
 
     async def _reenable_due_appeal_buttons(self) -> None:
+        for appeal in self.appeals.reviewed_controls_to_disable():
+            ban_case = self.cases.get_case(appeal["ban_case_id"])
+            if await self._update_ban_appeal_dm(ban_case, appeal["status"]):
+                self.appeals.mark_controls_disabled(appeal["id"])
         for appeal in self.appeals.rejected_controls_due():
             ban_case = self.cases.get_case(appeal["ban_case_id"])
             state = (
@@ -820,7 +824,8 @@ class ModerationCog(ObserverCog):
             appeal["id"], decision, reviewer_id=member.id
         )
         self.cases.set_case_status(appeal["appeal_case_id"], appeal_case_status)
-        await self._update_ban_appeal_dm(ban_case, decision)
+        if await self._update_ban_appeal_dm(ban_case, decision):
+            self.appeals.mark_controls_disabled(appeal["id"])
         await interaction.response.send_message(
             f"Appeal #{appeal['id']} {decision}.", ephemeral=True
         )
