@@ -239,6 +239,60 @@ body:has(.site-shell), body:has(.dashboard-shell) { background: #0b0b0d; color: 
   .server-row.has-dashboard-cards { grid-template-columns: minmax(0, 1fr); }
   .server-dashboard-card { min-height: 76px; }
 }
+.topbar { max-width: 1520px; }
+.server-picker { max-width: 1280px; padding: 76px 42px 112px; }
+.server-picker h1 { font-size: 54px; letter-spacing: -2.2px; }
+.picker-lede { max-width: 760px; margin-bottom: 36px; font-size: 15px; line-height: 1.8; }
+.server-list { gap: 13px; }
+.server-row { gap: 18px; padding: 17px 18px; min-height: 100px; }
+.server-row.has-dashboard-cards { grid-template-columns: minmax(190px, .85fr) minmax(0, 1.8fr); gap: 16px; }
+.server-identity > img, .server-identity > .server-avatar-fallback { flex-basis: 52px; width: 52px; height: 52px; border-radius: 15px; }
+.server-copy strong { font-size: 15px; }
+.server-copy>span { font-size: 11px; }
+.server-dashboard-card { min-height: 92px; padding: 14px 16px; gap: 7px; }
+.server-card-kicker { font-size: 8px; }
+.server-dashboard-card strong { font-size: 12px; }
+.server-dashboard-card small { font-size: 10px; }
+.server-mod-card > a { font-size: 10px; }
+.picker-footnote { font-size: 11px; }
+.control-panel { max-width: 1520px; padding: 54px 38px 100px; }
+.control-header { margin-bottom: 38px; }
+.control-header h1 { font-size: 40px; }
+.control-header p { font-size: 14px; }
+.control-content-layout { display: grid; grid-template-columns: minmax(0, 1fr) 370px; align-items: start; gap: 24px; }
+.control-feature-area { min-width: 0; }
+.control-feature-area .module-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.control-activity-panel { position: sticky; top: 20px; max-height: calc(100vh - 40px); overflow-y: auto; padding: 20px; border: 1px solid #30383a; border-radius: 12px; background: linear-gradient(155deg, #15191a, #101314); }
+.activity-panel-head { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding-bottom: 15px; border-bottom: 1px solid #ffffff12; }
+.activity-panel-head h2 { margin: 7px 0 0; font-size: 18px; }
+.activity-panel-link { color: #42d7e8; font-size: 11px; text-decoration: none; }
+.activity-panel-section { padding-top: 15px; }
+.activity-panel-section h3 { margin: 0 0 8px; color: #a8b4b5; font: 700 9px ui-monospace, monospace; letter-spacing: 1px; text-transform: uppercase; }
+.activity-entry { display: grid; gap: 5px; padding: 11px 0; border-top: 1px solid #ffffff0b; color: #e9eff0; text-decoration: none; }
+.activity-entry-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.activity-entry-top b { overflow: hidden; color: #e4eeee; font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.activity-entry-summary { display: -webkit-box; overflow: hidden; color: #9ba7a8; font-size: 10px; line-height: 1.5; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.activity-entry small { color: #778486; font-size: 9px; }
+.activity-status,.activity-case-number { flex: 0 0 auto; color: #ffcb7c; font: 7px ui-monospace, monospace; font-style: normal; }
+.activity-status.is-closed { color: #73dfb9; }
+.activity-panel-empty,.activity-panel-error { color: #8e9a9b; font-size: 10px; line-height: 1.6; }
+@media(max-width:1120px) {
+  .control-content-layout { grid-template-columns: minmax(0, 1fr) 320px; gap: 18px; }
+  .control-feature-area .module-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media(max-width:860px) {
+  .control-content-layout { grid-template-columns: minmax(0, 1fr); }
+  .control-activity-panel { position: static; max-height: none; }
+  .server-row.has-dashboard-cards { grid-template-columns: minmax(160px, .7fr) minmax(0, 1.3fr); }
+}
+@media(max-width:620px) {
+  .server-picker { padding: 52px 18px 78px; }
+  .server-picker h1 { font-size: 38px; }
+  .server-row.has-dashboard-cards { grid-template-columns: minmax(0, 1fr); }
+  .server-dashboard-cards { grid-template-columns: 1fr; }
+  .control-panel { padding: 34px 18px 65px; }
+  .control-feature-area .module-grid { grid-template-columns: 1fr; }
+}
 .mod-dashboard { width: min(1120px, calc(100% - 48px)); margin: 0 auto; padding: 32px 0 72px; }
 .mod-header { display: flex; align-items: center; gap: 18px; margin: 24px 0 28px; }
 .mod-header > img, .mod-header > .control-server-fallback { width: 54px; height: 54px; border-radius: 16px; object-fit: cover; }
