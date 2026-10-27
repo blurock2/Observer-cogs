@@ -293,6 +293,15 @@ body:has(.site-shell), body:has(.dashboard-shell) { background: #0b0b0d; color: 
   .control-panel { padding: 34px 18px 65px; }
   .control-feature-area .module-grid { grid-template-columns: 1fr; }
 }
+.module-editor:not([hidden]) { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; overflow-y: auto; margin: 0; padding: clamp(14px, 4vw, 42px); border: 0; border-radius: 0; background: rgba(4, 7, 9, .64); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); opacity: 0; visibility: hidden; transition: opacity .22s ease, visibility .22s ease; }
+.module-editor.is-open { opacity: 1; visibility: visible; }
+.module-editor-dialog { width: min(940px, 100%); max-height: min(88vh, 920px); overflow: auto; padding: 28px; border: 1px solid #354246; border-radius: 14px; background: linear-gradient(145deg, #171c1e, #101315); box-shadow: 0 28px 110px #000b, 0 0 45px #42d7e80b; transform: translateY(18px) scale(.975); transition: transform .28s cubic-bezier(.2,.8,.2,1); }
+.module-editor.is-open .module-editor-dialog { transform: translateY(0) scale(1); }
+.control-module[data-open-module] { cursor: pointer; }
+.control-module[data-open-module]:focus-visible { outline: 2px solid #42d7e8; outline-offset: 3px; }
+body.modal-open { overflow: hidden; }
+@media(max-width:620px) { .module-editor:not([hidden]) { padding: 10px; } .module-editor-dialog { max-height: 94vh; padding: 18px; border-radius: 11px; } }
+@media(prefers-reduced-motion:reduce) { .module-editor, .module-editor-dialog { transition-duration: .01ms!important; } }
 .mod-dashboard { width: min(1120px, calc(100% - 48px)); margin: 0 auto; padding: 32px 0 72px; }
 .mod-header { display: flex; align-items: center; gap: 18px; margin: 24px 0 28px; }
 .mod-header > img, .mod-header > .control-server-fallback { width: 54px; height: 54px; border-radius: 16px; object-fit: cover; }
