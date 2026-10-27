@@ -20,6 +20,8 @@ function brand() { return `<a class="brand" href="/" aria-label="Observer home">
 async function loadLanding() {
   const session = await api("/api/session");
   const publicInfo = await api("/api/public-info");
+  const publicStats = publicInfo.stats || {};
+  const formatCount = (value) => Number(value || 0).toLocaleString();
   const profile = session.signed_in ? `<button class="nav-profile" id="open-dashboard">${session.user.avatar ? `<img src="https://cdn.discordapp.com/avatars/${encodeURIComponent(session.user.id)}/${encodeURIComponent(session.user.avatar)}.png?size=64" alt="">` : ""}<span>Manage servers</span></button>` : `<a class="nav-login" href="${loginUrl}">Sign in <span>↗</span></a>`;
   const supportOptions = [
     { period: "ONE-TIME", themeClass: "one-time", name: "One-Time Supporter", price: "Any amount", roles: ["Supporter <3"], description: "A single contribution helps with Observer hosting, upkeep, and future improvements.", button: "Donate once on Ko-fi", benefits: ["A lasting thank-you for supporting Observer"] },
@@ -50,6 +52,7 @@ async function loadLanding() {
         <div class="hero-foot"><span>MODERATION · SECURITY · COMMUNITY</span><span>SCROLL TO DISCOVER <b>↓</b></span></div>
       </section>
       <section class="project-facts" aria-label="Observer project details"><span>BUILT WITH</span><b>Python</b><i></i><b>discord.py</b><i></i><b>SQLite</b><i></i><b>Modular cogs</b><span class="facts-status">IN ACTIVE DEVELOPMENT</span></section>
+      <section class="impact-section" aria-labelledby="impact-heading"><div class="impact-section-head"><div class="impact-heading"><div class="eyebrow">OBSERVER AT WORK</div><h2 id="impact-heading">Protection in numbers.</h2></div><p>All-time totals recorded across servers using Observer.</p></div><div class="impact-stats"><article class="impact-stat"><span>REPORTS SUBMITTED</span><strong>${formatCount(publicStats.reports)}</strong><small>member reports recorded</small></article><article class="impact-stat"><span>HONEYPOT BANS</span><strong>${formatCount(publicStats.honeypot_bans)}</strong><small>automatic bans from honeypot traps</small></article><article class="impact-stat"><span>IMAGE SCAM BANS</span><strong>${formatCount(publicStats.image_scam_bans)}</strong><small>automatic bans from image scam signals</small></article></div><p class="impact-note">Counts reflect successful bans and reports in Observer's recorded history.</p></section>
       <section class="feature-section" id="features"><div class="section-intro"><div><div class="eyebrow">A LITTLE MORE PEACE OF MIND</div><h2>One bot. A calmer server.</h2></div><p>Useful tools for the everyday work of keeping a community welcoming, safe, and running smoothly.</p></div>
         <div class="feature-grid"><article class="feature-card feature-featured"><div class="feature-icon icon-shield">⌑</div><span class="feature-index">01 / PROTECT</span><h3>See trouble sooner.</h3><p>Scam detection, raid safeguards, and audit logs help your moderators spot issues before they spread.</p><span class="feature-decoration">◉</span></article><article class="feature-card"><div class="feature-icon icon-gavel">⌁</div><span class="feature-index">02 / MODERATE</span><h3>Keep actions clear.</h3><p>Manage reports and moderation cases with a record your staff can follow.</p><span class="feature-decoration">↗</span></article><article class="feature-card"><div class="feature-icon icon-spark">✳</div><span class="feature-index">03 / RUN YOUR SERVER</span><h3>Make room for community.</h3><p>Configure helpful tools for tickets, roles, leveling, reminders, and more.</p><span class="feature-decoration">✦</span></article></div>
       </section>
@@ -70,6 +73,8 @@ async function loadLanding() {
 function initLandingScrollReveal() {
   const revealGroups = [
     [".project-facts", 0],
+    [".impact-section-head", 0],
+    [".impact-stat", 90],
     [".feature-section .section-intro", 0],
     [".feature-card", 90],
     [".engineering-section .section-intro", 0],
