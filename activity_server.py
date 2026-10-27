@@ -372,7 +372,7 @@ class ActivityServer:
                     target_match = re.search(r"`(\d{15,22})`", target_raw)
                     target_id = target_match.group(1) if target_match else ""
                     member = guild.get_member(int(target_id)) if target_id.isdigit() else None
-                    accepted = "accepted by staff" in fields
+                    closed = "accepted by staff" in fields or "claimed by" in fields
                     reports.append({
                         "id": str(message.id),
                         "target_name": member.display_name if member else (f"User {target_id}" if target_id else "Unknown member"),
@@ -381,7 +381,7 @@ class ActivityServer:
                         "reason": fields.get("reason", "No reason provided"),
                         "created_at": message.created_at.isoformat(),
                         "url": message.jump_url,
-                        "status": "reviewed" if accepted else "open",
+                        "status": "closed" if closed else "open",
                     })
             except discord.Forbidden:
                 raise web.HTTPServiceUnavailable(text="Observer needs permission to view the configured reports channel")
@@ -557,14 +557,14 @@ class ActivityServer:
             footer = value.get("panel_footer")
             reasons = value.get("reason_options")
             if not isinstance(title, str) or not title.strip() or len(title) > 256:
-                raise web.HTTPBadRequest(text="Panel title must be 1â€“256 characters")
+                raise web.HTTPBadRequest(text="Panel title must be 1–256 characters")
             if not isinstance(description, str) or len(description) > 2048:
                 raise web.HTTPBadRequest(text="Panel description must be at most 2048 characters")
             if not isinstance(footer, str) or len(footer) > 2048:
                 raise web.HTTPBadRequest(text="Panel footer must be at most 2048 characters")
             if (not isinstance(reasons, list) or not 1 <= len(reasons) <= MAX_TICKET_REASON_OPTIONS
                     or any(not isinstance(reason, str) or not reason.strip() or len(reason) > 100 for reason in reasons)):
-                raise web.HTTPBadRequest(text=f"Add 1â€“{MAX_TICKET_REASON_OPTIONS} ticket reasons of up to 100 characters each")
+                raise web.HTTPBadRequest(text=f"Add 1–{MAX_TICKET_REASON_OPTIONS} ticket reasons of up to 100 characters each")
             for field, field_value in (("panel_title", title.strip()), ("panel_description", description), ("panel_footer", footer), ("reason_options", [reason.strip() for reason in reasons])):
                 store.set(guild.id, module.key, field, field_value)
             return web.json_response({"ok": True, "value": value}, headers={"Cache-Control": "no-store"})
@@ -772,4 +772,3 @@ class ActivityServer:
 
     async def health(self, request: web.Request) -> web.Response:
         return web.json_response({"status": "online", "servers": len(self.bot.guilds)})
-
