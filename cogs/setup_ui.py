@@ -689,14 +689,6 @@ MODULES: list[ModuleSpec] = [
                     "Available only in Observer Support."
                 ),
             ),
-            SettingSpec(
-                "priority_ticket_channel",
-                "Priority ticket alerts channel",
-                "channel",
-                description=(
-                    "Post a ticket link here when a member with the priority role opens a ticket. "
-                    "Available only in Observer Support."
-                ),
             ),
             SettingSpec(
                 "blacklisted_role",
@@ -1242,7 +1234,6 @@ def setting_visible(guild_id: int, module_key: str, setting_key: str) -> bool:
     if (module_key, setting_key) in {
         ("bot", "error_channel"),
         ("tickets", "priority_role"),
-        ("tickets", "priority_ticket_channel"),
     }:
         return guild_id == OBSERVER_SUPPORT_GUILD_ID
     return True
@@ -1914,8 +1905,7 @@ class ChannelSelectView(AdminOnlyView):
                 ("bot", "error_channel"),
                 ("moderation", "appeal_channel"),
                 ("security", "advertising_channel"),
-                ("tickets", "priority_ticket_channel"),
-            }
+                    }
             else None,
         )
         select.callback = self._on_select
@@ -1954,16 +1944,12 @@ class ChannelSelectView(AdminOnlyView):
             if (self.module_key, self.setting_key) in {
                 ("bot", "error_channel"),
                 ("moderation", "appeal_channel"),
-                ("tickets", "priority_ticket_channel"),
-            }:
+                    }:
                 permissions = channel.permissions_for(interaction.guild.me)
                 can_send = (
                     permissions.view_channel
                     and permissions.send_messages
-                    and (
-                        self.setting_key == "priority_ticket_channel"
-                        or permissions.embed_links
-                    )
+                    and permissions.embed_links
                 )
                 if self.module_key == "moderation":
                     can_send = can_send and permissions.attach_files
