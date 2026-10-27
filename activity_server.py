@@ -33,6 +33,14 @@ ACTIVITY_DIR = Path(__file__).resolve().parent / "activity"
 SESSION_TTL = 7 * 24 * 60 * 60
 
 
+def _report_user_id(value: str) -> str | None:
+    match = re.search(
+        r"<@!?(\d{15,22})>|\((\d{15,22})\)|\b(\d{15,22})\b",
+        value or "",
+    )
+    return next((group for group in match.groups() if group), None) if match else None
+
+
 def _session_storage_key(session_id: str) -> str:
     return hashlib.sha256(session_id.encode("utf-8")).hexdigest()
 
@@ -377,8 +385,7 @@ class ActivityServer:
                     # stay open until staff accepts/closes them.
                     closed = "accepted by staff" in fields
                     claimed_raw = fields.get("claimed by", "")
-                    claimed_match = re.search(r"\((\d{15,22})\)", claimed_raw)
-                    claimed_id = claimed_match.group(1) if claimed_match else None
+                    claimed_id = _report_user_id(claimed_raw)
                     claimed_member = guild.get_member(int(claimed_id)) if claimed_id else None
                     accepted_raw = fields.get("accepted by staff", "")
                     accepted_match = re.search(r"<@!?(\d{15,22})>", accepted_raw)
@@ -668,8 +675,8 @@ class ActivityServer:
         embed = message.embeds[0]
         claimed_field = next((field for field in embed.fields if field.name.casefold() == "claimed by"), None)
         accepted = any(field.name.casefold() == "accepted by staff" for field in embed.fields)
-        claimed_match = re.search(r"\((\d{15,22})\)", claimed_field.value) if claimed_field else None
-        claimed_by = int(claimed_match.group(1)) if claimed_match else None
+        claimed_id = _report_user_id(claimed_field.value) if claimed_field else None
+        claimed_by = int(claimed_id) if claimed_id else None
         if action not in {"claim", "unclaim"} and claimed_by != user_id:
             if claimed_by is None:
                 raise web.HTTPForbidden(text="Claim this report before taking action")
