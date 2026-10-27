@@ -326,7 +326,8 @@ class MessageQuoter(ObserverCog):
         if not isinstance(message.author, discord.Member):
             return False
 
-        # Always allow Observer's configured owner when the cog is enabled.
+        # The bot owner can quote in any guild where this feature is enabled,
+        # regardless of which roles the guild has allowed.
         if is_bot_owner(message.author):
             return True
 

@@ -43,6 +43,18 @@ SCAM_PHRASES = (
 )
 
 URL_RE = re.compile(r"https?://[^\s<>()[\]{}]+", re.IGNORECASE)
+DISCORD_INVITE_RE = re.compile(
+    r"(?<![\w.-])(?:https?://)?(?:www\.)?(?:discord\.gg|discord(?:app)?\.com/invite)/"
+    r"[A-Za-z0-9-]{2,}(?:\b|$)",
+    re.IGNORECASE,
+)
+ADVERTISING_RE = re.compile(
+    r"\b(?:subscribe|follow|check\s+out|watch|support)\s+(?:to\s+)?(?:my|our)\s+"
+    r"(?:youtube\s+)?(?:channel|stream|twitch|socials?)\b|"
+    r"\b(?:join|come\s+to)\s+(?:my|our)\s+(?:discord\s+)?server\b|"
+    r"\b(?:sub(?:scribe)?\s+to|follow)\s+me\b",
+    re.IGNORECASE,
+)
 
 DISCORD_MESSAGE_RE = re.compile(
     r"^https?://(?:www\.)?(?:discord\.com|discordapp\.com)/channels/"
@@ -65,7 +77,7 @@ SCAM_CONTEXT_RE = re.compile(
 QR_PHRASE_RE = re.compile(r"(?:scan|camera).{0,30}(?:qr|code)|qr.{0,30}(?:claim|verify|reward|login)", re.IGNORECASE)
 BRAND_HOST_RE = re.compile(r"(?:discord|steam|microsoft|google|roblox|paypal|binance|coinbase|metamask)", re.IGNORECASE)
 TRUSTED_BRAND_DOMAINS = {
-    "discord.com", "discordapp.com", "steampowered.com", "steamcommunity.com",
+    "discord.com", "discordapp.com", "discord.gg", "steampowered.com", "steamcommunity.com",
     "microsoft.com", "live.com", "google.com", "roblox.com", "paypal.com",
     "binance.com", "coinbase.com", "metamask.io",
 }
@@ -74,6 +86,16 @@ SUSPICIOUS_NAME_RE = re.compile(
     r"(?:free.?nitro|discord.?support|mod.?team|verify|gift|airdrop|admin)",
     re.IGNORECASE,
 )
+
+
+def detect_advertising_signals(content: str) -> list[str]:
+    """Identify server invites and common self-promotion calls to action."""
+    signals = []
+    if DISCORD_INVITE_RE.search(content):
+        signals.append("Discord invite link")
+    if ADVERTISING_RE.search(content):
+        signals.append("self-promotion")
+    return signals
 
 
 def detect_scam_signals(content: str) -> list[str]:
@@ -362,6 +384,22 @@ class SecurityCog(ObserverCog):
         if self._has_scam_bypass_role(message):
             return
         signals = detect_scam_signals(message.content)
+        advertising_signals = detect_advertising_signals(message.content)
+        advertising_violation = False
+        if advertising_signals:
+            allow_advertising = self._bool_setting(
+                message.guild.id, "allow_advertising", False
+            )
+            try:
+                advertising_channel = int(self._get(message.guild.id, "advertising_channel"))
+            except (TypeError, ValueError):
+                advertising_channel = None
+            advertising_violation = not allow_advertising or (
+                advertising_channel is not None
+                and message.channel.id != advertising_channel
+            )
+            if advertising_violation:
+                signals.append("advertising outside allowed channel")
         if not signals:
             return
         now = time.monotonic()
@@ -392,14 +430,14 @@ class SecurityCog(ObserverCog):
                 "lookalike domain:", "brand impersonation domain:",
                 "URL contains misleading credentials", "encoded credential bait:",
                 "suspicious scam webpage:", "suspicious scam path:",
-                "QR-code phishing bait",
+                "QR-code phishing bait", "advertising outside allowed channel",
             )) for signal in signals
         )
         contextual_signal = any(signal in SCAM_PHRASES for signal in signals) and any(
             signal.startswith(("shortened link:", "suspicious download link:", "raw IP address link:", "suspicious authorization link:"))
             for signal in signals
         )
-        if self._bool_setting(message.guild.id, "delete_scam_messages", False) and (strong_signal or contextual_signal):
+        if (advertising_violation or self._bool_setting(message.guild.id, "delete_scam_messages", False)) and (advertising_violation or strong_signal or contextual_signal):
             try:
                 try:
                     await message.delete(reason="Possible scam message flagged")

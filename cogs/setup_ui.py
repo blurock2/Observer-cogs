@@ -4,8 +4,8 @@ from cogs.config import OBSERVER_SUPPORT_GUILD_ID
 from error_handling import ErrorHandledModal, ErrorHandledView, ObserverCog, handle_interaction_error
 
 import json
-import os
 import re
+import os
 from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -306,36 +306,6 @@ class ModuleSpec:
 
 MODULES: list[ModuleSpec] = [
     ModuleSpec(
-        key="steam_free",
-        label="Free Steam Games",
-        emoji="🎮",
-        description="Games and DLC temporarily 100% off, claimed directly on Steam.",
-        settings=[
-            SettingSpec("enabled", "Automatic Steam alerts", "toggle", default=False,
-                        description="Check every 30 minutes after selecting a channel."),
-            SettingSpec("channel", "Free games channel", "channel",
-                        description="Needs View Channel, Send Messages and Embed Links."),
-            SettingSpec("country", "Steam region code", "text", default="si",
-                        description="Two-letter country code: si, de, gb, us. Prices and availability vary."),
-        ],
-    ),
-    ModuleSpec(key="anti_raid", label="Anti-Raid and Honeypot", emoji="🍯",
-        description="Join-burst verification holds, temporary restrictions, and an opt-in trap channel.",
-        settings=[
-            SettingSpec("enabled", "Automatic anti-raid", "toggle", default=False),
-            SettingSpec("join_threshold", "Joins to trigger raid hold", "integer", default=10),
-            SettingSpec("join_window_seconds", "Join window (seconds)", "integer", default=30),
-            SettingSpec("hold_seconds", "Raid hold duration (seconds)", "integer", default=300),
-            SettingSpec("timeout_minutes", "Raid timeout (minutes; 0 disables)", "integer", default=10),
-            SettingSpec("alert_channel", "Anti-raid alerts", "channel"),
-            SettingSpec("bypass_role", "Trusted bypass role", "role"),
-            SettingSpec("honeypot_enabled", "Honeypot enabled", "toggle", default=False),
-            SettingSpec("honeypot_channel", "Honeypot channel", "channel",
-                description="Dedicated trap channel. Warn members not to post here."),
-            SettingSpec("honeypot_ban", "Ban honeypot posters", "toggle", default=False,
-                description="Off: timeout for 1 hour. On: ban. Staff and bots are excluded."),
-        ]),
-    ModuleSpec(
         key="afk",
         label="AFK",
         emoji="💤",
@@ -484,7 +454,7 @@ MODULES: list[ModuleSpec] = [
         key="message_quoter",
         label="Message Quoter",
         emoji="💬",
-        description="Quote message links. If no allowed roles are set, everyone can use this feature when enabled. Require reply is a separate option.",
+        description="Reply-quoting of messages.",
         settings=[
             SettingSpec("enabled", "Enabled", "toggle", default=False),
             SettingSpec("embed_color", "Embed color", "text",
@@ -566,12 +536,25 @@ MODULES: list[ModuleSpec] = [
         key="report_msg",
         label="Report Message",
         emoji="📣",
-        description="Let users report a message to staff. If you are looking for the moderator ping," \
-        "check the Moderation module instead.",
+        description="Let users report messages to staff and configure report notifications.",
+
         settings=[
             SettingSpec("enabled", "Enabled", "toggle", default=False),
             SettingSpec("report_channel", "Reports channel", "channel"),
             SettingSpec("staff_role", "Staff role", "role"),
+            SettingSpec(
+                "monthly_top_reporter_role",
+                "Monthly top reporter role",
+                "role",
+                description="Award this role to the member with the most staff accepted reports this month.",
+            ),
+            SettingSpec(
+                "ping_mod_role",
+                "Notify moderators about reports",
+                "toggle",
+                default=False,
+                description="Also ping the moderator role configured under Moderation when a report is sent.",
+            ),
             SettingSpec("anonymous", "Anonymous reports", "toggle", default=False),
             SettingSpec("cooldown", "Cooldown (seconds)", "integer", default=30,
                         description="Per-user report cooldown."),
@@ -689,7 +672,7 @@ MODULES: list[ModuleSpec] = [
                 "role",
                 description=(
                     "Role that cannot create tickets (optional)."
-                
+
                 ),
             ),
             SettingSpec(
@@ -741,17 +724,14 @@ MODULES: list[ModuleSpec] = [
             SettingSpec("enabled", "Logging enabled", "toggle", default=True,
                         description="Master switch for mod-log messages."),
             SettingSpec("log_channel", "Mod log channel", "channel"),
+            SettingSpec(
+                "appeal_channel",
+                "Ban appeals channel",
+                "channel",
+                description="Staff-only channel for permanent-ban appeals submitted from DMs. Leave unset to disable in-app appeals.",
+            ),
             SettingSpec("mod_role", "Moderator role", "role"),
             SettingSpec("head_mod_role", "Head moderator role", "role"),
-            SettingSpec(
-                        "ping_mod_role",
-                        "Ping moderator role",
-                        "toggle",
-                        default=False,
-                        description=(
-                        "Mention the Moderator role when a report is sent."
-                        ),
-            ),
             SettingSpec("embed_color", "Log embed color", "text",
                         description="Hex color, e.g. 96edf1",
                         default="96edf1"),
@@ -820,23 +800,64 @@ MODULES: list[ModuleSpec] = [
         ],
     ),
     ModuleSpec(
+        key="steam_free",
+        label="Free Steam Games",
+        emoji="🎮",
+        description="Games and DLC temporarily 100% off, claimed directly on Steam.",
+        settings=[
+            SettingSpec("enabled", "Automatic Steam alerts", "toggle", default=False,
+                        description="Check every 30 minutes after selecting a channel."),
+            SettingSpec("channel", "Free games channel", "channel",
+                        description="Needs View Channel, Send Messages and Embed Links."),
+            SettingSpec("country", "Steam region code", "text", default="si",
+                        description="Two-letter country code: si, de, gb, us. Prices and availability vary."),
+        ],
+    ),
+    ModuleSpec(
         key="security",
-        label="Security and Lockdown",
+        label="Anti-Scam and Security",
         emoji="🛡️",
-        description="Reversible lockdown, suspicious-account alerts, scam detection, and channel controls.",
+        description="Scam detection, honeypot and join-burst protection, lockdown, and channel controls.",
         settings=[
             SettingSpec("enabled", "Enabled", "toggle", default=True,
                         description="Enable suspicious-account alerts and scam detection listeners."),
             SettingSpec("alert_channel", "Security alert channel", "channel"),
             SettingSpec("scam_bypass_role", "Scam detection bypass role", "role",
                         description="Members with this role are excluded from scam message detection."),
+            SettingSpec("allow_advertising", "Allow advertising", "toggle", default=False,
+                        description="Off: block Discord invites and common self-promotion. On: allow them everywhere, or only in the advertising channel below."),
+            SettingSpec("advertising_channel", "Advertising channel", "channel",
+                        description="When Allow advertising is on, allow advertising only here. Leave unset to allow it in all channels."),
+            SettingSpec("scam_ban", "EXPERIMENTAL: Instant scam ban", "toggle", default=False,
+                        description="EXPERIMENTAL. Do not enable unless you are certain this detection is suitable for your server. When enabled, members are banned automatically when a high-confidence scam is detected. False positives can permanently remove legitimate members."),
+            SettingSpec("scam_permanent_mute", "Scam action: Permanent mute", "toggle", default=False,
+                        description="On: assign the configured mute role for high-confidence scams. The role must deny Send Messages."),
+            SettingSpec("scam_mute_role", "Scam permanent mute role", "role",
+                        description="Role used for permanent scam mutes; configure it to deny Send Messages across the server."),
+            SettingSpec("honeypot_enabled", "Honeypot enabled", "toggle", default=False),
+            SettingSpec("honeypot_channel", "Honeypot channel", "channel",
+                        description="Dedicated trap channel. Warn members not to post here."),
+            SettingSpec("honeypot_ban", "Honeypot action: Ban", "toggle", default=False,
+                        description="On: ban honeypot posters. Off with permanent mute off: use the legacy 1-hour timeout."),
+            SettingSpec("honeypot_permanent_mute", "Honeypot action: Permanent mute", "toggle", default=False,
+                        description="On: assign the configured mute role with no expiry."),
+            SettingSpec("honeypot_mute_role", "Honeypot permanent mute role", "role",
+                        description="Role used for permanent honeypot mutes; configure it to deny Send Messages across the server."),
             SettingSpec("lockdown_enabled", "Lockdown enabled", "toggle", default=False),
             SettingSpec("new_account_days", "New-account age threshold (days)", "integer", default=7),
             SettingSpec("invite_use_threshold", "Invite-use alert threshold", "integer", default=2),
             SettingSpec("lockdown_auto_timeout", "Auto-timeout new accounts during lockdown", "toggle", default=False),
             SettingSpec("lockdown_new_account_timeout_minutes", "Lockdown new-account timeout (minutes)", "integer", default=30),
             SettingSpec("scam_alert_cooldown_seconds", "Scam alert cooldown (seconds)", "integer", default=60),
-            SettingSpec("delete_scam_messages", "Delete flagged scam messages", "toggle", default=False),
+            SettingSpec("delete_scam_messages", "Delete flagged scam messages", "toggle", default=True,
+                        description="Delete messages matching high-confidence link or image scam indicators. The bot needs Manage Messages."),
+            SettingSpec("raid_enabled", "Automatic anti-raid", "toggle", default=False),
+            SettingSpec("raid_join_threshold", "Joins to trigger raid hold", "integer", default=10),
+            SettingSpec("raid_join_window_seconds", "Join window (seconds)", "integer", default=30),
+            SettingSpec("raid_hold_seconds", "Raid hold duration (seconds)", "integer", default=300),
+            SettingSpec("raid_timeout_minutes", "Raid timeout (minutes; 0 disables)", "integer", default=10),
+            SettingSpec("raid_alert_channel", "Anti-raid alerts", "channel"),
+            SettingSpec("raid_bypass_role", "Anti-raid trusted bypass role", "role"),
         ],
     ),
     ModuleSpec(
@@ -898,6 +919,13 @@ MODULES: list[ModuleSpec] = [
                         description="Time before XP can be earned again."),
             SettingSpec("weekly_channel", "Weekly leaderboard channel", "channel",
                         description="Schedule the time via /weekly_config."),
+            SettingSpec(
+                "voice_rename_level",
+                "Voice rename level",
+                "integer",
+                default=10,
+                description="Level required to rename a temporary voice channel. Set to 0 to allow everyone.",
+            ),
         ],
     ),
     ModuleSpec(
@@ -974,28 +1002,47 @@ def get_visible_message_quoter_role_specs(
     store: SetupConfigStore,
     guild: discord.Guild,
 ) -> list[SettingSpec]:
-    """Show every saved role and the first empty slot, even when slots have gaps.
+    """
+    Show configured roles plus exactly one next empty role slot.
 
-    Clearing a role must not hide roles saved in later slots: otherwise the
-    dashboard appears unrestricted while Message Quoter still blocks users.
-    When no roles are configured, only the first empty slot is displayed.
+    Example:
+        none configured -> role 1
+        role 1 configured -> roles 1 and 2
+        roles 1-3 configured -> roles 1-4
     """
     role_specs = get_message_quoter_role_specs()
     visible_specs: list[SettingSpec] = []
-    first_empty: SettingSpec | None = None
 
     for spec in role_specs:
-        role_id = store.get(guild.id, MESSAGE_QUOTER_MODULE_KEY, spec.key, None)
-        if role_id is None:
-            if first_empty is None:
-                first_empty = spec
-        else:
+        role_id = store.get(
+            guild.id,
+            MESSAGE_QUOTER_MODULE_KEY,
+            spec.key,
+            None,
+        )
+# balls y u reading this lol
+        if role_id is not None:
+            visible_specs.append(spec)
+            continue
+
+        # Show only the first empty slot after all previous slots.
+        if not visible_specs:
+            return [spec]
+
+        previous_spec = role_specs[len(visible_specs) - 1]
+        previous_role_id = store.get(
+            guild.id,
+            MESSAGE_QUOTER_MODULE_KEY,
+            previous_spec.key,
+            None,
+        )
+
+        if previous_role_id is not None:
             visible_specs.append(spec)
 
-    if first_empty is not None:
-        visible_specs.append(first_empty)
+        return visible_specs
 
-    return sorted(visible_specs, key=message_quoter_role_number)
+    return visible_specs
 
 
 # ============================================================ Value formatting helpers
@@ -1058,6 +1105,34 @@ def display_setting(guild: discord.Guild | None, spec: SettingSpec, value) -> st
     return str(value)
 
 
+def get_setting_value(
+    store: SetupConfigStore,
+    guild: discord.Guild,
+    module: ModuleSpec,
+    spec: SettingSpec,
+):
+    value = store.get(guild.id, module.key, spec.key, None)
+    if value is None and module.key == "report_msg" and spec.key == "ping_mod_role":
+        value = store.get(guild.id, "moderation", "ping_mod_role", spec.default)
+    if value is None and module.key == "security":
+        legacy_anti_raid_keys = {
+            "raid_enabled": "enabled",
+            "raid_join_threshold": "join_threshold",
+            "raid_join_window_seconds": "join_window_seconds",
+            "raid_hold_seconds": "hold_seconds",
+            "raid_timeout_minutes": "timeout_minutes",
+            "raid_alert_channel": "alert_channel",
+            "raid_bypass_role": "bypass_role",
+            "honeypot_enabled": "honeypot_enabled",
+            "honeypot_channel": "honeypot_channel",
+            "honeypot_ban": "honeypot_ban",
+        }
+        legacy_key = legacy_anti_raid_keys.get(spec.key)
+        if legacy_key is not None:
+            value = store.get(guild.id, "anti_raid", legacy_key, None)
+    return spec.default if value is None else value
+
+
 # ============================================================ Embed builders
 
 def build_main_embed(store: SetupConfigStore, guild: discord.Guild) -> discord.Embed:
@@ -1078,10 +1153,35 @@ def setting_visible(guild_id: int, module_key: str, setting_key: str) -> bool:
     return (module_key, setting_key) != ("bot", "error_channel") or guild_id == OBSERVER_SUPPORT_GUILD_ID
 
 
+MODULE_SETTINGS_PER_PAGE = 12
+
+
+def get_module_settings(
+    store: SetupConfigStore,
+    guild: discord.Guild,
+    module: ModuleSpec,
+) -> list[SettingSpec]:
+    settings = module.settings
+    if module.key == MESSAGE_QUOTER_MODULE_KEY:
+        visible_roles = {
+            spec.key
+            for spec in get_visible_message_quoter_role_specs(store, guild)
+        }
+        settings = [
+            spec for spec in settings
+            if not is_message_quoter_role_setting(spec) or spec.key in visible_roles
+        ]
+    return [
+        spec for spec in settings
+        if setting_visible(guild.id, module.key, spec.key)
+    ]
+
+
 def build_module_embed(
     store: SetupConfigStore,
     guild: discord.Guild,
     module: ModuleSpec,
+    page: int = 0,
 ) -> discord.Embed:
     enabled_spec = next(
         (s for s in module.settings if s.key == "enabled"),
@@ -1110,32 +1210,16 @@ def build_module_embed(
     embed.set_footer(text="Click a button to edit • ◀ Back returns to the dashboard")
 
     values = store.get_module(guild.id, module.key)
+    settings = get_module_settings(store, guild, module)
+    page_count = max(
+        1,
+        (len(settings) + MODULE_SETTINGS_PER_PAGE - 1) // MODULE_SETTINGS_PER_PAGE,
+    )
+    page = max(0, min(page, page_count - 1))
+    start = page * MODULE_SETTINGS_PER_PAGE
 
-    # For Message Quoter, only show configured role slots plus one empty slot
-    if module.key == MESSAGE_QUOTER_MODULE_KEY:
-        visible_role_specs = get_visible_message_quoter_role_specs(
-            store,
-            guild,
-        )
-
-        visible_role_keys = {
-            spec.key
-            for spec in visible_role_specs
-        }
-
-        settings = [
-            spec
-            for spec in module.settings
-            if not is_message_quoter_role_setting(spec)
-            or spec.key in visible_role_keys
-        ]
-    else:
-        settings = module.settings
-
-    for spec in settings:
-        if not setting_visible(guild.id, module.key, spec.key):
-            continue
-        current = values.get(spec.key, spec.default)
+    for spec in settings[start : start + MODULE_SETTINGS_PER_PAGE]:
+        current = get_setting_value(store, guild, module, spec)
 
         embed.add_field(
             name=f"{spec.label}",
@@ -1143,6 +1227,9 @@ def build_module_embed(
                   + (f"\n{spec.description}" if spec.description else ""),
             inline=False,
         )
+    embed.set_footer(
+        text=f"Settings page {page + 1}/{page_count} • Use the buttons to edit or navigate"
+    )
     return embed
 
 
@@ -1516,9 +1603,15 @@ class TicketPanelEditorView(AdminOnlyView):
 
 
 class ModuleView(AdminOnlyView):
-    """A single module's config panel: one button per setting + Back."""
+    """Paginated module settings so larger feature panels stay manageable."""
 
-    def __init__(self, cog: SetupUICog, module_key: str, guild: discord.Guild):
+    def __init__(
+        self,
+        cog: SetupUICog,
+        module_key: str,
+        guild: discord.Guild,
+        page: int = 0,
+    ):
         super().__init__(timeout=600)
         self.cog = cog
         self.module_key = module_key
@@ -1526,38 +1619,46 @@ class ModuleView(AdminOnlyView):
         module = get_module(module_key)
         if module is None:
             return
+        settings = get_module_settings(cog.store, guild, module)
+        self.page_count = max(
+            1,
+            (len(settings) + MODULE_SETTINGS_PER_PAGE - 1)
+            // MODULE_SETTINGS_PER_PAGE,
+        )
+        self.page = max(0, min(page, self.page_count - 1))
 
-        # For Message Quoter, only show configured role slots plus one empty slot
-        if module_key == MESSAGE_QUOTER_MODULE_KEY:
-            role_specs = get_visible_message_quoter_role_specs(
-                cog.store,
-                guild,
-            )
-            visible_role_keys = {
-                spec.key
-                for spec in role_specs
-            }
-
-            settings = [
-                spec
-                for spec in module.settings
-                if not is_message_quoter_role_setting(spec)
-                or spec.key in visible_role_keys
-            ]
-        else:
-            settings = module.settings
-
-        for spec in settings:
-            if not setting_visible(guild.id, module.key, spec.key):
-                continue
+        start = self.page * MODULE_SETTINGS_PER_PAGE
+        for spec in settings[start : start + MODULE_SETTINGS_PER_PAGE]:
             self.add_item(self._make_button(module, spec))
+
+        if self.page_count > 1:
+            previous = discord.ui.Button(
+                label="Previous",
+                style=discord.ButtonStyle.secondary,
+                disabled=self.page == 0,
+            )
+            previous.callback = lambda interaction: self._change_page(
+                interaction, self.page - 1
+            )
+            next_button = discord.ui.Button(
+                label="Next",
+                style=discord.ButtonStyle.secondary,
+                disabled=self.page >= self.page_count - 1,
+            )
+            next_button.callback = lambda interaction: self._change_page(
+                interaction, self.page + 1
+            )
+            self.add_item(previous)
+            self.add_item(next_button)
 
         back = discord.ui.Button(label="◀ Back to dashboard", style=discord.ButtonStyle.secondary)
         back.callback = self._on_back
         self.add_item(back)
 
     def _make_button(self, module: ModuleSpec, spec: SettingSpec) -> discord.ui.Button:
-        current = self.cog.store.get(self.guild.id, module.key, spec.key, spec.default)
+        current = get_setting_value(
+            self.cog.store, self.guild, module, spec
+        )
         value_text = display_setting(self.guild, spec, current)
         label = f"{spec.label}: {value_text}"[:80]
 
@@ -1574,6 +1675,17 @@ class ModuleView(AdminOnlyView):
         button.callback = self._make_callback(module, spec)
         return button
 
+    async def _change_page(
+        self,
+        interaction: discord.Interaction,
+        page: int,
+    ) -> None:
+        module = get_module(self.module_key)
+        await interaction.response.edit_message(
+            embed=build_module_embed(self.cog.store, self.guild, module, page),
+            view=ModuleView(self.cog, self.module_key, self.guild, page),
+        )
+
     def _make_callback(self, module: ModuleSpec, spec: SettingSpec) -> Callable:
         cog = self.cog
         module_key = self.module_key
@@ -1585,16 +1697,27 @@ class ModuleView(AdminOnlyView):
                     await interaction.response.send_message("This setting is only available in Observer Support.", ephemeral=True)
                     return
                 if spec.kind == "toggle":
-                    current = cog.store.get(guild.id, module_key, spec.key, spec.default)
+                    current = get_setting_value(
+                        cog.store, guild, module, spec
+                    )
                     new_val = not setting_as_bool(current, bool(spec.default))
                     cog.store.set(guild.id, module_key, spec.key, new_val)
+                    exclusive_pairs = {
+                        "honeypot_ban": "honeypot_permanent_mute",
+                        "honeypot_permanent_mute": "honeypot_ban",
+                        "scam_ban": "scam_permanent_mute",
+                        "scam_permanent_mute": "scam_ban",
+                    }
+                    paired_key = exclusive_pairs.get(spec.key)
+                    if new_val and paired_key:
+                        cog.store.set(guild.id, module_key, paired_key, False)
                     await self._refresh(interaction)
                     await interaction.followup.send(
                         f"✅ {spec.label} is now {'On' if new_val else 'Off'}.",
                         ephemeral=True,
                     )
                 elif spec.kind in ("text", "integer"):
-                    modal = TextModal(cog, module_key, spec, guild)
+                    modal = TextModal(cog, module_key, spec, guild, page=self.page)
                     await interaction.response.send_modal(modal)
                 elif spec.kind == "ticket_panel":
                     embed = build_ticket_panel_preview(cog.store, guild)
@@ -1605,11 +1728,15 @@ class ModuleView(AdminOnlyView):
                     )
                 elif spec.kind == "channel":
                     embed = build_select_embed(module, spec)
-                    view = ChannelSelectView(cog, module_key, spec.key, guild)
+                    view = ChannelSelectView(
+                        cog, module_key, spec.key, guild, page=self.page
+                    )
                     await interaction.response.edit_message(embed=embed, view=view)
                 elif spec.kind == "role":
                     embed = build_select_embed(module, spec)
-                    view = RoleSelectView(cog, module_key, spec.key, guild)
+                    view = RoleSelectView(
+                        cog, module_key, spec.key, guild, page=self.page
+                    )
                     await interaction.response.edit_message(embed=embed, view=view)
             except Exception as e:  # noqa: BLE001 - UI boundary must report a user-facing error
                 await handle_interaction_error(interaction, e, source="setup_ui")
@@ -1627,8 +1754,12 @@ class ModuleView(AdminOnlyView):
     async def _refresh(self, interaction: discord.Interaction) -> None:
         try:
             module = get_module(self.module_key)
-            embed = build_module_embed(self.cog.store, interaction.guild, module)
-            view = ModuleView(self.cog, self.module_key, interaction.guild)
+            embed = build_module_embed(
+                self.cog.store, interaction.guild, module, self.page
+            )
+            view = ModuleView(
+                self.cog, self.module_key, interaction.guild, self.page
+            )
             await interaction.response.edit_message(embed=embed, view=view)
         except Exception as e:  # noqa: BLE001 - UI boundary must report a user-facing error
             await handle_interaction_error(interaction, e, source="setup_ui")
@@ -1643,9 +1774,10 @@ class _BackToModuleButton(discord.ui.Button):
         try:
             cog = self._setup_view.cog
             module_key = self._setup_view.module_key
+            page = self._setup_view.page
             module = get_module(module_key)
-            embed = build_module_embed(cog.store, interaction.guild, module)
-            view = ModuleView(cog, module_key, interaction.guild)
+            embed = build_module_embed(cog.store, interaction.guild, module, page)
+            view = ModuleView(cog, module_key, interaction.guild, page)
             await interaction.response.edit_message(embed=embed, view=view)
         except discord.NotFound:
             return
@@ -1654,18 +1786,33 @@ class _BackToModuleButton(discord.ui.Button):
 
 
 class ChannelSelectView(AdminOnlyView):
-    def __init__(self, cog: SetupUICog, module_key: str, setting_key: str, guild: discord.Guild):
+    def __init__(
+        self,
+        cog: SetupUICog,
+        module_key: str,
+        setting_key: str,
+        guild: discord.Guild,
+        page: int = 0,
+    ):
         super().__init__(timeout=600)
         self.cog = cog
         self.module_key = module_key
         self.setting_key = setting_key
         self.guild = guild
+        self.page = page
 
         select = discord.ui.ChannelSelect(
             placeholder="Select a channel…",
             min_values=1,
             max_values=1,
-            channel_types=[discord.ChannelType.text] if (module_key, setting_key) in {("bot", "error_channel"), ("steam_free", "channel")} else None,
+            channel_types=[discord.ChannelType.text]
+            if (module_key, setting_key) in {
+                ("bot", "error_channel"),
+                ("moderation", "appeal_channel"),
+                ("security", "advertising_channel"),
+                ("steam_free", "channel"),
+            }
+            else None,
         )
         select.callback = self._on_select
         self.add_item(select)
@@ -1686,8 +1833,12 @@ class ChannelSelectView(AdminOnlyView):
         self.cog.store.delete(interaction.guild.id, self.module_key, self.setting_key)
         module = get_module(self.module_key)
         await interaction.response.edit_message(
-            embed=build_module_embed(self.cog.store, interaction.guild, module),
-            view=ModuleView(self.cog, self.module_key, interaction.guild),
+            embed=build_module_embed(
+                self.cog.store, interaction.guild, module, self.page
+            ),
+            view=ModuleView(
+                self.cog, self.module_key, interaction.guild, self.page
+            ),
         )
         await interaction.followup.send("✅ Setting cleared.", ephemeral=True)
 
@@ -1696,17 +1847,36 @@ class ChannelSelectView(AdminOnlyView):
             await interaction.response.defer()
             channel_id = interaction.data["values"][0]
             channel = await interaction.guild.fetch_channel(int(channel_id))
-            if (self.module_key, self.setting_key) in {("bot", "error_channel"), ("steam_free", "channel")}:
+            if (self.module_key, self.setting_key) in {
+                ("bot", "error_channel"),
+                ("moderation", "appeal_channel"),
+                ("steam_free", "channel"),
+            }:
                 permissions = channel.permissions_for(interaction.guild.me)
-                if not isinstance(channel, discord.TextChannel) or not (permissions.view_channel and permissions.send_messages and permissions.embed_links):
-                    await interaction.followup.send("Choose a text channel where I can View Channel, Send Messages, and Embed Links.", ephemeral=True)
+                can_send = (
+                    permissions.view_channel
+                    and permissions.send_messages
+                    and permissions.embed_links
+                )
+                if self.module_key == "moderation":
+                    can_send = can_send and permissions.attach_files
+                if not isinstance(channel, discord.TextChannel) or not can_send:
+                    await interaction.followup.send(
+                        "Choose a text channel where I can view and send messages, embed links"
+                        + (", and attach files." if self.module_key == "moderation" else "."),
+                        ephemeral=True,
+                    )
                     return
             self.cog.store.set(
                 interaction.guild.id, self.module_key, self.setting_key, channel.id
             )
             module = get_module(self.module_key)
-            embed = build_module_embed(self.cog.store, interaction.guild, module)
-            view = ModuleView(self.cog, self.module_key, interaction.guild)
+            embed = build_module_embed(
+                self.cog.store, interaction.guild, module, self.page
+            )
+            view = ModuleView(
+                self.cog, self.module_key, interaction.guild, self.page
+            )
             await interaction.edit_original_response(embed=embed, view=view)
             await interaction.followup.send(
                 f"✅ Set to {channel.mention}.", ephemeral=True
@@ -1718,12 +1888,20 @@ class ChannelSelectView(AdminOnlyView):
 
 
 class RoleSelectView(AdminOnlyView):
-    def __init__(self, cog: SetupUICog, module_key: str, setting_key: str, guild: discord.Guild):
+    def __init__(
+        self,
+        cog: SetupUICog,
+        module_key: str,
+        setting_key: str,
+        guild: discord.Guild,
+        page: int = 0,
+    ):
         super().__init__(timeout=600)
         self.cog = cog
         self.module_key = module_key
         self.setting_key = setting_key
         self.guild = guild
+        self.page = page
 
         select = discord.ui.RoleSelect(
             placeholder="Select a role…",
@@ -1741,8 +1919,12 @@ class RoleSelectView(AdminOnlyView):
         self.cog.store.delete(interaction.guild.id, self.module_key, self.setting_key)
         module = get_module(self.module_key)
         await interaction.response.edit_message(
-            embed=build_module_embed(self.cog.store, interaction.guild, module),
-            view=ModuleView(self.cog, self.module_key, interaction.guild),
+            embed=build_module_embed(
+                self.cog.store, interaction.guild, module, self.page
+            ),
+            view=ModuleView(
+                self.cog, self.module_key, interaction.guild, self.page
+            ),
         )
         await interaction.followup.send("✅ Setting cleared.", ephemeral=True)
 
@@ -1760,8 +1942,12 @@ class RoleSelectView(AdminOnlyView):
                 interaction.guild.id, self.module_key, self.setting_key, role.id
             )
             module = get_module(self.module_key)
-            embed = build_module_embed(self.cog.store, interaction.guild, module)
-            view = ModuleView(self.cog, self.module_key, interaction.guild)
+            embed = build_module_embed(
+                self.cog.store, interaction.guild, module, self.page
+            )
+            view = ModuleView(
+                self.cog, self.module_key, interaction.guild, self.page
+            )
             await interaction.response.edit_message(embed=embed, view=view)
             await interaction.followup.send(
                 f"✅ Set to {role.mention}.", ephemeral=True
@@ -1773,13 +1959,21 @@ class RoleSelectView(AdminOnlyView):
 class TextModal(ErrorHandledModal):
     """Modal for `text` and `integer` settings."""
 
-    def __init__(self, cog: SetupUICog, module_key: str, spec: SettingSpec, guild: discord.Guild):
+    def __init__(
+        self,
+        cog: SetupUICog,
+        module_key: str,
+        spec: SettingSpec,
+        guild: discord.Guild,
+        page: int = 0,
+    ):
         title = f"{spec.label}"[:45]
         super().__init__(title=title)
         self.cog = cog
         self.module_key = module_key
         self.spec = spec
         self.guild = guild
+        self.page = page
 
         current = cog.store.get(guild.id, module_key, spec.key, spec.default)
         placeholder = "Enter a value…" if spec.kind == "text" else "Enter a number…"
@@ -1818,12 +2012,16 @@ class TextModal(ErrorHandledModal):
                         return
             else:
                 value = raw if raw != "" else None
-# nick-grrr 
+# nick-grrr
             self.cog.store.set(guild.id, self.module_key, self.spec.key, value)
 
             module = get_module(self.module_key)
-            embed = build_module_embed(self.cog.store, guild, module)
-            view = ModuleView(self.cog, self.module_key, guild)
+            embed = build_module_embed(
+                self.cog.store, guild, module, self.page
+            )
+            view = ModuleView(
+                self.cog, self.module_key, guild, self.page
+            )
             await interaction.response.edit_message(embed=embed, view=view)
             await interaction.followup.send(
                 f"✅ {self.spec.label} updated.", ephemeral=True
