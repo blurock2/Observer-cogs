@@ -122,10 +122,10 @@ async function openDashboard() {
         : server.is_owner
           ? `<a class="server-action server-add" href="${esc(result.invite_url)}&guild_id=${encodeURIComponent(server.id)}&disable_guild_select=true">Add Observer <span>+</span></a>`
           : `<span class="server-action server-secondary">Ask an owner to add Observer</span>`;
-      const embedCard = `<a class="server-dashboard-card server-embed-card" href="/embeds?guild_id=${encodeURIComponent(server.id)}"><span class="server-card-kicker">SERVER TOOLS</span><strong>Send a custom embed</strong><small>Compose and post an embed to a channel</small><span class="server-card-arrow">↗</span></a>`;
+      const embedCard = `<a class="server-dashboard-card server-embed-card" href="/embeds?guild_id=${encodeURIComponent(server.id)}"><span class="server-card-kicker">SERVER TOOLS</span><strong>Custom messages</strong><small>Create, send, and edit saved embeds or clean cards</small><span class="server-card-arrow">↗</span></a>`;
       const hasEmbedCard = server.bot_present && server.can_send_embeds;
       let serverAction = action;
-      if (hasEmbedCard && server.is_owner) serverAction = action.replace("</div>", `${embedCard}</div>`);
+      if (hasEmbedCard && server.is_owner) serverAction = action.replace('<a class="server-dashboard-card server-config-card"', `${embedCard}<a class="server-dashboard-card server-config-card"`);
       else if (hasEmbedCard && server.can_moderate) serverAction = `<div class="server-dashboard-cards"><a class="server-dashboard-card server-mod-card" href="/moderate?guild_id=${encodeURIComponent(server.id)}"><span class="server-card-kicker">REPORTS &amp; MODERATION</span><strong>Review server activity</strong><small>Reports, claims, and moderation actions</small><span class="server-mod-link">View moderation page ↗</span></a>${embedCard}</div>`;
       else if (hasEmbedCard) serverAction = `<a class="server-action server-embed-action" href="/embeds?guild_id=${encodeURIComponent(server.id)}">Send a custom embed <span>↗</span></a>`;
       const hasCards = server.bot_present && (server.is_owner || (hasEmbedCard && server.can_moderate));

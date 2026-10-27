@@ -46,6 +46,16 @@ def _session_storage_key(session_id: str) -> str:
     return hashlib.sha256(session_id.encode("utf-8")).hexdigest()
 
 
+def _parse_discord_message_url(value: str) -> tuple[int, int, int] | None:
+    parsed = urlparse(value.strip())
+    if parsed.scheme != "https" or parsed.hostname not in {"discord.com", "www.discord.com", "discordapp.com", "www.discordapp.com"}:
+        return None
+    match = re.fullmatch(r"/channels/(\d{15,22})/(\d{15,22})/(\d{15,22})/?", parsed.path)
+    if not match:
+        return None
+    return tuple(map(int, match.groups()))
+
+
 class ActivityServer:
     def __init__(self, bot):
         self.bot = bot
@@ -68,6 +78,19 @@ class ActivityServer:
                 )"""
             )
             db.execute("DELETE FROM activity_sessions WHERE expires_at <= ?", (datetime.now(timezone.utc).timestamp(),))
+            db.execute(
+                """CREATE TABLE IF NOT EXISTS custom_embed_messages (
+                    guild_id INTEGER NOT NULL,
+                    channel_id INTEGER NOT NULL,
+                    message_id INTEGER NOT NULL,
+                    style TEXT NOT NULL,
+                    payload_json TEXT NOT NULL,
+                    created_by INTEGER NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (guild_id, message_id)
+                )"""
+            )
 
     async def start(self) -> None:
         if not self.client_id or not self.client_secret:
@@ -83,6 +106,7 @@ class ActivityServer:
         app.router.add_get("/api/control-panel/{guild_id}", self.control_panel)
         app.router.add_post("/api/control-panel/{guild_id}/setting", self.save_control_panel_setting)
         app.router.add_get("/api/custom-embed/{guild_id}", self.custom_embed_info)
+        app.router.add_get("/api/custom-embed/{guild_id}/message", self.custom_embed_message)
         app.router.add_post("/api/custom-embed/{guild_id}", self.send_custom_embed)
         app.router.add_get("/api/mod-dashboard/{guild_id}", self.mod_dashboard)
         app.router.add_post("/api/mod-dashboard/{guild_id}/reports/{message_id}/{action}", self.mod_report_action)
@@ -366,15 +390,78 @@ class ActivityServer:
         channels = []
         for channel in guild.text_channels:
             permissions = channel.permissions_for(bot_member) if bot_member else None
-            if permissions and permissions.send_messages:
+            if permissions and permissions.view_channel and permissions.send_messages and permissions.read_message_history:
                 channels.append({"id": str(channel.id), "name": channel.name, "category": channel.category.name if channel.category else "", "can_embed": permissions.embed_links})
+        with connect_sqlite(DB_PATH) as db:
+            saved_messages = db.execute(
+                """SELECT channel_id, message_id, style, payload_json, updated_at
+                   FROM custom_embed_messages WHERE guild_id = ? ORDER BY updated_at DESC LIMIT 50""",
+                (guild.id,),
+            ).fetchall()
+        messages = []
+        for row in saved_messages:
+            channel = guild.get_channel(row["channel_id"])
+            if channel is None:
+                continue
+            try:
+                payload = json.loads(row["payload_json"])
+            except (TypeError, ValueError):
+                payload = {}
+            messages.append({
+                "url": f"https://discord.com/channels/{guild.id}/{row['channel_id']}/{row['message_id']}",
+                "style": row["style"],
+                "title": payload.get("title", ""),
+                "channel_name": channel.name,
+                "updated_at": row["updated_at"],
+            })
         return web.json_response({
             "guild": {"id": str(guild.id), "name": guild.name, "icon": guild.icon.key if guild.icon else None},
             "channels": channels,
+            "messages": messages,
+        }, headers={"Cache-Control": "no-store"})
+
+    async def custom_embed_message(self, request: web.Request) -> web.Response:
+        _, guild = await self._require_custom_embed_access(request)
+        message_url = request.query.get("url", "")
+        parts = _parse_discord_message_url(message_url)
+        if not parts:
+            raise web.HTTPBadRequest(text="Enter a Discord message link")
+        url_guild_id, channel_id, message_id = parts
+        if url_guild_id != guild.id:
+            raise web.HTTPBadRequest(text="That message link is for a different server")
+        with connect_sqlite(DB_PATH) as db:
+            row = db.execute(
+                """SELECT style, payload_json FROM custom_embed_messages
+                   WHERE guild_id = ? AND channel_id = ? AND message_id = ?""",
+                (guild.id, channel_id, message_id),
+            ).fetchone()
+        if row is None:
+            raise web.HTTPNotFound(text="That message is not saved by Observer’s custom sender")
+        channel = guild.get_channel(channel_id)
+        if not isinstance(channel, discord.TextChannel):
+            raise web.HTTPNotFound(text="The message channel is no longer available")
+        try:
+            message = await channel.fetch_message(message_id)
+        except discord.NotFound:
+            raise web.HTTPNotFound(text="That Discord message no longer exists")
+        except discord.Forbidden:
+            raise web.HTTPForbidden(text="Observer cannot view that message")
+        if not self.bot.user or message.author.id != self.bot.user.id:
+            raise web.HTTPForbidden(text="Observer can only edit its own saved messages")
+        try:
+            payload = json.loads(row["payload_json"])
+        except (TypeError, ValueError):
+            raise web.HTTPBadGateway(text="Saved message details could not be read")
+        return web.json_response({
+            "ok": True,
+            "message_url": message.jump_url,
+            "channel_id": str(channel_id),
+            "style": row["style"],
+            "payload": payload,
         }, headers={"Cache-Control": "no-store"})
 
     async def send_custom_embed(self, request: web.Request) -> web.Response:
-        _, guild = await self._require_custom_embed_access(request)
+        session, guild = await self._require_custom_embed_access(request)
         try:
             payload = await request.json()
         except (ValueError, web.HTTPException):
@@ -383,14 +470,16 @@ class ActivityServer:
             raise web.HTTPBadRequest(text="Invalid embed details")
 
         style = payload.get("style", "embed")
-        if style not in {"embed", "card"}:
+        if not isinstance(style, str) or style not in {"embed", "card"}:
             raise web.HTTPBadRequest(text="Choose either embed or card format")
         title = payload.get("title", "")
         description = payload.get("description", "")
         footer = payload.get("footer", "")
         image_url = payload.get("image_url", "")
         color = payload.get("color", "#42d7e8")
-        if not all(isinstance(value, str) for value in (title, description, footer, image_url, color)):
+        message_url = payload.get("message_url", "")
+        button_values = [payload.get(f"button_{index}_{part}", "") for index in range(1, 4) for part in ("label", "url")]
+        if not all(isinstance(value, str) for value in (title, description, footer, image_url, color, message_url, *button_values)):
             raise web.HTTPBadRequest(text="Embed fields must be text")
         if len(title) > 256 or len(description) > 4096 or len(footer) > 2048:
             raise web.HTTPBadRequest(text="Title, description, or footer is too long")
@@ -404,16 +493,28 @@ class ActivityServer:
             parsed_url = urlparse(image_url)
             if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
                 raise web.HTTPBadRequest(text="Image URL must start with http:// or https://")
+        edit_parts = _parse_discord_message_url(message_url) if message_url.strip() else None
+        if message_url.strip() and not edit_parts:
+            raise web.HTTPBadRequest(text="Enter a valid Discord message URL")
         try:
-            channel_id = int(payload.get("channel_id", ""))
+            selected_channel_id = int(payload.get("channel_id", ""))
         except (TypeError, ValueError):
             raise web.HTTPBadRequest(text="Choose a channel")
+        if edit_parts:
+            edit_guild_id, edit_channel_id, edit_message_id = edit_parts
+            if edit_guild_id != guild.id:
+                raise web.HTTPBadRequest(text="That message link is for a different server")
+            if selected_channel_id != edit_channel_id:
+                raise web.HTTPBadRequest(text="Choose the same channel as the message link")
+            channel_id = edit_channel_id
+        else:
+            channel_id = selected_channel_id
         channel = guild.get_channel(channel_id)
         if not isinstance(channel, discord.TextChannel):
             raise web.HTTPBadRequest(text="Choose a text channel in this server")
         permissions = channel.permissions_for(guild.me) if guild.me else None
-        if not permissions or not permissions.send_messages:
-            raise web.HTTPForbidden(text="Observer needs Send Messages permission in that channel")
+        if not permissions or not permissions.view_channel or not permissions.send_messages or not permissions.read_message_history:
+            raise web.HTTPForbidden(text="Observer needs View Channel, Send Messages, and Read Message History permissions in that channel")
 
         if style == "embed":
             if not permissions.embed_links:
@@ -450,8 +551,6 @@ class ActivityServer:
             for index in range(1, 4):
                 label = payload.get(f"button_{index}_label", "")
                 url = payload.get(f"button_{index}_url", "")
-                if not isinstance(label, str) or not isinstance(url, str):
-                    raise web.HTTPBadRequest(text="Button labels and links must be text")
                 label, url = label.strip(), url.strip()
                 if bool(label) != bool(url):
                     raise web.HTTPBadRequest(text="Each link button needs both a label and a URL")
@@ -463,14 +562,62 @@ class ActivityServer:
             send_kwargs = {"view": view}
             if buttons:
                 view.add_item(discord.ui.ActionRow(*buttons))
+        saved_payload = {
+            "channel_id": str(channel.id),
+            "style": style,
+            "title": title.strip(),
+            "description": description.strip(),
+            "footer": footer.strip(),
+            "image_url": image_url.strip(),
+            "color": color.strip(),
+            **{
+                f"button_{index}_{part}": payload.get(f"button_{index}_{part}", "").strip()
+                for index in range(1, 4)
+                for part in ("label", "url")
+            },
+        }
         try:
-            message = await channel.send(**send_kwargs, allowed_mentions=discord.AllowedMentions.none())
+            if edit_parts:
+                with connect_sqlite(DB_PATH) as db:
+                    saved = db.execute(
+                        """SELECT style FROM custom_embed_messages
+                           WHERE guild_id = ? AND channel_id = ? AND message_id = ?""",
+                        (guild.id, channel.id, edit_message_id),
+                    ).fetchone()
+                if saved is None:
+                    raise web.HTTPNotFound(text="That message is not saved by Observer’s custom sender")
+                if saved["style"] != style:
+                    raise web.HTTPBadRequest(text="Discord does not allow switching the format of an existing message")
+                message = await channel.fetch_message(edit_message_id)
+                if not self.bot.user or message.author.id != self.bot.user.id:
+                    raise web.HTTPForbidden(text="Observer can only edit its own saved messages")
+                await message.edit(**send_kwargs, allowed_mentions=discord.AllowedMentions.none())
+                action = "updated"
+            else:
+                message = await channel.send(**send_kwargs, allowed_mentions=discord.AllowedMentions.none())
+                action = "sent"
+            with connect_sqlite(DB_PATH) as db:
+                db.execute(
+                    """INSERT INTO custom_embed_messages
+                       (guild_id, channel_id, message_id, style, payload_json, created_by, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                       ON CONFLICT(guild_id, message_id) DO UPDATE SET
+                         channel_id = excluded.channel_id,
+                         style = excluded.style,
+                         payload_json = excluded.payload_json,
+                         updated_at = CURRENT_TIMESTAMP""",
+                    (guild.id, channel.id, message.id, style, json.dumps(saved_payload), int(session["user"].get("id", 0))),
+                )
+        except web.HTTPException:
+            raise
         except discord.Forbidden:
             raise web.HTTPForbidden(text="Observer cannot send this message in that channel")
+        except discord.NotFound:
+            raise web.HTTPNotFound(text="The Discord message or channel no longer exists")
         except discord.HTTPException:
             logger.exception("Failed to send custom %s in guild %s", style, guild.id)
             raise web.HTTPBadGateway(text="Discord could not send the message")
-        return web.json_response({"ok": True, "message_url": message.jump_url}, headers={"Cache-Control": "no-store"})
+        return web.json_response({"ok": True, "action": action, "message_url": message.jump_url}, headers={"Cache-Control": "no-store"})
 
     @staticmethod
     def _oauth_can_moderate(guild: dict) -> bool:

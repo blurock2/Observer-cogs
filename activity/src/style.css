@@ -333,6 +333,20 @@ body:has(.site-shell), body:has(.dashboard-shell) { background: #0b0b0d; color: 
 .embed-form-note { margin: 0; padding: 11px 13px; border: 1px solid #29464b; border-radius: 7px; background: #102024; color: #9debf1; font-size: 10px; line-height: 1.6; }
 .embed-button-row { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 10px; }
 .embed-button-row input { min-width: 0; }
+.saved-message-picker { display: grid; gap: 12px; padding: 16px; border: 1px solid #29383d; border-radius: 9px; background: #0d1113; }
+.saved-message-picker>label { display: grid; gap: 8px; color: #dce7e8; font-size: 11px; font-weight: 650; }
+.saved-message-picker>label span { color: #7f9092; font-size: 9px; font-weight: 400; }
+.saved-message-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.saved-message-actions .button { min-height: 34px; padding: 0 12px; font-size: 10px; }
+.saved-message-list-wrap { display: grid; gap: 7px; padding-top: 9px; border-top: 1px solid #222b2e; }
+.saved-message-heading { color: #7f9092; font-size: 9px; letter-spacing: .12em; text-transform: uppercase; }
+.saved-message-list { display: grid; gap: 6px; max-height: 210px; overflow: auto; }
+.saved-message-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 10px 11px; border: 1px solid #273236; border-radius: 7px; background: #111719; color: #dce7e8; text-align: left; cursor: pointer; transition: border-color .16s ease, background .16s ease; }
+.saved-message-item:hover,.saved-message-item:focus-visible { border-color: #42d7e8; background: #142024; outline: none; }
+.saved-message-item>span:first-child { display: grid; gap: 4px; min-width: 0; }
+.saved-message-item strong { overflow: hidden; color: #e7f0f1; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.saved-message-item small,.saved-message-item>span:last-child { color: #809194; font-size: 9px; }
+.saved-message-empty { margin: 0; color: #738386; font-size: 10px; }
 @media(max-width:850px) { .server-dashboard-cards:has(.server-config-card):has(.server-embed-card) { grid-template-columns: 1fr; } }
 @media(max-width:620px) { .embed-sender-page { width: calc(100% - 36px); padding: 38px 0 70px; } .embed-form { padding: 17px; } .embed-form-row { grid-template-columns: 1fr; } .embed-form-actions { align-items: flex-start; flex-direction: column; } }
 .module-editor.is-open .module-editor-dialog { transform: translate3d(0, 0, 0); }
