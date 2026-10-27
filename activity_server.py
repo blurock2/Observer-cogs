@@ -122,6 +122,8 @@ class ActivityServer:
         self.oauth_states: dict[str, float] = {}
         self._public_report_cache_until = 0.0
         self._public_report_cache: list[str] = []
+        self._public_updates_cache_until = 0.0
+        self._public_updates_cache: list[dict[str, str]] = []
         with connect_sqlite(DB_PATH) as db:
             db.execute(
                 """CREATE TABLE IF NOT EXISTS activity_sessions (
@@ -182,6 +184,7 @@ class ActivityServer:
         app.router.add_get("/api/public-info", self.public_info)
         app.router.add_get("/observer-stats.json", self.observer_stats)
         app.router.add_get("/api/public-reports", self.public_reports)
+        app.router.add_get("/api/public-updates", self.public_updates)
         app.router.add_post("/api/token", self.exchange_code)
         app.router.add_get("/api/activity/{view}", self.activity_data)
         app.router.add_get("/healthz", self.health)
@@ -339,6 +342,46 @@ class ActivityServer:
             "stats": stats,
         }
         return web.json_response(info, headers={"Cache-Control": "public, max-age=300"})
+
+
+    async def public_updates(self, request: web.Request) -> web.Response:
+        """Proxy the portfolio's shared devlog so both sites display the same updates."""
+        now = monotonic()
+        if now >= self._public_updates_cache_until:
+            source_url = os.getenv(
+                "OBSERVER_DEVLOG_URL",
+                "https://my-website.rockus26.workers.dev/observer-devlog.json",
+            ).strip()
+            try:
+                if self.session is None:
+                    raise aiohttp.ClientError("HTTP client is not ready")
+                async with self.session.get(source_url) as response:
+                    if response.status != 200:
+                        raise aiohttp.ClientError(f"Devlog returned HTTP {response.status}")
+                    payload = await response.json(content_type=None)
+                if not isinstance(payload, list):
+                    raise ValueError("Devlog response must be a JSON list")
+                updates = []
+                for item in payload[:50]:
+                    if not isinstance(item, dict):
+                        continue
+                    updates.append({
+                        "date": str(item.get("date", ""))[:32],
+                        "type": str(item.get("type", "Update"))[:40],
+                        "title": str(item.get("title", "Untitled update"))[:200],
+                        "description": str(item.get("description", ""))[:5000],
+                    })
+                self._public_updates_cache = updates
+                self._public_updates_cache_until = monotonic() + 300
+            except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as error:
+                logger.warning("Could not refresh public Observer devlog (%s)", type(error).__name__)
+                self._public_updates_cache_until = monotonic() + 60
+                if not self._public_updates_cache:
+                    raise web.HTTPBadGateway(text="Recent updates are temporarily unavailable")
+        return web.json_response(
+            {"updates": self._public_updates_cache},
+            headers={"Cache-Control": "public, max-age=60"},
+        )
 
     async def public_reports(self, request: web.Request) -> web.Response:
         """Return up to five recent report reasons per server, without identities."""
