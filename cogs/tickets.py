@@ -281,6 +281,36 @@ class TicketCog(ObserverCog):
             )
         )
 
+    async def post_ticket_panel(self, guild: discord.Guild) -> discord.TextChannel:
+        """Post the configured ticket panel and return its destination."""
+        if not self._is_enabled(guild.id):
+            raise ValueError("The ticket system is disabled in this server.")
+
+        panel_channel_id = self._panel_channel_id(guild.id)
+        if panel_channel_id is None:
+            raise ValueError("Set a Panel channel in Tickets settings first.")
+        panel_channel = guild.get_channel(panel_channel_id)
+        if not isinstance(panel_channel, discord.TextChannel):
+            raise ValueError("The configured panel channel is invalid or is not a text channel.")
+
+        support_role_id = self._support_role_id(guild.id)
+        if support_role_id is None:
+            raise ValueError("Set a Support role in Tickets settings first.")
+        if guild.get_role(support_role_id) is None:
+            raise ValueError("The configured support role no longer exists.")
+
+        embed = discord.Embed(
+            title=self._ticket_panel_text(guild.id, "panel_title"),
+            description=self._ticket_panel_text(guild.id, "panel_description"),
+            color=discord.Color.yellow(),
+        )
+        embed.set_footer(text=self._ticket_panel_text(guild.id, "panel_footer"))
+        await panel_channel.send(
+            embed=embed,
+            view=TicketPanelView(self),
+            allowed_mentions=NO_MENTIONS,
+        )
+        return panel_channel
     def _get_support_role_notification(
         self,
         guild: discord.Guild,
