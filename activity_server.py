@@ -6,6 +6,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import secrets
 from datetime import datetime, timezone
 from pathlib import Path
@@ -72,6 +73,7 @@ class ActivityServer:
         app.router.add_get("/api/servers", self.servers)
         app.router.add_get("/api/control-panel/{guild_id}", self.control_panel)
         app.router.add_post("/api/control-panel/{guild_id}/setting", self.save_control_panel_setting)
+        app.router.add_get("/api/mod-dashboard/{guild_id}", self.mod_dashboard)
         app.router.add_get("/api/public-info", self.public_info)
         app.router.add_post("/api/token", self.exchange_code)
         app.router.add_get("/api/activity/{view}", self.activity_data)
@@ -82,6 +84,7 @@ class ActivityServer:
         app.router.add_get("/", self.index)
         app.router.add_get("/staff", self.index)
         app.router.add_get("/setup", self.index)
+        app.router.add_get("/moderate", self.index)
         assets = ACTIVITY_DIR / "dist" / "assets"
         if assets.is_dir():
             app.router.add_static("/assets/", assets, show_index=False)
@@ -170,7 +173,8 @@ class ActivityServer:
                     raise web.HTTPBadGateway(text="Could not load your Discord servers")
             key = secrets.token_urlsafe(32)
             expires_at = datetime.now(timezone.utc).timestamp() + SESSION_TTL
-            session = {"user": user, "guilds": [guild for guild in guilds if guild.get("owner") is True], "expires_at": expires_at}
+            manageable = [guild for guild in guilds if self._oauth_can_moderate(guild)]
+            session = {"user": user, "guilds": manageable, "expires_at": expires_at}
             self.sessions[key] = session
             with connect_sqlite(DB_PATH) as db:
                 db.execute(
@@ -286,9 +290,9 @@ class ActivityServer:
             await asyncio.wait_for(self.bot.wait_until_ready(), timeout=15)
         except asyncio.TimeoutError:
             raise web.HTTPServiceUnavailable(text="Observer is connecting to Discord. Try again shortly.")
-        owned = [guild for guild in await self._user_guilds(session) if guild.get("owner") is True]
+        manageable = [guild for guild in await self._user_guilds(session) if self._oauth_can_moderate(guild)]
         items = []
-        for guild in owned:
+        for guild in manageable:
             try:
                 guild_id = int(guild["id"])
             except (KeyError, TypeError, ValueError):
@@ -299,9 +303,101 @@ class ActivityServer:
                 "name": guild.get("name", "Discord server"),
                 "icon": guild.get("icon"),
                 "bot_present": bot_guild is not None,
+                "is_owner": guild.get("owner") is True,
             })
         items.sort(key=lambda item: (not item["bot_present"], item["name"].casefold()))
         return web.json_response({"servers": items, "invite_url": self._bot_invite_url()}, headers={"Cache-Control": "no-store"})
+
+    @staticmethod
+    def _oauth_can_moderate(guild: dict) -> bool:
+        if guild.get("owner") is True:
+            return True
+        try:
+            permissions = int(guild.get("permissions", "0"))
+        except (TypeError, ValueError):
+            return False
+        # Administrator, Manage Server, Manage Messages, Moderate Members,
+        # Kick Members, or Ban Members are sufficient for report review.
+        return bool(permissions & ((1 << 3) | (1 << 5) | (1 << 13) | (1 << 40) | (1 << 1) | (1 << 2)))
+
+    async def _moderator_guild(self, request: web.Request) -> tuple[dict, discord.Guild]:
+        session = self._get_session(request)
+        try:
+            guild_id = int(request.match_info["guild_id"])
+        except (KeyError, TypeError, ValueError):
+            raise web.HTTPBadRequest(text="A valid server ID is required")
+        guild = self.bot.get_guild(guild_id)
+        if guild is None:
+            raise web.HTTPNotFound(text="Observer is not in that server")
+        user_id = str(session["user"].get("id", ""))
+        if str(guild.owner_id) == user_id:
+            return session, guild
+        oauth_guild = next((item for item in session.get("guilds", []) if str(item.get("id")) == str(guild_id)), None)
+        if oauth_guild and self._oauth_can_moderate(oauth_guild):
+            return session, guild
+        try:
+            member = await guild.fetch_member(int(user_id))
+        except (discord.HTTPException, TypeError, ValueError):
+            raise web.HTTPForbidden(text="You need server moderation permissions to view reports")
+        perms = member.guild_permissions
+        if any((perms.administrator, perms.manage_guild, perms.manage_messages, perms.moderate_members, perms.kick_members, perms.ban_members)):
+            return session, guild
+        role_ids = {role.id for role in member.roles}
+        for module, key in (("moderation", "mod_role"), ("moderation", "head_mod_role"), ("bot", "staff_role"), ("report_msg", "staff_role")):
+            try:
+                role_id = int(self.bot.setup_store.get(guild_id, module, key))
+            except (TypeError, ValueError):
+                continue
+            if role_id in role_ids:
+                return session, guild
+        raise web.HTTPForbidden(text="You need server moderation permissions to view reports")
+
+    async def mod_dashboard(self, request: web.Request) -> web.Response:
+        session, guild = await self._moderator_guild(request)
+        raw_channel_id = self.bot.setup_store.get(guild.id, "report_msg", "report_channel")
+        try:
+            channel_id = int(raw_channel_id)
+        except (TypeError, ValueError):
+            channel_id = 0
+        channel = guild.get_channel(channel_id) if channel_id else None
+        reports = []
+        if isinstance(channel, (discord.TextChannel, discord.Thread)):
+            try:
+                async for message in channel.history(limit=100):
+                    if not message.embeds or message.embeds[0].title != "New Message Report":
+                        continue
+                    embed = message.embeds[0]
+                    fields = {field.name.casefold(): field.value for field in embed.fields}
+                    target_raw = fields.get("message author", "")
+                    target_match = re.search(r"`(\d{15,22})`", target_raw)
+                    target_id = target_match.group(1) if target_match else ""
+                    member = guild.get_member(int(target_id)) if target_id.isdigit() else None
+                    accepted = "accepted by staff" in fields
+                    reports.append({
+                        "id": str(message.id),
+                        "target_name": member.display_name if member else (f"User {target_id}" if target_id else "Unknown member"),
+                        "target_id": target_id,
+                        "channel": fields.get("channel", "").split(" ", 1)[0],
+                        "reason": fields.get("reason", "No reason provided"),
+                        "created_at": message.created_at.isoformat(),
+                        "url": message.jump_url,
+                        "status": "reviewed" if accepted else "open",
+                    })
+            except discord.Forbidden:
+                raise web.HTTPServiceUnavailable(text="Observer needs permission to view the configured reports channel")
+            except discord.HTTPException:
+                raise web.HTTPBadGateway(text="Could not load reports from Discord")
+        open_reports = sum(report["status"] == "open" for report in reports)
+        return web.json_response({
+            "guild": {"id": str(guild.id), "name": guild.name, "icon": guild.icon.key if guild.icon else None,
+                      "is_owner": str(guild.owner_id) == str(session["user"].get("id", ""))},
+            "bot_online": self.bot.is_ready(),
+            "member_count": guild.member_count or 0,
+            "open_reports": open_reports,
+            "reports": reports,
+            "reports_configured": bool(channel_id),
+            "reports_channel": channel.name if channel else None,
+        }, headers={"Cache-Control": "no-store"})
 
     def _dashboard_guild(self, request: web.Request) -> tuple[dict, discord.Guild]:
         session = self._get_session(request)
@@ -461,14 +557,14 @@ class ActivityServer:
             footer = value.get("panel_footer")
             reasons = value.get("reason_options")
             if not isinstance(title, str) or not title.strip() or len(title) > 256:
-                raise web.HTTPBadRequest(text="Panel title must be 1–256 characters")
+                raise web.HTTPBadRequest(text="Panel title must be 1â€“256 characters")
             if not isinstance(description, str) or len(description) > 2048:
                 raise web.HTTPBadRequest(text="Panel description must be at most 2048 characters")
             if not isinstance(footer, str) or len(footer) > 2048:
                 raise web.HTTPBadRequest(text="Panel footer must be at most 2048 characters")
             if (not isinstance(reasons, list) or not 1 <= len(reasons) <= MAX_TICKET_REASON_OPTIONS
                     or any(not isinstance(reason, str) or not reason.strip() or len(reason) > 100 for reason in reasons)):
-                raise web.HTTPBadRequest(text=f"Add 1–{MAX_TICKET_REASON_OPTIONS} ticket reasons of up to 100 characters each")
+                raise web.HTTPBadRequest(text=f"Add 1â€“{MAX_TICKET_REASON_OPTIONS} ticket reasons of up to 100 characters each")
             for field, field_value in (("panel_title", title.strip()), ("panel_description", description), ("panel_footer", footer), ("reason_options", [reason.strip() for reason in reasons])):
                 store.set(guild.id, module.key, field, field_value)
             return web.json_response({"ok": True, "value": value}, headers={"Cache-Control": "no-store"})
@@ -676,3 +772,4 @@ class ActivityServer:
 
     async def health(self, request: web.Request) -> web.Response:
         return web.json_response({"status": "online", "servers": len(self.bot.guilds)})
+
