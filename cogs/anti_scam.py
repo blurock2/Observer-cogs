@@ -545,10 +545,29 @@ class AntiScam(ObserverCog):
                         logger.warning("Tesseract executable unavailable; check TESSERACT_CMD")
                         OCR_WARNING_REPORTED = True
                     break
+                except RuntimeError as error:
+                    complete = False
+                    if "tesseract process timeout" in str(error).lower():
+                        logger.info(
+                            "Image OCR pass %s timed out; scan result is incomplete",
+                            pass_index + 1,
+                        )
+                    else:
+                        logger.warning(
+                            "Image OCR pass %s failed (RuntimeError: %s)",
+                            pass_index + 1,
+                            str(error)[:200],
+                        )
+                    break
                 except Exception as error:
                     complete = False
                     # Do not claim a timeout or bad image means OCR is uninstalled.
-                    logger.warning("Image OCR pass %s failed (%s)", pass_index + 1, type(error).__name__)
+                    logger.warning(
+                        "Image OCR pass %s failed (%s: %s)",
+                        pass_index + 1,
+                        type(error).__name__,
+                        str(error)[:200],
+                    )
                     break
                 if found.strip():
                     recognized.append(found.strip())
