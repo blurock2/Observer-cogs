@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import logging
 import os
 import secrets
@@ -27,6 +29,11 @@ from database import connect_sqlite
 
 logger = logging.getLogger("observer.activity")
 ACTIVITY_DIR = Path(__file__).resolve().parent / "activity"
+SESSION_TTL = 7 * 24 * 60 * 60
+
+
+def _session_storage_key(session_id: str) -> str:
+    return hashlib.sha256(session_id.encode("utf-8")).hexdigest()
 
 
 class ActivityServer:
@@ -41,6 +48,16 @@ class ActivityServer:
         self.public_base_url = os.getenv("PUBLIC_BASE_URL", "https://observer-dashboard.observer").rstrip("/")
         self.sessions: dict[str, dict] = {}
         self.oauth_states: dict[str, float] = {}
+        with connect_sqlite(DB_PATH) as db:
+            db.execute(
+                """CREATE TABLE IF NOT EXISTS activity_sessions (
+                    session_id TEXT PRIMARY KEY,
+                    user_json TEXT NOT NULL,
+                    guilds_json TEXT NOT NULL,
+                    expires_at REAL NOT NULL
+                )"""
+            )
+            db.execute("DELETE FROM activity_sessions WHERE expires_at <= ?", (datetime.now(timezone.utc).timestamp(),))
 
     async def start(self) -> None:
         if not self.client_id or not self.client_secret:
@@ -143,20 +160,28 @@ class ActivityServer:
                 user = await response.json()
                 if response.status != 200:
                     raise web.HTTPUnauthorized(text="Could not read your Discord account")
+            async with self.session.get(
+                "https://discord.com/api/users/@me/guilds",
+                headers={"Authorization": f"Bearer {access_token}"},
+            ) as response:
+                guilds = await response.json()
+                if response.status != 200 or not isinstance(guilds, list):
+                    raise web.HTTPBadGateway(text="Could not load your Discord servers")
             key = secrets.token_urlsafe(32)
-            self.sessions[key] = {
-                "user": user,
-                "access_token": access_token,
-                "refresh_token": tokens.get("refresh_token"),
-                "expires_at": monotonic() + int(tokens.get("expires_in", 3600)),
-                "created_at": monotonic(),
-            }
+            expires_at = datetime.now(timezone.utc).timestamp() + SESSION_TTL
+            session = {"user": user, "guilds": [guild for guild in guilds if guild.get("owner") is True], "expires_at": expires_at}
+            self.sessions[key] = session
+            with connect_sqlite(DB_PATH) as db:
+                db.execute(
+                    "INSERT INTO activity_sessions (session_id, user_json, guilds_json, expires_at) VALUES (?, ?, ?, ?)",
+                    (_session_storage_key(key), json.dumps(user), json.dumps(session["guilds"]), expires_at),
+                )
         except (aiohttp.ClientError, asyncio.TimeoutError):
             logger.exception("Discord OAuth callback failed")
             raise web.HTTPBadGateway(text="Discord sign-in is temporarily unavailable")
         response = web.HTTPFound("/?dashboard=1")
         response.del_cookie("observer_oauth_state", path="/")
-        response.set_cookie("observer_session", key, max_age=7 * 24 * 3600, httponly=True, secure=self._secure_cookie(), samesite="Lax", path="/")
+        response.set_cookie("observer_session", key, max_age=SESSION_TTL, httponly=True, secure=self._secure_cookie(), samesite="Lax", path="/")
         return response
 
     async def public_info(self, request: web.Request) -> web.Response:
@@ -170,17 +195,43 @@ class ActivityServer:
 
     def _get_session(self, request: web.Request) -> dict:
         key = request.cookies.get("observer_session", "")
-        session = self.sessions.get(key)
-        if session is None or monotonic() - session["created_at"] > 7 * 24 * 3600:
-            self.sessions.pop(key, None)
+        session = self._load_session(key)
+        if session is None:
             raise web.HTTPUnauthorized(text="Sign in with Discord to continue")
+        return session
+
+    def _load_session(self, key: str) -> dict | None:
+        if not key:
+            return None
+        session = self.sessions.get(key)
+        if session is None:
+            with connect_sqlite(DB_PATH) as db:
+                row = db.execute(
+                    "SELECT user_json, guilds_json, expires_at FROM activity_sessions WHERE session_id = ?",
+                    (_session_storage_key(key),),
+                ).fetchone()
+            if row is None:
+                return None
+            try:
+                session = {
+                    "user": json.loads(row["user_json"]),
+                    "guilds": json.loads(row["guilds_json"]),
+                    "expires_at": float(row["expires_at"]),
+                }
+            except (TypeError, ValueError, json.JSONDecodeError):
+                session = None
+        if session is None or session.get("expires_at", 0) <= datetime.now(timezone.utc).timestamp():
+            self.sessions.pop(key, None)
+            with connect_sqlite(DB_PATH) as db:
+                db.execute("DELETE FROM activity_sessions WHERE session_id = ?", (_session_storage_key(key),))
+            return None
+        self.sessions[key] = session
         return session
 
     async def session_info(self, request: web.Request) -> web.Response:
         key = request.cookies.get("observer_session", "")
-        session = self.sessions.get(key)
-        if session is None or monotonic() - session["created_at"] > 7 * 24 * 3600:
-            self.sessions.pop(key, None)
+        session = self._load_session(key)
+        if session is None:
             return web.json_response({"signed_in": False}, headers={"Cache-Control": "no-store"})
         user = session["user"]
         return web.json_response({
@@ -189,6 +240,8 @@ class ActivityServer:
         }, headers={"Cache-Control": "no-store"})
 
     async def _user_guilds(self, session: dict) -> list[dict]:
+        if "guilds" in session:
+            return session["guilds"]
         assert self.session is not None
         if monotonic() > session["expires_at"] - 30:
             refresh_token = session.get("refresh_token")
@@ -459,6 +512,8 @@ class ActivityServer:
     async def logout(self, request: web.Request) -> web.Response:
         key = request.cookies.get("observer_session", "")
         self.sessions.pop(key, None)
+        with connect_sqlite(DB_PATH) as db:
+            db.execute("DELETE FROM activity_sessions WHERE session_id = ?", (_session_storage_key(key),))
         response = web.json_response({"ok": True})
         response.del_cookie("observer_session", path="/")
         return response
