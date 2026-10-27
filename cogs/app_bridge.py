@@ -7,6 +7,7 @@ import json
 import logging
 import math
 import os
+import re
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
@@ -25,6 +26,22 @@ APP_GUILDS_FILE = DATA_DIR / "app_guilds.json"
 APP_REQUESTS_FILE = DATA_DIR / "app_message_requests.json"
 APP_RESULTS_FILE = DATA_DIR / "app_message_results.json"
 APP_STATS_FILE = DATA_DIR / "app_stats.json"
+CONFIG_ONLY_COGS = {"setupuicog", "autoroles", "reactionroles"}
+CONFIG_COMMANDS = {
+    "ticket_panel",
+    "rule_add",
+    "rule_edit",
+    "rule_remove",
+    "rule_list",
+    "relay_setup",
+    "relay_add",
+    "relay_remove",
+    "relay_add_source",
+    "relay_remove_source",
+    "weekly_config",
+    "weekly_reset",
+    "level_role_reward",
+}
 
 
 def write_json_atomic(path: Path, data: Any) -> None:
@@ -103,6 +120,24 @@ class AppBridge(ObserverCog):
             await asyncio.to_thread(
                 write_json_atomic, APP_STATS_FILE, self._stats_payload()
             )
+
+    @staticmethod
+    def _is_configuration_command(command: Any) -> bool:
+        binding = getattr(command, "cog", None) or getattr(command, "binding", None)
+        cog_name = type(binding).__name__.casefold() if binding is not None else ""
+        if cog_name in CONFIG_ONLY_COGS:
+            return True
+
+        qualified_name = str(
+            getattr(command, "qualified_name", None)
+            or getattr(command, "name", "")
+        ).casefold()
+        normalized_name = re.sub(r"[^a-z0-9]+", "_", qualified_name).strip("_")
+        if normalized_name in CONFIG_COMMANDS:
+            return True
+
+        name_parts = set(normalized_name.split("_"))
+        return bool(name_parts & {"setup", "config", "configure", "configuration", "settings"})
 
     def _guild_data_payload(self) -> dict[str, Any]:
         guilds: list[dict[str, Any]] = []
@@ -217,6 +252,8 @@ class AppBridge(ObserverCog):
 
     @commands.Cog.listener()
     async def on_command_completion(self, context: commands.Context) -> None:
+        if self._is_configuration_command(context.command):
+            return
         self.commands_run += 1
         await self.write_stats_async()
 
@@ -226,6 +263,8 @@ class AppBridge(ObserverCog):
         interaction: discord.Interaction,
         command: discord.app_commands.Command,
     ) -> None:
+        if self._is_configuration_command(command):
+            return
         self.commands_run += 1
         await self.write_stats_async()
 
