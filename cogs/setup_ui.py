@@ -815,6 +815,10 @@ MODULES: list[ModuleSpec] = [
             SettingSpec("alert_channel", "Security alert channel", "channel"),
             SettingSpec("scam_bypass_role", "Scam detection bypass role", "role",
                         description="Members with this role are excluded from scam message detection."),
+            SettingSpec("allow_advertising", "Allow advertising", "toggle", default=False,
+                        description="Off: block Discord invites and common self-promotion. On: allow them everywhere, or only in the advertising channel below."),
+            SettingSpec("advertising_channel", "Advertising channel", "channel",
+                        description="When Allow advertising is on, allow advertising only here. Leave unset to allow it in all channels."),
             SettingSpec("lockdown_enabled", "Lockdown enabled", "toggle", default=False),
             SettingSpec("new_account_days", "New-account age threshold (days)", "integer", default=7),
             SettingSpec("invite_use_threshold", "Invite-use alert threshold", "integer", default=2),
@@ -1650,7 +1654,12 @@ class ChannelSelectView(AdminOnlyView):
             placeholder="Select a channel…",
             min_values=1,
             max_values=1,
-            channel_types=[discord.ChannelType.text] if (module_key, setting_key) == ("bot", "error_channel") else None,
+            channel_types=[discord.ChannelType.text]
+            if (module_key, setting_key) in {
+                ("bot", "error_channel"),
+                ("security", "advertising_channel"),
+            }
+            else None,
         )
         select.callback = self._on_select
         self.add_item(select)
