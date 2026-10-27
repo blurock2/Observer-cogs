@@ -49,6 +49,7 @@ class ActivityServer:
         app.router.add_post("/api/token", self.exchange_code)
         app.router.add_get("/api/activity/{view}", self.activity_data)
         app.router.add_get("/healthz", self.health)
+        app.router.add_get("/observer.png", self.observer_icon)
         app.router.add_get("/", self.index)
         app.router.add_get("/staff", self.index)
         app.router.add_get("/setup", self.index)
@@ -257,6 +258,12 @@ class ActivityServer:
             return web.json_response({"error": "Observer's website is not built yet. Run npm install and npm run build in activity/."}, status=503)
         return web.FileResponse(page)
 
+    async def observer_icon(self, request: web.Request) -> web.StreamResponse:
+        icon = ACTIVITY_DIR / "dist" / "observer.png"
+        if not icon.is_file():
+            raise web.HTTPNotFound()
+        return web.FileResponse(icon, headers={"Cache-Control": "public, max-age=86400"})
+
     async def exchange_code(self, request: web.Request) -> web.Response:
         try:
             payload = await request.json()
@@ -383,3 +390,4 @@ class ActivityServer:
 
     async def health(self, request: web.Request) -> web.Response:
         return web.json_response({"status": "online", "servers": len(self.bot.guilds)})
+

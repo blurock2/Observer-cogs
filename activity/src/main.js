@@ -15,7 +15,7 @@ function discordIcon() {
   return `<svg aria-hidden="true" viewBox="0 0 24 24"><path fill="currentColor" d="M19.7 5.3a18.3 18.3 0 0 0-4.5-1.4l-.6 1.2a16.8 16.8 0 0 0-5.2 0l-.6-1.2a18.3 18.3 0 0 0-4.5 1.4C1.5 9.5.7 13.6 1.1 17.7a18.5 18.5 0 0 0 5.5 2.8l1.2-2a11.8 11.8 0 0 1-1.9-.9l.5-.4a13.1 13.1 0 0 0 11.2 0l.5.4a11.8 11.8 0 0 1-1.9.9l1.2 2a18.5 18.5 0 0 0 5.5-2.8c.5-4.7-.8-8.8-3.2-12.4ZM8.7 14.8c-1.1 0-2-1-2-2.2s.9-2.2 2-2.2 2 1 2 2.2-.9 2.2-2 2.2Zm6.6 0c-1.1 0-2-1-2-2.2s.9-2.2 2-2.2 2 1 2 2.2-.9 2.2-2 2.2Z"/></svg>`;
 }
 
-function brand() { return `<a class="brand" href="/" aria-label="Observer home"><span class="brand-mark">O</span><span>OBSERVER</span></a>`; }
+function brand() { return `<a class="brand" href="/" aria-label="Observer home"><img class="brand-mark" src="/observer.png" alt=""><span>OBSERVER</span></a>`; }
 
 async function loadLanding() {
   const session = await api("/api/session");
@@ -33,7 +33,7 @@ async function loadLanding() {
         </div>
         <div class="hero-art" aria-label="Preview of Observer moderation dashboard">
           <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
-          <div class="preview-card"><div class="preview-head"><div class="preview-brand"><span class="mini-mark">O</span><span>OBSERVER</span></div><span class="preview-live"><i></i> ALL SYSTEMS READY</span></div>
+          <div class="preview-card"><div class="preview-head"><div class="preview-brand"><img class="mini-mark" src="/observer.png" alt=""><span>OBSERVER</span></div><span class="preview-live"><i></i> ALL SYSTEMS READY</span></div>
             <div class="preview-title"><div><span class="eyebrow">SERVER OVERVIEW</span><h2>Good evening, team.</h2></div><span class="server-pill"><span class="server-glyph">◈</span> Your community</span></div>
             <div class="preview-stats"><div><span>OPEN REPORTS</span><strong>03</strong><small class="stat-warm">Needs a look</small></div><div><span>MEMBERS SAFE</span><strong>1,284</strong><small>Across your server</small></div><div><span>BOT STATUS</span><strong class="status-green">Online</strong><small>Ready when you are</small></div></div>
             <div class="preview-activity"><div class="activity-head"><span>RECENT ACTIVITY</span><span>View all ↗</span></div><div class="activity-row"><span class="activity-icon activity-amber">!</span><div><b>Member report received</b><small>Spam in #general · 2m ago</small></div><span class="activity-tag">REVIEW</span></div><div class="activity-row"><span class="activity-icon activity-green">✓</span><div><b>Security scan complete</b><small>No threats found · 8m ago</small></div><span class="activity-tag tag-done">CLEAR</span></div></div>
@@ -52,7 +52,7 @@ async function loadLanding() {
 }
 
 async function openDashboard() {
-  root.innerHTML = `<main class="dashboard-loading"><div class="loading-mark">O</div><p>Finding your servers…</p></main>`;
+  root.innerHTML = `<main class="dashboard-loading"><img class="loading-mark" src="/observer.png" alt="Observer logo"><p>Finding your servers…</p></main>`;
   try {
     const [session, result] = await Promise.all([api("/api/session"), api("/api/servers")]);
     if (!session.signed_in) { location.assign(loginUrl); return; }
@@ -60,7 +60,7 @@ async function openDashboard() {
       const icon = server.icon ? `<img src="https://cdn.discordapp.com/icons/${encodeURIComponent(server.id)}/${encodeURIComponent(server.icon)}.png?size=96" alt="">` : `<span class="server-avatar-fallback">${esc(server.name.slice(0, 1).toUpperCase())}</span>`;
       const action = server.bot_present
         ? `<a class="server-action server-configure" href="https://discord.com/channels/${encodeURIComponent(server.id)}" target="_blank" rel="noreferrer">Configure in Discord <span>↗</span></a>`
-        : `<a class="server-action server-add" href="${esc(result.invite_url)}&guild_id=${encodeURIComponent(server.id)}&disable_guild_select=true">Add Observer <span>＋</span></a>`;
+        : `<a class="server-action server-add" href="${esc(result.invite_url)}&guild_id=${encodeURIComponent(server.id)}&disable_guild_select=true">Add Observer <span>+</span></a>`;
       return `<article class="server-row">${icon}<div class="server-copy"><strong>${esc(server.name)}</strong><span>${server.bot_present ? `<i class="presence-dot"></i> Observer is in this server` : `<i class="presence-dot presence-off"></i> Observer isn’t here yet`}</span></div>${action}</article>`;
     }).join("");
     root.innerHTML = `<div class="dashboard-shell"><nav class="topbar">${brand()}<div class="topnav"><span class="signed-in-label">SIGNED IN AS ${esc(session.user.username).toUpperCase()}</span><button class="signout-button" id="signout">Sign out</button></div></nav><main class="server-picker"><a class="back-link" href="/">← Back to Observer</a><div class="eyebrow"><span class="live-mark"></span> DISCORD CONNECTION</div><h1>Your communities.</h1><p class="picker-lede">Choose a server you own to continue. Observer only appears here when you’re its owner.</p><div class="server-list">${rows || `<div class="server-empty"><span class="empty-shape">◈</span><h2>No servers found</h2><p>This Discord account doesn’t own any servers. Sign in with the account that owns your community.</p></div>`}</div><p class="picker-footnote">${rows ? `Showing ${result.servers.length} server${result.servers.length === 1 ? "" : "s"} you own.` : "You can switch Discord accounts by signing out."}</p></main></div>`;
@@ -94,3 +94,6 @@ async function start() {
 }
 
 start();
+
+
+
