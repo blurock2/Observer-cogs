@@ -6,7 +6,7 @@ import json
 import logging
 import os
 import re
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 import discord
 from discord import app_commands
@@ -218,13 +218,19 @@ class PermanentBanDMView(ErrorHandledView):
         self,
         cog: ModerationCog,
         moderator_id: int | None = None,
+        appeal_state: str | None = None,
     ):
         super().__init__(timeout=None)
         self.cog = cog
+        appeal_labels = {
+            "accepted": "Appeal accepted",
+            "rejected": "Appeal available in 7 days",
+        }
         appeal = discord.ui.Button(
-            label="Appeal in app",
+            label=appeal_labels.get(appeal_state, "Appeal in app"),
             style=discord.ButtonStyle.primary,
             custom_id="moderation:ban_appeal",
+            disabled=appeal_state is not None,
         )
         appeal.callback = self.open_appeal
         self.add_item(appeal)
@@ -429,6 +435,59 @@ class ModerationCog(ObserverCog):
         channel = guild.get_channel(channel_id)
         return channel if isinstance(channel, discord.TextChannel) else None
 
+    @staticmethod
+    def _appeal_retry_at(appeal) -> datetime | None:
+        reviewed_at = appeal["reviewed_at"] if appeal is not None else None
+        if not reviewed_at:
+            return None
+        try:
+            reviewed = datetime.fromisoformat(str(reviewed_at).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if reviewed.tzinfo is None:
+            reviewed = reviewed.replace(tzinfo=timezone.utc)
+        return reviewed + timedelta(days=7)
+
+    async def _update_ban_appeal_dm(self, ban_case, appeal_state: str | None) -> bool:
+        """Disable or restore the appeal button on the original ban DM."""
+        if ban_case is None or ban_case["appeal_message_id"] is None:
+            return True
+        target = self.bot.get_user(ban_case["target_id"])
+        if target is None:
+            try:
+                target = await self.bot.fetch_user(ban_case["target_id"])
+            except discord.HTTPException:
+                return False
+        try:
+            dm_channel = target.dm_channel or await target.create_dm()
+            message = await dm_channel.fetch_message(ban_case["appeal_message_id"])
+            moderator_id = ban_case["moderator_id"]
+            if self.bot.user is not None and moderator_id == self.bot.user.id:
+                moderator_id = None
+            await message.edit(
+                view=PermanentBanDMView(
+                    self,
+                    moderator_id=moderator_id,
+                    appeal_state=appeal_state,
+                )
+            )
+            return True
+        except discord.NotFound:
+            return True
+        except discord.HTTPException:
+            logger.info(
+                "Could not update ban appeal controls for case %s",
+                ban_case["id"],
+                exc_info=True,
+            )
+            return False
+
+    async def _reenable_due_appeal_buttons(self) -> None:
+        for appeal in self.appeals.rejected_controls_due():
+            ban_case = self.cases.get_case(appeal["ban_case_id"])
+            if await self._update_ban_appeal_dm(ban_case, None):
+                self.appeals.mark_controls_reenabled(appeal["id"])
+
     async def open_ban_appeal(
         self,
         interaction: discord.Interaction,
@@ -457,20 +516,29 @@ class ModerationCog(ObserverCog):
         guild = self.bot.get_guild(ban_case["guild_id"])
         if guild is None or self.get_appeals_channel(guild) is None:
             await interaction.response.send_message(
-                "This server has not configured an appeals channel. Use the moderator contact option in your ban message.",
+                "This server has not configured an appeals channel. Ask its moderators to configure one before submitting an in-app appeal.",
                 ephemeral=True,
             )
             return
         existing = self.appeals.get_for_ban_case(guild.id, ban_case["id"])
         if existing is not None:
-            label = {
-                "pending": "Your appeal is already awaiting review.",
-                "reviewing": "Your appeal is currently being reviewed.",
-                "accepted": "Your appeal has already been accepted.",
-                "rejected": "Your appeal has already been reviewed.",
-            }.get(existing["status"], "An appeal has already been submitted for this ban.")
-            await interaction.response.send_message(label, ephemeral=True)
-            return
+            if existing["status"] == "rejected":
+                retry_at = self._appeal_retry_at(existing)
+                now = discord.utils.utcnow()
+                if retry_at is None or now < retry_at:
+                    message = "Your appeal was rejected. You can submit another after the 7-day cooldown."
+                    if retry_at is not None:
+                        message += f" Try again {discord.utils.format_dt(retry_at, style='R')}."
+                    await interaction.response.send_message(message, ephemeral=True)
+                    return
+            else:
+                label = {
+                    "pending": "Your appeal is already awaiting review.",
+                    "reviewing": "Your appeal is currently being reviewed.",
+                    "accepted": "Your appeal has already been accepted.",
+                }.get(existing["status"], "An appeal has already been submitted for this ban.")
+                await interaction.response.send_message(label, ephemeral=True)
+                return
         await interaction.response.send_modal(BanAppealModal(self, ban_case))
 
     async def submit_ban_appeal(
@@ -490,11 +558,20 @@ class ModerationCog(ObserverCog):
             return
         existing = self.appeals.get_for_ban_case(guild.id, ban_case["id"])
         if existing is not None:
-            await interaction.response.send_message(
-                "An appeal has already been submitted for this ban.",
-                ephemeral=True,
-            )
-            return
+            retry_at = self._appeal_retry_at(existing)
+            if (
+                existing["status"] != "rejected"
+                or retry_at is None
+                or discord.utils.utcnow() < retry_at
+            ):
+                message = "An appeal has already been submitted for this ban."
+                if existing["status"] == "rejected" and retry_at is not None:
+                    message = (
+                        "Your appeal was rejected. You can submit another "
+                        f"{discord.utils.format_dt(retry_at, style='R')}."
+                    )
+                await interaction.response.send_message(message, ephemeral=True)
+                return
         if not reason:
             await interaction.response.send_message(
                 "Please explain why the ban should be appealed.", ephemeral=True
@@ -535,15 +612,25 @@ class ModerationCog(ObserverCog):
             reporter_id=interaction.user.id,
             status="open",
         )
-        appeal_id, created = self.appeals.create(
-            guild.id,
-            ban_case["id"],
-            appeal_case_id,
-            ban_case["target_id"],
-            reason,
-            json.dumps(filenames),
-            channel.id,
-        )
+        if existing is not None:
+            appeal_id = int(existing["id"])
+            created = self.appeals.resubmit_after_rejection(
+                appeal_id,
+                appeal_case_id,
+                reason,
+                json.dumps(filenames),
+                channel.id,
+            )
+        else:
+            appeal_id, created = self.appeals.create(
+                guild.id,
+                ban_case["id"],
+                appeal_case_id,
+                ban_case["target_id"],
+                reason,
+                json.dumps(filenames),
+                channel.id,
+            )
         if not created:
             self.cases.set_case_status(appeal_case_id, "failed")
             await interaction.followup.send(
@@ -725,6 +812,7 @@ class ModerationCog(ObserverCog):
             appeal["id"], decision, reviewer_id=member.id
         )
         self.cases.set_case_status(appeal["appeal_case_id"], appeal_case_status)
+        await self._update_ban_appeal_dm(ban_case, decision)
         await interaction.response.send_message(
             f"Appeal #{appeal['id']} {decision}.", ephemeral=True
         )
@@ -757,6 +845,7 @@ class ModerationCog(ObserverCog):
 
     @tasks.loop(minutes=1)
     async def expire_moderation_cases(self) -> None:
+        await self._reenable_due_appeal_buttons()
         now = discord.utils.utcnow().isoformat()
         for case in self.cases.list_due_cases(now):
             guild = self.bot.get_guild(case["guild_id"])
