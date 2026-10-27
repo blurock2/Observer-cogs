@@ -3,12 +3,14 @@ from __future__ import annotations
 from error_handling import ErrorHandledModal, ErrorHandledView, ObserverCog
 
 import asyncio
+import logging
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
 from cogs import setup_ui
+from cogs.config import OBSERVER_SUPPORT_GUILD_ID, PRIORITY_TICKET_ROLE_ID
 from cogs.setup_ui import (
     DB_PATH,
     SetupConfigStore,
@@ -18,6 +20,7 @@ from cogs.setup_ui import (
 
 MODULE_KEY = "tickets"
 NO_MENTIONS = discord.AllowedMentions.none()
+logger = logging.getLogger("observer.tickets")
 class TicketOtherReasonModal(ErrorHandledModal):
     def __init__(self, cog: TicketCog):
         super().__init__(title="Other ticket reason")
@@ -198,8 +201,9 @@ class TicketCog(ObserverCog):
         self,
         guild_id: int,
         key: str,
+        default: int | None = None,
     ) -> int | None:
-        value = self._get(guild_id, key)
+        value = self._get(guild_id, key, default=default)
 
         try:
             return (
@@ -236,6 +240,18 @@ class TicketCog(ObserverCog):
             guild_id,
             "blacklisted_role",
         )
+
+    def _priority_role_id(self, guild_id: int) -> int | None:
+        return self._get_id(
+            guild_id,
+            "priority_role",
+            default=PRIORITY_TICKET_ROLE_ID,
+        )
+
+    def _priority_ticket_channel_id(self, guild_id: int) -> int | None:
+        if guild_id != OBSERVER_SUPPORT_GUILD_ID:
+            return None
+        return self._get_id(guild_id, "priority_ticket_channel")
 
     def _should_ping_support_role(
         self,
@@ -287,6 +303,45 @@ class TicketCog(ObserverCog):
                 replied_user=False,
             ),
         )
+
+    async def _send_priority_ticket_reminder(
+        self,
+        guild: discord.Guild,
+        user: discord.Member,
+        support_role: discord.Role,
+        ticket_channel: discord.TextChannel,
+    ) -> None:
+        channel_id = self._priority_ticket_channel_id(guild.id)
+        channel = guild.get_channel(channel_id) if channel_id is not None else None
+        if not isinstance(channel, discord.TextChannel):
+            return
+
+        support_ping, allowed_mentions = self._get_support_role_notification(
+            guild,
+            support_role,
+        )
+        message = "\\n".join(
+            part
+            for part in (
+                support_ping,
+                f"⭐ Priority ticket opened by **{discord.utils.escape_markdown(user.display_name)}** (`{user.id}`).",
+                f"Ticket: {ticket_channel.mention}",
+                f"https://discord.com/channels/{guild.id}/{ticket_channel.id}",
+            )
+            if part
+        )
+        try:
+            await channel.send(
+                message,
+                allowed_mentions=allowed_mentions,
+            )
+        except discord.HTTPException:
+            logger.warning(
+                "Could not send priority ticket reminder to channel %s in guild %s",
+                channel.id,
+                guild.id,
+                exc_info=True,
+            )
 
     # ============================================================ Ticket helpers 
 
@@ -551,6 +606,13 @@ class TicketCog(ObserverCog):
             )
             return
 
+        priority_role_id = self._priority_role_id(guild.id)
+        has_priority_role = (
+            guild.id == OBSERVER_SUPPORT_GUILD_ID
+            and priority_role_id is not None
+            and any(role.id == priority_role_id for role in user.roles)
+        )
+
         existing_ticket = self._get_existing_ticket(
             guild,
             user,
@@ -651,6 +713,13 @@ class TicketCog(ObserverCog):
                 inline=False,
             )
 
+            if has_priority_role:
+                ticket_embed.add_field(
+                    name="Priority",
+                    value="Priority support member",
+                    inline=True,
+                )
+
             ticket_embed.set_footer(
                 text=(
                     "Use the button below to close "
@@ -687,6 +756,14 @@ class TicketCog(ObserverCog):
                 view=TicketCloseView(self),
                 allowed_mentions=allowed_mentions,
             )
+
+            if has_priority_role:
+                await self._send_priority_ticket_reminder(
+                    guild,
+                    user,
+                    support_role,
+                    ticket_channel,
+                )
 
             await interaction.followup.send(
                 (
