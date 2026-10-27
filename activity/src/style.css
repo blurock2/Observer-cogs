@@ -197,6 +197,8 @@ body:has(.site-shell), body:has(.dashboard-shell) { background: #0b0b0d; color: 
 .save-setting:disabled { opacity: .48; cursor: not-allowed; }
 .ticket-panel-fields { display: grid; gap: 11px; }
 .ticket-panel-fields input, .ticket-panel-fields textarea { display: block; margin-top: 6px; }
+.ticket-panel-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.ticket-panel-actions button:disabled { opacity: .55; cursor: wait; }
 .setting-warning { padding-left: 10px; border-left: 2px solid #e4a24f; background: linear-gradient(90deg,#e4a24f0b,transparent 55%); }
 .setting-warning .setting-copy>label { color: #f1bd79; }
 .save-notice { position: fixed; right: 22px; bottom: 20px; z-index: 5; padding: 11px 15px; border: 1px solid #27606a; border-radius: 6px; background: #132326; color: #88e5ef; font-size: 11px; opacity: 0; transform: translateY(8px); transition: .18s; pointer-events: none; }
