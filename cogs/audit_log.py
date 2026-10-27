@@ -497,7 +497,7 @@ class AuditLogCog(ObserverCog):
             if attachment_links:
                 embed.add_field(
                     name="Attachments",
-                    value=_truncate("\\n".join(attachment_links)),
+                    value=_truncate("\n".join(attachment_links)),
                     inline=False,
                 )
         embed.set_footer(text=f"Message ID: {payload.message_id}")
