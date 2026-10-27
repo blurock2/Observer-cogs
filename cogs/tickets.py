@@ -320,7 +320,7 @@ class TicketCog(ObserverCog):
             guild,
             support_role,
         )
-        message = "\\n".join(
+        message = "\n".join(
             part
             for part in (
                 support_ping,
