@@ -540,25 +540,60 @@ class ActivityServer:
             raise web.HTTPBadRequest(text="Choose either embed or card format")
         title = payload.get("title", "")
         description = payload.get("description", "")
+        content = payload.get("content", "")
+        author_name = payload.get("author_name", "")
+        author_url = payload.get("author_url", "")
+        author_icon_url = payload.get("author_icon_url", "")
+        title_url = payload.get("title_url", "")
+        thumbnail_url = payload.get("thumbnail_url", "")
         footer = payload.get("footer", "")
+        footer_icon_url = payload.get("footer_icon_url", "")
         image_url = payload.get("image_url", "")
         color = payload.get("color", "#42d7e8")
         message_url = payload.get("message_url", "")
+        timestamp = payload.get("timestamp", False)
+        fields = payload.get("fields", [])
         button_values = [payload.get(f"button_{index}_{part}", "") for index in range(1, 4) for part in ("label", "url", "style")]
-        if not all(isinstance(value, str) for value in (title, description, footer, image_url, color, message_url, *button_values)):
+        text_values = (title, description, content, author_name, author_url, author_icon_url, title_url, thumbnail_url, footer, footer_icon_url, image_url, color, message_url, *button_values)
+        if not all(isinstance(value, str) for value in text_values):
             raise web.HTTPBadRequest(text="Embed fields must be text")
-        if len(title) > 256 or len(description) > 4096 or len(footer) > 2048:
-            raise web.HTTPBadRequest(text="Title, description, or footer is too long")
-        if style == "embed" and len(title) + len(description) + len(footer) > 6000:
+        if not isinstance(timestamp, bool) or not isinstance(fields, list) or len(fields) > 25:
+            raise web.HTTPBadRequest(text="Embed timestamp or fields are invalid")
+        normalized_fields = []
+        for field in fields:
+            if not isinstance(field, dict):
+                raise web.HTTPBadRequest(text="Embed fields must be objects")
+            name, value, inline = field.get("name"), field.get("value"), field.get("inline", False)
+            if not isinstance(name, str) or not isinstance(value, str) or not isinstance(inline, bool):
+                raise web.HTTPBadRequest(text="Embed field names and values must be text")
+            name, value = name.strip(), value.strip()
+            if not name or not value or len(name) > 256 or len(value) > 1024:
+                raise web.HTTPBadRequest(text="Each embed field needs a name under 256 characters and a value under 1,024 characters")
+            normalized_fields.append({"name": name, "value": value, "inline": inline})
+        if len(title) > 256 or len(description) > 4096 or len(content) > 2000 or len(author_name) > 256 or len(footer) > 2048:
+            raise web.HTTPBadRequest(text="Embed title, description, message content, author, or footer is too long")
+        if style == "embed" and sum((len(title), len(description), len(author_name), len(footer), *(len(field["name"]) + len(field["value"]) for field in normalized_fields))) > 6000:
             raise web.HTTPBadRequest(text="Embed text must total 6,000 characters or fewer")
-        if not title.strip() and not description.strip():
-            raise web.HTTPBadRequest(text="Add a title or description")
-        if len(image_url) > 1000:
-            raise web.HTTPBadRequest(text="Image URL is too long")
-        if image_url:
-            parsed_url = urlparse(image_url)
-            if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
-                raise web.HTTPBadRequest(text="Image URL must start with http:// or https://")
+        if style == "card" and not title.strip() and not description.strip():
+            raise web.HTTPBadRequest(text="Add a title or description to the card")
+        if style == "embed" and not title.strip() and not description.strip() and not normalized_fields:
+            raise web.HTTPBadRequest(text="Add a title, description, or at least one embed field")
+        for label, url_value in (
+            ("Title URL", title_url), ("Author URL", author_url), ("Author icon URL", author_icon_url),
+            ("Thumbnail URL", thumbnail_url), ("Footer icon URL", footer_icon_url), ("Image URL", image_url),
+        ):
+            if len(url_value) > 1000:
+                raise web.HTTPBadRequest(text=f"{label} is too long")
+            if url_value:
+                parsed_url = urlparse(url_value)
+                if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
+                    raise web.HTTPBadRequest(text=f"{label} must start with http:// or https://")
+        if title_url.strip() and not title.strip():
+            raise web.HTTPBadRequest(text="A title is required when using a title URL")
+        if (author_url.strip() or author_icon_url.strip()) and not author_name.strip():
+            raise web.HTTPBadRequest(text="An author name is required when using an author URL or icon")
+        if footer_icon_url.strip() and not footer.strip():
+            raise web.HTTPBadRequest(text="Footer text is required when using a footer icon")
         edit_parts = _parse_discord_message_url(message_url) if message_url.strip() else None
         if message_url.strip() and not edit_parts:
             raise web.HTTPBadRequest(text="Enter a valid Discord message URL")
@@ -590,13 +625,26 @@ class ActivityServer:
             message_embed = discord.Embed(
                 title=title.strip() or None,
                 description=description.strip() or None,
+                url=title_url.strip() or None,
                 color=int(color.removeprefix("#"), 16),
             )
+            if author_name.strip():
+                message_embed.set_author(
+                    name=author_name.strip(),
+                    url=author_url.strip() or None,
+                    icon_url=author_icon_url.strip() or None,
+                )
+            for field in normalized_fields:
+                message_embed.add_field(name=field["name"], value=field["value"], inline=field["inline"])
             if footer.strip():
-                message_embed.set_footer(text=footer.strip())
+                message_embed.set_footer(text=footer.strip(), icon_url=footer_icon_url.strip() or None)
+            if timestamp:
+                message_embed.timestamp = datetime.now(timezone.utc)
+            if thumbnail_url.strip():
+                message_embed.set_thumbnail(url=thumbnail_url.strip())
             if image_url:
                 message_embed.set_image(url=image_url)
-            send_kwargs = {"embed": message_embed}
+            send_kwargs = {"content": content.strip() or None, "embed": message_embed}
         else:
             card_text = "\n\n".join(part for part in (
                 f"# {title.strip()}" if title.strip() else "",
@@ -624,9 +672,18 @@ class ActivityServer:
             "style": style,
             "title": title.strip(),
             "description": description.strip(),
+            "content": content.strip(),
+            "author_name": author_name.strip(),
+            "author_url": author_url.strip(),
+            "author_icon_url": author_icon_url.strip(),
+            "title_url": title_url.strip(),
+            "thumbnail_url": thumbnail_url.strip(),
             "footer": footer.strip(),
+            "footer_icon_url": footer_icon_url.strip(),
             "image_url": image_url.strip(),
             "color": color.strip(),
+            "timestamp": timestamp,
+            "fields": normalized_fields,
             **{
                 f"button_{index}_{part}": payload.get(f"button_{index}_{part}", "").strip()
                 for index in range(1, 4)
