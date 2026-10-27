@@ -205,9 +205,11 @@ body:has(.site-shell), body:has(.dashboard-shell) { background: #0b0b0d; color: 
 .support-period, .support-role>span { color: #879295; font: 8px ui-monospace,monospace; letter-spacing: 1px; }
 .support-symbol { display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid #34484b; border-radius: 9px; color: #42d7e8; font-size: 16px; }
 .support-card h3 { margin: 21px 0 8px; font: 600 18px system-ui; }
+.support-price { margin-bottom: 12px; color: #42d7e8; font-size: 15px; font-weight: 650; }
 .support-card>p { max-width: 410px; margin: 0 0 18px; color: #92979d; font-size: 11px; line-height: 1.8; }
-.support-role { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: auto; padding: 12px 0 15px; border-top: 1px solid #ffffff0c; }
-.support-role strong { color: #cbd5d7; font-size: 10px; font-weight: 550; }
-.support-button { align-self: flex-start; }
+.support-benefits { display: grid; gap: 8px; margin: 0 0 19px; padding: 0; list-style: none; }
+.support-benefits li { position: relative; padding-left: 19px; color: #aeb8bb; font-size: 10px; line-height: 1.55; }
+.support-benefits li::before { content: "+"; position: absolute; left: 0; color: #42d7e8; font-size: 13px; font-weight: 700; }
+.support-button { align-self: flex-start; margin-top: auto; }
 .support-note { max-width: 1172px; margin: 17px auto 0; color: #737d80; font-size: 9px; line-height: 1.7; }
 @media(max-width:700px) { .support-section { padding: 65px 20px 70px; } .support-section .section-intro { display: block; } .support-section .section-intro>p { margin-top: 14px; } .support-grid { grid-template-columns: 1fr; } .support-card { min-height: 250px; padding: 19px; } }
