@@ -1260,7 +1260,7 @@ class AntiScam(ObserverCog):
         await self._alert(
             guild,
             title or "Cross-server account check",
-            f"Member: {member.mention} (`{member.id}`)\\n{reason}\\nAction: {result}",
+            f"Member: {member.mention} (`{member.id}`)\n{reason}\nAction: {result}",
         )
         return True
 
