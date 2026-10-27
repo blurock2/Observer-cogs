@@ -316,7 +316,8 @@ class AuditLogCog(ObserverCog):
         with closing(connect_sqlite(DB_PATH)) as connection:
             return connection.execute(
                 """
-                SELECT content, attachments_json, author_id,\n                       reply_message_id, reply_channel_id,
+                SELECT content, attachments_json, author_id,
+                       reply_message_id, reply_channel_id,
                        reply_guild_id, reply_author_id
                 FROM audit_message_snapshots WHERE message_id = ?
                 """,
