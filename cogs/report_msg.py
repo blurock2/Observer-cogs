@@ -24,6 +24,23 @@ NO_MENTIONS = discord.AllowedMentions.none()
 logger = logging.getLogger("observer.report_msg")
 
 
+def _report_claimed_by(embed: discord.Embed) -> int | None:
+    for field in embed.fields:
+        if field.name.casefold() != "claimed by":
+            continue
+        match = re.search(
+            r"<@!?(\d{15,22})>|\((\d{15,22})\)|\b(\d{15,22})\b",
+            field.value,
+        )
+        if match:
+            return int(next(group for group in match.groups() if group))
+    return None
+
+
+def _report_is_accepted(embed: discord.Embed) -> bool:
+    return any(field.name.casefold() == "accepted by staff" for field in embed.fields)
+
+
 class AcceptedReportStore:
     """Persist report authors and staff acceptance timestamps."""
 
@@ -198,6 +215,19 @@ class ClaimReportView(ErrorHandledView):
             )
             return
 
+        if (
+            interaction.message is None
+            or not interaction.message.embeds
+        ):
+            await interaction.response.send_message(
+                "The report embed could not be found.",
+                ephemeral=True,
+            )
+            return
+
+        embed = interaction.message.embeds[0]
+        self.claimed_by = _report_claimed_by(embed)
+        self.accepted = _report_is_accepted(embed)
         if self.claimed_by is not None:
             await interaction.response.send_message(
                 "This report has already been claimed.",
@@ -214,41 +244,11 @@ class ClaimReportView(ErrorHandledView):
             )
             return
 
-        if (
-            interaction.message is None
-            or not interaction.message.embeds
-        ):
-            await interaction.response.send_message(
-                "The report embed could not be found.",
-                ephemeral=True,
-            )
-            return
-
-        self.claimed_by = member.id
-
         self.cog.mod_stats.increment(
             interaction.guild.id,
             member.id,
             "reports_claimed",
         )
-
-        button.disabled = True
-        button.label = f"Claimed by {member.display_name}"[:80]
-
-        unclaim_button = discord.utils.get(
-            self.children,
-            custom_id="report_unclaim",
-        )
-
-        if isinstance(unclaim_button, discord.ui.Button):
-            unclaim_button.disabled = False
-
-        accept_button = discord.utils.get(self.children, custom_id="report_accept")
-        if isinstance(accept_button, discord.ui.Button) and not self.accepted:
-            accept_button.disabled = False
-            accept_button.label = "Accept Report"
-
-        embed = interaction.message.embeds[0]
 
         embed.add_field(
             name="Claimed by",
@@ -256,10 +256,20 @@ class ClaimReportView(ErrorHandledView):
             inline=False,
         )
 
+        view = ClaimReportView(
+            self.cog,
+            self.cog.get_staff_role_id(interaction.guild.id),
+            claimed_by=member.id,
+            accepted=self.accepted,
+        )
+        claim_button = discord.utils.get(view.children, custom_id="report_claim")
+        if isinstance(claim_button, discord.ui.Button):
+            claim_button.label = f"Claimed by {member.display_name}"[:80]
         await interaction.response.edit_message(
             embed=embed,
-            view=self,
+            view=view,
         )
+        self.cog.bot.add_view(view, message_id=interaction.message.id)
 
     @discord.ui.button(
         label="Unclaim Report",
@@ -287,14 +297,22 @@ class ClaimReportView(ErrorHandledView):
             )
             return
 
-        if self.claimed_by is None:
+        member = interaction.user
+
+        if interaction.message is None or not interaction.message.embeds:
             await interaction.response.send_message(
-                "This report has not been claimed.",
-                ephemeral=True,
+                "The report embed could not be found.", ephemeral=True
             )
             return
 
-        member = interaction.user
+        embed = interaction.message.embeds[0]
+        self.claimed_by = _report_claimed_by(embed)
+        self.accepted = _report_is_accepted(embed)
+        if self.claimed_by is None:
+            await interaction.response.send_message(
+                "This report has not been claimed.", ephemeral=True
+            )
+            return
 
         if (
             member.id != self.claimed_by
@@ -309,50 +327,23 @@ class ClaimReportView(ErrorHandledView):
             )
             return
 
-        if (
-            interaction.message is None
-            or not interaction.message.embeds
-        ):
-            await interaction.response.send_message(
-                "The report embed could not be found.",
-                ephemeral=True,
-            )
-            return
-
         was_accepted = self.accepted
-        self.claimed_by = None
-        self.accepted = False
-
-        claim_button = discord.utils.get(
-            self.children,
-            custom_id="report_claim",
-        )
-
-        if isinstance(claim_button, discord.ui.Button):
-            claim_button.disabled = False
-            claim_button.label = "Claim Report"
-
-        accept_button = discord.utils.get(self.children, custom_id="report_accept")
-        if isinstance(accept_button, discord.ui.Button) and not self.accepted:
-            accept_button.disabled = True
-            accept_button.label = "Claim report first"
-
-        button.disabled = True
-
-        embed = interaction.message.embeds[0]
-        was_accepted = was_accepted or any(
-            field.name.casefold() == "accepted by staff" for field in embed.fields
-        )
+        was_accepted = was_accepted or _report_is_accepted(embed)
         self.cog.reports.unaccept(interaction.message.id, interaction.guild.id)
 
         for index in reversed(range(len(embed.fields))):
             if embed.fields[index].name.casefold() in {"claimed by", "accepted by staff"}:
                 embed.remove_field(index)
 
+        view = ClaimReportView(
+            self.cog,
+            self.cog.get_staff_role_id(interaction.guild.id),
+        )
         await interaction.response.edit_message(
             embed=embed,
-            view=self,
+            view=view,
         )
+        self.cog.bot.add_view(view, message_id=interaction.message.id)
         if was_accepted:
             try:
                 await self.cog.update_monthly_reporter_role(
@@ -387,10 +378,24 @@ class ClaimReportView(ErrorHandledView):
                 "Only staff can accept reports.", ephemeral=True
             )
             return
+        if interaction.message is None or not interaction.message.embeds:
+            await interaction.response.send_message(
+                "The report embed could not be found.", ephemeral=True
+            )
+            return
+        embed = interaction.message.embeds[0]
+        self.claimed_by = _report_claimed_by(embed)
+        self.accepted = _report_is_accepted(embed)
         if self.claimed_by != interaction.user.id:
             await interaction.response.send_message(
                 "Claim this report before accepting it. Only its claimant can take report actions.",
                 ephemeral=True,
+            )
+            return
+
+        if self.accepted:
+            await interaction.response.send_message(
+                "This report has already been accepted.", ephemeral=True
             )
             return
 
@@ -407,17 +412,20 @@ class ClaimReportView(ErrorHandledView):
         winner_id, total, role_message = await self.cog.update_monthly_reporter_role(
             interaction.guild, month
         )
-        embed = interaction.message.embeds[0]
         if newly_accepted:
             embed.add_field(
                 name="Accepted by staff",
                 value=f"{interaction.user.mention} • <t:{int(datetime.now(timezone.utc).timestamp())}:f>",
                 inline=False,
             )
-        self.accepted = True
-        button.disabled = True
-        button.label = "Accepted"
-        await interaction.response.edit_message(embed=embed, view=self)
+        view = ClaimReportView(
+            self.cog,
+            self.cog.get_staff_role_id(interaction.guild.id),
+            claimed_by=self.claimed_by,
+            accepted=True,
+        )
+        await interaction.response.edit_message(embed=embed, view=view)
+        self.cog.bot.add_view(view, message_id=interaction.message.id)
 
         status = role_message if newly_accepted else f"This report was already accepted. {role_message}"
         if winner_id is not None:
@@ -690,27 +698,20 @@ class ReportMessage(ObserverCog):
         for guild in self.bot.guilds:
             channel_id = self.get_report_channel_id(guild.id)
             channel = guild.get_channel(channel_id) if channel_id else None
-            if not isinstance(channel, discord.TextChannel):
+            if not isinstance(channel, (discord.TextChannel, discord.Thread)):
                 continue
 
             try:
                 async for message in channel.history(limit=None):
-                    if not any(
-                        embed.title == "New Message Report"
-                        for embed in message.embeds
-                    ):
+                    embed = next(
+                        (item for item in message.embeds if item.title == "New Message Report"),
+                        None,
+                    )
+                    if embed is None:
                         continue
 
-                    claimed_by = None
-                    accepted = False
-                    for embed in message.embeds:
-                        for field in embed.fields:
-                            if field.name == "Claimed by":
-                                match = re.search(r"\((\d+)\)", field.value)
-                                if match:
-                                    claimed_by = int(match.group(1))
-                            elif field.name == "Accepted by staff":
-                                accepted = True
+                    claimed_by = _report_claimed_by(embed)
+                    accepted = _report_is_accepted(embed)
 
                     view = ClaimReportView(
                         self,
@@ -753,6 +754,7 @@ class ReportMessage(ObserverCog):
                     guild.id,
                     exc_info=True,
                 )
+        logger.info("Restored persistent report controls for guilds with configured report channels")
         self._report_views_restored = True
 
     async def cog_unload(self) -> None:
