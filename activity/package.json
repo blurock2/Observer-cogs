@@ -1,0 +1,9 @@
+{
+  "name": "observer-staff-activity",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": { "dev": "vite --host 0.0.0.0", "build": "vite build" },
+  "dependencies": { "@discord/embedded-app-sdk": "^2.5.0" },
+  "devDependencies": { "vite": "^7.0.0" }
+}
