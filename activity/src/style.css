@@ -84,24 +84,29 @@ body:has(.site-shell), body:has(.dashboard-shell) { background: #0b0b0d; color: 
 .support-note { max-width: 1172px; margin: 17px auto 0; color: #737d80; font-size: 9px; line-height: 1.7; }
 @media(max-width:700px) { .support-section { padding: 65px 20px 70px; } .support-section .section-intro { display: block; } .support-section .section-intro>p { margin-top: 14px; } .support-grid { grid-template-columns: 1fr; } .support-card { min-height: 250px; padding: 19px; } }
 
-/* Keep the shield large inside the square brand marks. */
+/* Use the full shield artwork without cropping it into a circle. */
 .brand-mark, .mini-mark {
   position: relative;
   display: grid;
   place-items: center;
   flex: 0 0 auto;
   overflow: hidden;
-  padding: 0;
+  padding: 2px;
+  border: 1px solid #42d7e866;
+  border-radius: 10px;
+  background: #05090b;
+  box-shadow: 0 0 22px #42d7e817;
 }
-.brand-mark { width: 34px; height: 34px; }
-.mini-mark { width: 25px; height: 25px; }
+.brand-mark { width: 38px; height: 38px; }
+.mini-mark { width: 29px; height: 29px; padding: 1px; border-radius: 8px; }
 .brand-mark img, .mini-mark img {
   display: block;
   width: 100%;
   height: 100%;
   max-width: none;
-  object-fit: cover;
-  transform: scale(2);
+  object-fit: contain;
+  object-position: center;
+  border-radius: 0;
 }
 .feature-featured {
   border-color: #29292e;
@@ -115,26 +120,22 @@ body:has(.site-shell), body:has(.dashboard-shell) { background: #0b0b0d; color: 
 @media (max-width: 600px) {
   .brand-mark { width: 31px; height: 31px; }
 }
-.brand-mark img, .mini-mark img {
+.brand-mark img, .mini-mark img { transform: none; }
+.dashboard-loading .loading-mark {
+  display: block;
+  width: 76px;
+  height: 76px;
+  margin-bottom: 18px;
+  padding: 4px;
   object-fit: contain;
-  object-position: center;
-  transform: none;
+  border: 1px solid #42d7e899;
+  border-radius: 17px;
+  background: #05090b;
+  box-shadow: 0 0 32px #42d7e822;
 }
-.brand-mark, .mini-mark {
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  box-shadow: none;
-  overflow: hidden;
-}
-.brand-mark img, .mini-mark img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center;
-  transform: none;
-  border-radius: 50%;
-}
+.preview-author img { border-radius: 6px; border: 1px solid #42d7e866; background: #05090b; }
+.fatal-mark { width: 60px; height: 60px; padding: 3px; border: 1px solid #42d7e899; border-radius: 15px; background: #05090b; box-shadow: 0 0 30px #42d7e822; }
+.fatal-mark img { display: block; width: 100%; height: 100%; object-fit: contain; }
 
 /* Discord server control panel */
 .control-panel { max-width: 1180px; margin: 0 auto; padding: 48px 30px 90px; }

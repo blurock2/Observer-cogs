@@ -21,7 +21,7 @@ async function api(path, options = {}) {
 }
 
 function brand() {
-  return `<a class="brand" href="/" aria-label="Observer home"><span class="brand-mark"><img src="/observer.png" alt=""></span><span>OBSERVER</span></a>`;
+  return `<a class="brand" href="/" aria-label="Observer home"><span class="brand-mark"><img src="/observer.png?v=3" alt=""></span><span>OBSERVER</span></a>`;
 }
 
 function reportRows() {

@@ -12,7 +12,7 @@ async function api(url, options = {}) {
   return data;
 }
 
-function brand() { return `<a class="brand" href="/" aria-label="Observer home"><span class="brand-mark"><img src="/observer.png" alt=""></span><span>OBSERVER</span></a>`; }
+function brand() { return `<a class="brand" href="/" aria-label="Observer home"><span class="brand-mark"><img src="/observer.png?v=3" alt=""></span><span>OBSERVER</span></a>`; }
 
 function renderCards() {
   const query = (document.querySelector("#module-search")?.value || "").trim().toLowerCase();

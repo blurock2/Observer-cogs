@@ -12,7 +12,7 @@ async function api(url, options = {}) {
 }
 
 function brand() {
-  return `<a class="brand" href="/" aria-label="Observer home"><span class="brand-mark"><img src="/observer.png" alt=""></span><span>OBSERVER</span></a>`;
+  return `<a class="brand" href="/" aria-label="Observer home"><span class="brand-mark"><img src="/observer.png?v=3" alt=""></span><span>OBSERVER</span></a>`;
 }
 
 function safeImageUrl(value) {
@@ -26,7 +26,7 @@ function safeImageUrl(value) {
 
 async function start() {
   if (!guildId) { location.replace("/?dashboard=1"); return; }
-  root.innerHTML = `<main class="dashboard-loading"><img class="loading-mark" src="/observer.png" alt="Observer logo"><p>Loading message sender...</p></main>`;
+  root.innerHTML = `<main class="dashboard-loading"><img class="loading-mark" src="/observer.png?v=3" alt="Observer logo"><p>Loading message sender...</p></main>`;
   try {
     const data = await api(`/api/custom-embed/${encodeURIComponent(guildId)}`);
     const channels = data.channels || [];
@@ -66,7 +66,7 @@ async function start() {
       const content = isCard
         ? `<div class="preview-v2-card"><div class="preview-message-title">${esc(title)}</div><div class="preview-message-description">${esc(description)}</div>${footerMarkup}${image}${buttonMarkup}</div>`
         : `<div class="preview-embed" style="--preview-accent:${colorValue}"><div class="preview-message-title">${esc(title)}</div><div class="preview-message-description">${esc(description)}</div>${image}${footerMarkup}</div>`;
-      preview.innerHTML = `<div class="preview-author"><img src="/observer.png" alt=""><span>Observer</span><small>APP</small><time>now</time></div>${content}`;
+      preview.innerHTML = `<div class="preview-author"><img src="/observer.png?v=3" alt=""><span>Observer</span><small>APP</small><time>now</time></div>${content}`;
     };
 
     const renderSavedMessages = () => {

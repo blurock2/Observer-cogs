@@ -8,7 +8,7 @@ let currentTab = "overview";
 
 function frame(title, subtitle, body) {
   root.innerHTML = `<div class="shell">
-    <aside class="rail"><div class="brand"><span class="brand-mark">O</span><span>OBSERVER</span></div>
+    <aside class="rail"><div class="brand"><span class="brand-mark"><img src="/observer.png?v=3" alt=""></span><span>OBSERVER</span></div>
       <div class="rail-label">STAFF SPACE</div>
       <nav>${["overview", "reports", "cases", "bot status"].map((label) =>
         `<button class="nav-item ${currentTab === label ? "active" : ""}" data-tab="${label}"><span class="nav-dot"></span>${label}</button>`
@@ -84,5 +84,5 @@ async function start() {
 }
 
 start().catch((error) => {
-  root.innerHTML = `<main class="fatal"><div class="fatal-mark">O</div><div class="eyebrow">OBSERVER STAFF ACTIVITY</div><h1>We couldn’t connect</h1><p>${esc(error.message)}</p><small>Launch Observer from a server’s App Launcher and try again.</small></main>`;
+  root.innerHTML = `<main class="fatal"><div class="fatal-mark"><img src="/observer.png?v=3" alt="Observer logo"></div><div class="eyebrow">OBSERVER STAFF ACTIVITY</div><h1>We couldn’t connect</h1><p>${esc(error.message)}</p><small>Launch Observer from a server’s App Launcher and try again.</small></main>`;
 });
