@@ -103,7 +103,7 @@ function readTicketPanelFields() {
     panel_title: document.querySelector('[data-ticket-field="panel_title"]').value,
     panel_description: document.querySelector('[data-ticket-field="panel_description"]').value,
     panel_footer: document.querySelector('[data-ticket-field="panel_footer"]').value,
-    reason_options: document.querySelector('[data-ticket-field="reason_options"]').value.split("\\n").map((item) => item.trim()).filter(Boolean),
+    reason_options: document.querySelector('[data-ticket-field="reason_options"]').value.split("\n").map((item) => item.trim()).filter(Boolean),
   };
 }
 async function save(moduleKey, key, value) {
