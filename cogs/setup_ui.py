@@ -4,7 +4,6 @@ from cogs.config import OBSERVER_SUPPORT_GUILD_ID
 from error_handling import ErrorHandledModal, ErrorHandledView, ObserverCog, handle_interaction_error
 
 import json
-import re
 import os
 from collections.abc import Callable
 from contextlib import contextmanager
@@ -215,6 +214,11 @@ class SetupConfigStore:
                 continue
         self._module_cache[cache_key] = out
         return dict(out)
+
+    def refresh_module(self, guild_id: int, module: str) -> dict:
+        """Reload one module's settings from SQLite, including external writes."""
+        self._module_cache.pop((self.db_path, guild_id, module), None)
+        return self.get_module(guild_id, module)
 
     # ============================================================ Enabled toggle helpers
 
@@ -672,7 +676,7 @@ MODULES: list[ModuleSpec] = [
                 "role",
                 description=(
                     "Role that cannot create tickets (optional)."
-
+                
                 ),
             ),
             SettingSpec(
@@ -797,20 +801,6 @@ MODULES: list[ModuleSpec] = [
                 "text",
                 description="Comma-separated channel IDs exempt from threshold and repeated-ping detection.",
             ),
-        ],
-    ),
-    ModuleSpec(
-        key="steam_free",
-        label="Free Steam Games",
-        emoji="🎮",
-        description="Games and DLC temporarily 100% off, claimed directly on Steam.",
-        settings=[
-            SettingSpec("enabled", "Automatic Steam alerts", "toggle", default=False,
-                        description="Check every 30 minutes after selecting a channel."),
-            SettingSpec("channel", "Free games channel", "channel",
-                        description="Needs View Channel, Send Messages and Embed Links."),
-            SettingSpec("country", "Steam region code", "text", default="si",
-                        description="Two-letter country code: si, de, gb, us. Prices and availability vary."),
         ],
     ),
     ModuleSpec(
@@ -1810,7 +1800,6 @@ class ChannelSelectView(AdminOnlyView):
                 ("bot", "error_channel"),
                 ("moderation", "appeal_channel"),
                 ("security", "advertising_channel"),
-                ("steam_free", "channel"),
             }
             else None,
         )
@@ -1850,7 +1839,6 @@ class ChannelSelectView(AdminOnlyView):
             if (self.module_key, self.setting_key) in {
                 ("bot", "error_channel"),
                 ("moderation", "appeal_channel"),
-                ("steam_free", "channel"),
             }:
                 permissions = channel.permissions_for(interaction.guild.me)
                 can_send = (
@@ -1990,14 +1978,6 @@ class TextModal(ErrorHandledModal):
         try:
             raw = self.input.value.strip()
             guild = interaction.guild
-            if self.module_key == "steam_free" and self.spec.key == "country":
-                raw = raw.lower() or "si"
-                if not re.fullmatch(r"[a-z]{2}", raw):
-                    await interaction.response.send_message(
-                        "Enter a two-letter Steam country code, such as si, de, gb or us.",
-                        ephemeral=True,
-                    )
-                    return
 
             if self.spec.kind == "integer":
                 if raw == "":
@@ -2012,7 +1992,7 @@ class TextModal(ErrorHandledModal):
                         return
             else:
                 value = raw if raw != "" else None
-# nick-grrr
+# nick-grrr 
             self.cog.store.set(guild.id, self.module_key, self.spec.key, value)
 
             module = get_module(self.module_key)
