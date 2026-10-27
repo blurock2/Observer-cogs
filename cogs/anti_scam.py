@@ -1565,7 +1565,7 @@ class AntiScam(ObserverCog):
                 )
         if self.scam_quarantine.get(key, 0) > received_at:
             try:
-                await message.delete(reason="Recent scam image sender temporarily quarantined")
+                await message.delete()
             except discord.NotFound:
                 pass
             except discord.HTTPException:
@@ -1625,7 +1625,7 @@ class AntiScam(ObserverCog):
             until = self.scam_quarantine.get(key, 0)
             if until > time.monotonic():
                 try:
-                    await message.delete(reason="Recent scam image sender temporarily quarantined")
+                    await message.delete()
                 except discord.NotFound:
                     pass
                 except discord.HTTPException:
