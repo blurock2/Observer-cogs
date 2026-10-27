@@ -56,6 +56,58 @@ def _parse_discord_message_url(value: str) -> tuple[int, int, int] | None:
     return tuple(map(int, match.groups()))
 
 
+def _custom_button_style(value: str) -> discord.ButtonStyle:
+    return {
+        "primary": discord.ButtonStyle.primary,
+        "secondary": discord.ButtonStyle.secondary,
+        "success": discord.ButtonStyle.success,
+        "danger": discord.ButtonStyle.danger,
+    }.get(value, discord.ButtonStyle.secondary)
+
+
+def _custom_card_view(payload: dict) -> tuple[discord.ui.LayoutView, bool]:
+    """Build a persistent Components V2 card with selectable-color link actions."""
+    view = discord.ui.LayoutView(timeout=None)
+    title = payload.get("title", "").strip()
+    description = payload.get("description", "").strip()
+    footer = payload.get("footer", "").strip()
+    image_url = payload.get("image_url", "").strip()
+    card_text = "\n\n".join(part for part in (
+        f"# {title}" if title else "",
+        description,
+    ) if part)
+    card = discord.ui.Container(discord.ui.TextDisplay(card_text))
+    if footer:
+        card.add_item(discord.ui.Separator())
+        card.add_item(discord.ui.TextDisplay(footer))
+    if image_url:
+        card.add_item(discord.ui.MediaGallery(discord.MediaGalleryItem(image_url)))
+    view.add_item(card)
+
+    buttons = []
+    for index in range(1, 4):
+        label = payload.get(f"button_{index}_label", "").strip()
+        url = payload.get(f"button_{index}_url", "").strip()
+        if not label or not url:
+            continue
+        button = discord.ui.Button(
+            style=_custom_button_style(payload.get(f"button_{index}_style", "secondary")),
+            label=label,
+            custom_id=f"observer_custom_link:{index}",
+        )
+
+        async def open_link(interaction: discord.Interaction, link=url) -> None:
+            link_view = discord.ui.View(timeout=60)
+            link_view.add_item(discord.ui.Button(style=discord.ButtonStyle.link, label="Open link", url=link))
+            await interaction.response.send_message("Open this link:", view=link_view, ephemeral=True)
+
+        button.callback = open_link
+        buttons.append(button)
+    if buttons:
+        view.add_item(discord.ui.ActionRow(*buttons))
+    return view, bool(buttons)
+
+
 class ActivityServer:
     def __init__(self, bot):
         self.bot = bot
@@ -93,6 +145,20 @@ class ActivityServer:
             )
 
     async def start(self) -> None:
+        # Register saved card actions before connecting to Discord so colored
+        # link buttons continue to work after bot restarts.
+        with connect_sqlite(DB_PATH) as db:
+            saved_cards = db.execute(
+                "SELECT message_id, payload_json FROM custom_embed_messages WHERE style = 'card'"
+            ).fetchall()
+        for row in saved_cards:
+            try:
+                payload = json.loads(row["payload_json"])
+                view, has_buttons = _custom_card_view(payload)
+                if has_buttons:
+                    self.bot.add_view(view, message_id=int(row["message_id"]))
+            except (TypeError, ValueError, AttributeError):
+                logger.warning("Could not restore custom card buttons for message %s", row["message_id"])
         if not self.client_id or not self.client_secret:
             logger.info("Activity web server disabled; set DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET to enable it")
             return
@@ -478,7 +544,7 @@ class ActivityServer:
         image_url = payload.get("image_url", "")
         color = payload.get("color", "#42d7e8")
         message_url = payload.get("message_url", "")
-        button_values = [payload.get(f"button_{index}_{part}", "") for index in range(1, 4) for part in ("label", "url")]
+        button_values = [payload.get(f"button_{index}_{part}", "") for index in range(1, 4) for part in ("label", "url", "style")]
         if not all(isinstance(value, str) for value in (title, description, footer, image_url, color, message_url, *button_values)):
             raise web.HTTPBadRequest(text="Embed fields must be text")
         if len(title) > 256 or len(description) > 4096 or len(footer) > 2048:
@@ -538,30 +604,21 @@ class ActivityServer:
             ) if part)
             if len(card_text) > 4000:
                 raise web.HTTPBadRequest(text="Card title and description must total 4,000 characters or fewer")
-            view = discord.ui.LayoutView(timeout=None)
-            card = discord.ui.Container(discord.ui.TextDisplay(card_text))
-            if footer.strip():
-                card.add_item(discord.ui.Separator())
-                card.add_item(discord.ui.TextDisplay(footer.strip()))
-            if image_url:
-                card.add_item(discord.ui.MediaGallery(discord.MediaGalleryItem(image_url)))
-            view.add_item(card)
-
-            buttons = []
             for index in range(1, 4):
                 label = payload.get(f"button_{index}_label", "")
                 url = payload.get(f"button_{index}_url", "")
+                button_style = payload.get(f"button_{index}_style", "secondary") or "secondary"
                 label, url = label.strip(), url.strip()
+                if not isinstance(button_style, str) or button_style not in {"primary", "secondary", "success", "danger"}:
+                    raise web.HTTPBadRequest(text="Choose a valid button color")
                 if bool(label) != bool(url):
                     raise web.HTTPBadRequest(text="Each link button needs both a label and a URL")
                 if label:
                     parsed_button_url = urlparse(url)
                     if len(label) > 80 or len(url) > 512 or parsed_button_url.scheme not in {"http", "https"} or not parsed_button_url.netloc:
                         raise web.HTTPBadRequest(text="Link buttons need a label under 80 characters and a valid http(s) URL")
-                    buttons.append(discord.ui.Button(style=discord.ButtonStyle.link, label=label, url=url))
+            view, has_custom_buttons = _custom_card_view(payload)
             send_kwargs = {"view": view}
-            if buttons:
-                view.add_item(discord.ui.ActionRow(*buttons))
         saved_payload = {
             "channel_id": str(channel.id),
             "style": style,
@@ -573,7 +630,7 @@ class ActivityServer:
             **{
                 f"button_{index}_{part}": payload.get(f"button_{index}_{part}", "").strip()
                 for index in range(1, 4)
-                for part in ("label", "url")
+                for part in ("label", "url", "style")
             },
         }
         try:
@@ -596,6 +653,8 @@ class ActivityServer:
             else:
                 message = await channel.send(**send_kwargs, allowed_mentions=discord.AllowedMentions.none())
                 action = "sent"
+            if style == "card" and has_custom_buttons:
+                self.bot.add_view(view, message_id=message.id)
             with connect_sqlite(DB_PATH) as db:
                 db.execute(
                     """INSERT INTO custom_embed_messages
