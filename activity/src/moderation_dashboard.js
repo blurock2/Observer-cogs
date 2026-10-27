@@ -8,7 +8,11 @@ let actionInFlight = 0;
 async function api(path, options = {}) {
   const response = await fetch(path, { credentials: "same-origin", ...options });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error || body.message || `Request failed (${response.status})`);
+  if (!response.ok) {
+    const error = new Error(body.error || body.message || `Request failed (${response.status})`);
+    error.status = response.status;
+    throw error;
+  }
   return body;
 }
 
@@ -23,13 +27,14 @@ function reportRows() {
     const date = new Date(report.created_at);
     const time = Number.isNaN(date.getTime()) ? "Recently" : date.toLocaleString();
     const actionButton = (action, label, className = "") => `<button class="mod-action-button ${className}" data-report-action="${action}" data-report-id="${esc(report.id)}">${label}</button>`;
-    const isClaimant = String(data.viewer_id) === String(report.claimed_by || "");
-    const claimControl = report.claimed_by
+    const isClaimed = report.claimed ?? Boolean(report.claimed_by);
+    const isClaimant = isClaimed && String(data.viewer_id) === String(report.claimed_by || "");
+    const claimControl = isClaimed
       ? actionButton("unclaim", "↩ Unclaim Report", "secondary")
       : actionButton("claim", "Claim", "secondary");
     const claimantActions = isClaimant
       ? `${actionButton("warn", "Warn", "warn")}${actionButton("timeout", "Timeout", "timeout")}${actionButton("delete", "Delete", "danger")}${!report.accepted ? actionButton("close", "Close Report", "secondary") : `<span class="mod-action-complete">Closed</span>`}${!report.escalated_by_name ? actionButton("escalate", "Escalate", "escalate") : `<span class="mod-action-complete">Escalated</span>`}`
-      : `<span class="mod-action-complete">${report.claimed_by ? `Actions reserved for ${esc(report.claimed_by_name || "the claimant")}` : "Claim to take report actions"}</span>`;
+      : `<span class="mod-action-complete">${isClaimed ? `Actions reserved for ${esc(report.claimed_by_name || "a moderator")}` : "Claim to take report actions"}</span>`;
     const reportActions = `${claimControl}${claimantActions}`;
     const claimNote = report.claimed_by_name ? `<small class="mod-claim-note">Claimed by ${esc(report.claimed_by_name)}</small>` : "";
     const linkedActionText = (report.linked_actions || []).map((action) => `Case #${action.case_number} ${action.case_type} by ${action.moderator_name}`).join(" · ");
@@ -71,6 +76,11 @@ function openActionDialog(report, action) {
       overlay.remove();
       render();
     } catch (error) {
+      if (error.status === 409) {
+        try { data = await api(`/api/mod-dashboard/${encodeURIComponent(guildId)}`); render(); }
+        catch { alert(error.message); }
+        return;
+      }
       alert(error.message);
       submit.disabled = false;
       submit.textContent = action === "delete" ? "Delete message" : `Confirm ${action}`;
@@ -109,6 +119,11 @@ function render() {
       data = await api(`/api/mod-dashboard/${encodeURIComponent(guildId)}`);
       render();
     } catch (error) {
+      if (error.status === 409) {
+        try { data = await api(`/api/mod-dashboard/${encodeURIComponent(guildId)}`); render(); }
+        catch { alert(error.message); }
+        return;
+      }
       alert(error.message);
       button.disabled = false;
       button.textContent = action === "close" ? "Close Report" : action === "escalate" ? "Escalate" : action[0].toUpperCase() + action.slice(1);
