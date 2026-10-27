@@ -511,7 +511,7 @@ class AntiScam(ObserverCog):
             if source.width * source.height > IMAGE_SCAN_MAX_PIXELS:
                 raise ValueError("Image dimensions are too large to scan")
             # Palette PNGs can carry transparency as raw bytes; Pillow warns
-            # when thumbnailing those directly, so normalize alpha first.
+            # when converting those directly to RGB, so normalize alpha first.
             if source.mode == "P" and "transparency" in source.info:
                 with source.convert("RGBA") as normalized:
                     normalized.thumbnail(
