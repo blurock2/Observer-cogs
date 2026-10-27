@@ -8,7 +8,7 @@ import logging
 import os
 import re
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from time import monotonic
 from urllib.parse import urlencode
@@ -382,6 +382,10 @@ class ActivityServer:
                     accepted_match = re.search(r"<@!?(\d{15,22})>", accepted_raw)
                     accepted_id = accepted_match.group(1) if accepted_match else None
                     accepted_member = guild.get_member(int(accepted_id)) if accepted_id else None
+                    escalated_raw = fields.get("escalated by", "")
+                    escalated_match = re.search(r"\((\d{15,22})\)", escalated_raw)
+                    escalated_id = escalated_match.group(1) if escalated_match else None
+                    escalated_member = guild.get_member(int(escalated_id)) if escalated_id else None
                     message_link = fields.get("message link", "")
                     linked_message_match = re.search(
                         r"https?://(?:canary\.|ptb\.)?discord(?:app)?\.com/channels/\d+/\d+/(\d{15,22})",
@@ -400,6 +404,7 @@ class ActivityServer:
                         "claimed_by_name": claimed_member.display_name if claimed_member else (f"User {claimed_id}" if claimed_id else None),
                         "accepted": "accepted by staff" in fields,
                         "accepted_by_name": accepted_member.display_name if accepted_member else (f"User {accepted_id}" if accepted_id else None),
+                        "escalated_by_name": escalated_member.display_name if escalated_member else (f"User {escalated_id}" if escalated_id else None),
                         "reported_message_id": linked_message_match.group(1) if linked_message_match else None,
                         "linked_actions": [],
                     })
@@ -475,10 +480,122 @@ class ActivityServer:
             "reports_channel": channel.name if channel else None,
         }, headers={"Cache-Control": "no-store"})
 
+    async def _web_moderation_action(
+        self,
+        guild: discord.Guild,
+        actor: discord.Member,
+        action: str,
+        target_id: int,
+        source_channel_id: int | None,
+        source_message_id: int | None,
+        reason: str,
+        duration_minutes: int | None = None,
+    ) -> dict:
+        moderation = self.bot.get_cog("ModerationCog")
+        if moderation is None:
+            raise web.HTTPServiceUnavailable(text="Observer's moderation tools are unavailable")
+        from cogs.config import is_bot_owner
+
+        configured_roles = {
+            self.bot.setup_store.get(guild.id, "moderation", "mod_role"),
+            self.bot.setup_store.get(guild.id, "moderation", "head_mod_role"),
+        }
+        role_ids = {role.id for role in actor.roles}
+        has_mod_role = any(str(role_id).isdigit() and int(role_id) in role_ids for role_id in configured_roles)
+        if actor.id != guild.owner_id and not is_bot_owner(actor) and not has_mod_role:
+            raise web.HTTPForbidden(text="This action requires the configured moderator or head moderator role")
+
+        target = guild.get_member(target_id)
+        if action in {"warn", "timeout"}:
+            if target is None:
+                try:
+                    target = await guild.fetch_member(target_id)
+                except discord.NotFound:
+                    raise web.HTTPNotFound(text="The reported member is no longer in this server")
+                except discord.HTTPException:
+                    raise web.HTTPBadGateway(text="Could not load the reported member")
+            if target.id == actor.id or target.id == guild.owner_id:
+                raise web.HTTPForbidden(text="You cannot moderate yourself or the server owner")
+            if actor.id != guild.owner_id and target.top_role >= actor.top_role:
+                raise web.HTTPForbidden(text="You cannot moderate a member with equal or higher roles")
+            bot_member = guild.me
+            if bot_member is not None and target.top_role >= bot_member.top_role:
+                raise web.HTTPForbidden(text="Observer cannot act on a member with an equal or higher role")
+        elif action == "delete":
+            if not source_channel_id or not source_message_id:
+                raise web.HTTPConflict(text="The original reported message link is missing")
+            source_channel = guild.get_channel(source_channel_id) or guild.get_thread(source_channel_id)
+            if source_channel is None:
+                try:
+                    source_channel = await guild.fetch_channel(source_channel_id)
+                except discord.NotFound:
+                    raise web.HTTPNotFound(text="The original message channel no longer exists")
+            if not isinstance(source_channel, (discord.TextChannel, discord.Thread)):
+                raise web.HTTPConflict(text="The original report is not in a deletable text channel")
+            bot_member = guild.me
+            if bot_member is None or not source_channel.permissions_for(bot_member).manage_messages:
+                raise web.HTTPForbidden(text="Observer needs Manage Messages in the original message channel")
+            if target is None:
+                try:
+                    target = await self.bot.fetch_user(target_id)
+                except discord.HTTPException:
+                    raise web.HTTPBadGateway(text="Observer could not load the reported member profile")
+            try:
+                source_message = await source_channel.fetch_message(source_message_id)
+            except discord.NotFound:
+                raise web.HTTPConflict(text="The original reported message has already been deleted")
+            try:
+                await source_message.delete(reason=f"Deleted after report review by {actor}: {reason}")
+            except discord.Forbidden:
+                raise web.HTTPForbidden(text="Observer cannot delete the original message")
+            except discord.HTTPException:
+                raise web.HTTPBadGateway(text="Discord rejected deletion of the original message")
+        else:
+            raise web.HTTPBadRequest(text="Unsupported moderation action")
+
+        if action == "timeout":
+            if duration_minutes is None or not 1 <= duration_minutes <= 40320:
+                raise web.HTTPBadRequest(text="Timeout duration must be between 1 and 40,320 minutes")
+            expires = discord.utils.utcnow() + timedelta(minutes=duration_minutes)
+            try:
+                await target.timeout(expires, reason=reason)
+            except discord.Forbidden:
+                raise web.HTTPForbidden(text="Observer cannot timeout this member")
+            except discord.HTTPException:
+                raise web.HTTPBadGateway(text="Discord rejected the timeout")
+            from moderation_notifications import dm_moderation_action
+            await dm_moderation_action(target, guild, f"Timeout for {duration_minutes} minute(s)", reason)
+            action_id = moderation.actions.create(guild.id, "timeout", target.id, actor.id)
+            case_id = moderation.cases.create_case(
+                guild.id, "timeout", target.id, actor.id, reason,
+                status="active", action_id=action_id, expires_at=expires.isoformat(),
+                source_message_id=source_message_id,
+            )
+            moderation.mod_stats.increment(guild.id, actor.id, "timeouts")
+            await moderation._send_mod_log(guild, "Timeout", actor, target, reason, action_id=action_id, case_id=case_id)
+        elif action == "warn":
+            from moderation_notifications import dm_moderation_action
+            await dm_moderation_action(target, guild, "Warning", reason)
+            action_id = moderation.actions.create(guild.id, "warn", target.id, actor.id, status="resolved")
+            case_id = moderation.cases.create_case(
+                guild.id, "warn", target.id, actor.id, reason,
+                status="resolved", action_id=action_id, source_message_id=source_message_id,
+            )
+            await moderation._send_mod_log(guild, "Warning", actor, target, reason, action_id=action_id, case_id=case_id, undoable=False)
+        else:
+            action_id = moderation.actions.create(guild.id, "delete", target.id, actor.id, status="resolved")
+            case_id = moderation.cases.create_case(
+                guild.id, "delete", target.id, actor.id, reason,
+                status="resolved", action_id=action_id, source_message_id=source_message_id,
+            )
+            await moderation._send_mod_log(guild, "Delete reported message", actor, target, reason, action_id=action_id, case_id=case_id, undoable=False)
+        case = moderation.cases.get_case(case_id)
+        return {"case_number": int(case["case_number"]), "case_id": int(case_id), "action": action}
+
     async def mod_report_action(self, request: web.Request) -> web.Response:
         session, guild = await self._moderator_guild(request)
         action = request.match_info.get("action", "")
-        if action not in {"claim", "unclaim", "accept"}:
+        if action not in {"claim", "unclaim", "accept", "close", "warn", "timeout", "delete", "escalate"}:
             raise web.HTTPNotFound(text="Unknown report action")
         try:
             message_id = int(request.match_info["message_id"])
@@ -486,21 +603,43 @@ class ActivityServer:
             raise web.HTTPBadRequest(text="A valid report ID is required")
 
         user_id = int(session["user"].get("id", 0))
-        if user_id != guild.owner_id:
-            try:
-                member = guild.get_member(user_id) or await guild.fetch_member(user_id)
-            except (discord.HTTPException, ValueError):
-                raise web.HTTPForbidden(text="Could not verify your server permissions")
-            staff_role_id = self.bot.setup_store.get(guild.id, "report_msg", "staff_role")
-            try:
-                staff_role_id = int(staff_role_id) if staff_role_id is not None else None
-            except (TypeError, ValueError):
-                staff_role_id = None
-            is_report_staff = member.guild_permissions.manage_messages or (
-                staff_role_id is not None and any(role.id == staff_role_id for role in member.roles)
+        try:
+            member = guild.get_member(user_id) or await guild.fetch_member(user_id)
+        except (discord.HTTPException, ValueError):
+            raise web.HTTPForbidden(text="Could not verify your server permissions")
+        staff_role_id = self.bot.setup_store.get(guild.id, "report_msg", "staff_role")
+        try:
+            staff_role_id = int(staff_role_id) if staff_role_id is not None else None
+        except (TypeError, ValueError):
+            staff_role_id = None
+        is_report_staff = user_id == guild.owner_id or (
+            member is not None and (
+                member.guild_permissions.manage_messages
+                or (staff_role_id is not None and any(role.id == staff_role_id for role in member.roles))
             )
-            if not is_report_staff:
-                raise web.HTTPForbidden(text="You need Manage Messages or the configured report staff role to act on reports")
+        )
+        if action in {"claim", "unclaim", "accept", "close", "escalate"} and not is_report_staff:
+            raise web.HTTPForbidden(text="You need Manage Messages or the configured report staff role to act on reports")
+        payload = {}
+        if action in {"warn", "timeout", "delete"}:
+            try:
+                payload = await request.json()
+            except (ValueError, web.HTTPException):
+                raise web.HTTPBadRequest(text="Provide a reason and confirm the moderation action")
+            if not isinstance(payload, dict):
+                raise web.HTTPBadRequest(text="Invalid moderation action")
+            if action == "delete" and payload.get("confirm") is not True:
+                raise web.HTTPBadRequest(text="Confirm deletion of the original reported message")
+            raw_reason = payload.get("reason", "")
+            if not isinstance(raw_reason, str) or len(raw_reason) > 1000:
+                raise web.HTTPBadRequest(text="Reason must be 1,000 characters or fewer")
+            payload["reason"] = raw_reason.strip()
+            if action == "timeout":
+                duration = payload.get("duration_minutes")
+                if type(duration) is not int or not 1 <= duration <= 40320:
+                    raise web.HTTPBadRequest(text="Timeout duration must be between 1 and 40,320 minutes")
+        elif action == "escalate" and not isinstance(member, discord.Member):
+            raise web.HTTPForbidden(text="Could not verify your moderator account")
 
         report_cog = self.bot.get_cog("ReportMessage")
         if report_cog is None:
@@ -528,6 +667,16 @@ class ActivityServer:
         accepted = any(field.name.casefold() == "accepted by staff" for field in embed.fields)
         claimed_match = re.search(r"\((\d{15,22})\)", claimed_field.value) if claimed_field else None
         claimed_by = int(claimed_match.group(1)) if claimed_match else None
+        fields = {field.name.casefold(): field.value for field in embed.fields}
+        target_match = re.search(r"\((\d{15,22})\)", fields.get("message author", ""))
+        if not target_match:
+            raise web.HTTPConflict(text="The report does not contain a valid reported member ID")
+        target_id = int(target_match.group(1))
+        link_match = re.search(r"discord(?:app)?\.com/channels/\d+/(\d+)/(\d{15,22})", fields.get("message link", ""))
+        source_channel_id = int(link_match.group(1)) if link_match else None
+        source_message_id = int(link_match.group(2)) if link_match else None
+        action_result = None
+        escalated = any(field.name.casefold() == "escalated by" for field in embed.fields)
         reporter_id = None
         newly_accepted = False
         report_cog_member = guild.get_member(user_id)
@@ -556,7 +705,7 @@ class ActivityServer:
                     embed.remove_field(index)
                     break
             claimed_by = None
-        else:
+        elif action in {"accept", "close"}:
             if accepted:
                 raise web.HTTPConflict(text="This report has already been accepted")
             reporter_id, newly_accepted = report_cog.reports.accept(message.id, guild.id)
@@ -571,13 +720,49 @@ class ActivityServer:
                     await report_cog.update_monthly_reporter_role(guild, month)
                 except discord.HTTPException:
                     logger.warning("Report %s was accepted, but its monthly role update failed", message.id, exc_info=True)
-
+        elif action == "escalate":
+            if escalated:
+                raise web.HTTPConflict(text="This report has already been escalated")
+            head_role_id = self.bot.setup_store.get(guild.id, "moderation", "head_mod_role")
+            try:
+                head_role = guild.get_role(int(head_role_id)) if head_role_id is not None else None
+            except (TypeError, ValueError):
+                head_role = None
+            if head_role is None or head_role.is_default():
+                raise web.HTTPConflict(text="Configure a head moderator role before escalating reports")
+            await channel.send(
+                content=f"{head_role.mention} Report escalated by {member.mention}: {message.jump_url}",
+                allowed_mentions=discord.AllowedMentions(roles=[head_role], users=False, everyone=False),
+            )
+            embed.add_field(name="Escalated by", value=f"<@{user_id}> (`{user_id}`)", inline=False)
+        elif action in {"warn", "timeout", "delete"}:
+            actor = member
+            if not isinstance(actor, discord.Member):
+                raise web.HTTPForbidden(text="Could not verify your moderator account")
+            reason = payload["reason"] or fields.get("reason", "No reason provided")
+            action_result = await self._web_moderation_action(
+                guild=guild,
+                actor=actor,
+                action=action,
+                target_id=target_id,
+                source_channel_id=source_channel_id,
+                source_message_id=source_message_id,
+                reason=reason,
+                duration_minutes=payload.get("duration_minutes"),
+            )
+            target = guild.get_member(target_id)
+            target_label = target.mention if target else f"User {target_id}"
+            embed.add_field(
+                name="Moderation action",
+                value=f"{action.title()} on {target_label} · Case #{action_result['case_number']} by <@{user_id}>",
+                inline=False,
+            )
         from cogs.report_msg import ClaimReportView
         view = ClaimReportView(
             report_cog,
             report_cog.get_staff_role_id(guild.id),
             claimed_by=claimed_by,
-            accepted=accepted or action == "accept",
+            accepted=accepted or action in {"accept", "close"},
         )
         if action == "claim":
             for item in view.children:
@@ -590,7 +775,7 @@ class ActivityServer:
             raise web.HTTPServiceUnavailable(text="Observer cannot update report messages in the configured channel")
         except discord.HTTPException:
             raise web.HTTPBadGateway(text="Discord could not update this report")
-        return web.json_response({"ok": True, "action": action, "accepted": accepted or action == "accept", "claimed_by": str(claimed_by) if claimed_by else None})
+        return web.json_response({"ok": True, "action": action, "accepted": accepted or action in {"accept", "close"}, "claimed_by": str(claimed_by) if claimed_by else None, "case": action_result})
 
     def _dashboard_guild(self, request: web.Request) -> tuple[dict, discord.Guild]:
         session = self._get_session(request)
