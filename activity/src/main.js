@@ -89,11 +89,8 @@ async function loadLanding() {
       </section>
       <section class="updates-section" id="updates">
         <div class="updates-intro"><div class="eyebrow">CHANGELOG</div><h2>Recent updates.</h2><p>New tools, improvements, and fixes from Observer.</p></div>
-        <div class="updates-list">
-          <article class="update-item"><time datetime="2026-10-27">2026-10-27</time><div class="update-copy"><span class="update-type">FIX</span><h3>Improved anti-scam and advertising controls</h3><p>Added an allow advertising option with an optional channel restriction. Invite links and common self-promotion are detected, with trusted invite handling when advertising is enabled. OCR image scanning also helps catch harmful images.</p></div></article>
-          <article class="update-item"><time datetime="2026-09-18">2026-09-18</time><div class="update-copy"><span class="update-type">FEATURE</span><h3>Reminders and more community tools</h3><p>Added a simple reminder flow for messages and replies, plus custom ticket reasons and panels, temporary voice channels, and additional safeguards.</p></div></article>
-          <article class="update-item"><time datetime="2026-09-12">2026-09-12</time><div class="update-copy"><span class="update-type">IMPROVEMENT</span><h3>Storage migration and reliability work</h3><p>Moved guild and user data from JSON files to SQLite, improved error handling and debug logs, and fixed mention protection so members can ping one another when they share the same role.</p></div></article>
-        </div>
+        <div class="updates-list" aria-live="polite"><p class="updates-loading">Loading recent updates...</p></div>
+      
       </section>
       <section class="engineering-section" id="engineering"><div class="section-intro"><div><div class="eyebrow">DESIGNED FOR REAL SERVER WORK</div><h2>Useful systems, with room to grow.</h2></div><p>Observer is built as a set of focused features that share server settings and work together when your community needs them.</p></div><div class="project-engineering-grid"><article class="project-engineering-item"><span class="project-engineering-label">01 / MODULAR</span><h3>Features stay organized.</h3><p>Moderation, reports, tickets, leveling, and utilities live in separate cogs, so each part can be maintained and improved on its own.</p></article><article class="project-engineering-item"><span class="project-engineering-label">02 / PERSISTENT</span><h3>Settings belong to your server.</h3><p>Per-server configuration is stored in SQLite and remains available across bot restarts.</p></article><article class="project-engineering-item"><span class="project-engineering-label">03 / PERMISSION AWARE</span><h3>Staff controls matter.</h3><p>Moderation tools use Discord permissions and configured staff roles to help keep actions limited to the right people.</p></article></div><p class="engineering-note">Observer is an independent project built with Python and discord.py. Core features are designed to work without paid AI services.</p></section>
       <section class="workflow-section" id="workflow">
@@ -108,6 +105,24 @@ async function loadLanding() {
   root.querySelector("#open-home-reports")?.addEventListener("click", () => openLandingReportDrawer());
   initLandingScrollReveal();
   document.querySelectorAll("#open-dashboard, #open-dashboard-hero, #open-dashboard-workflow").forEach((button) => button.addEventListener("click", openDashboard));
+  void loadPublicUpdates();
+}
+
+async function loadPublicUpdates() {
+  const list = root.querySelector(".updates-list");
+  if (!list) return;
+  try {
+    const result = await api("/api/public-updates");
+    const updates = Array.isArray(result.updates) ? result.updates : [];
+    list.innerHTML = updates.length
+      ? updates.map((update) => {
+        const date = String(update.date || "");
+        return `<article class="update-item"><time datetime="${esc(date)}">${esc(date)}</time><div class="update-copy"><span class="update-type">${esc(update.type || "Update")}</span><h3>${esc(update.title || "Untitled update")}</h3><p>${esc(update.description || "")}</p></div></article>`;
+      }).join("")
+      : `<p class="updates-loading">No updates published yet.</p>`;
+  } catch {
+    list.innerHTML = `<p class="updates-loading">Recent updates are temporarily unavailable.</p>`;
+  }
 }
 
 function initLandingScrollReveal() {
