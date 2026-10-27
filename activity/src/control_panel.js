@@ -2,6 +2,7 @@ const root = document.querySelector("#app");
 const esc = (value = "") => String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const guildId = new URLSearchParams(location.search).get("guild_id");
 let panel;
+let activityData;
 let selectedModule = null;
 
 async function api(url, options = {}) {
@@ -69,6 +70,23 @@ function renderEditor(key) {
   editor.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
+function activityPanel() {
+  if (activityData?.error) {
+    return `<aside class="control-activity-panel"><div class="activity-panel-head"><div class="eyebrow">SERVER ACTIVITY</div><h2>Recent reports &amp; actions</h2></div><p class="activity-panel-error">${esc(activityData.error)}</p><a class="activity-panel-link" href="/moderate?guild_id=${encodeURIComponent(guildId)}">Open moderation page ↗</a></aside>`;
+  }
+  const reports = activityData?.reports || [];
+  const actions = activityData?.recent_actions || [];
+  const reportRows = reports.slice(0, 4).map((report) => {
+    const time = new Date(report.created_at);
+    return `<a class="activity-entry" href="${esc(report.url)}" target="_blank" rel="noreferrer"><span class="activity-entry-top"><b>Report · ${esc(report.target_name)}</b><i class="activity-status ${report.status === "closed" ? "is-closed" : ""}">${report.status === "closed" ? "CLOSED" : "OPEN"}</i></span><span class="activity-entry-summary">${esc(report.reason || "No reason provided")}</span><small>${Number.isNaN(time.getTime()) ? "Recent" : esc(time.toLocaleString())}</small></a>`;
+  }).join("");
+  const actionRows = actions.slice(0, 5).map((action) => {
+    const time = new Date(action.created_at);
+    return `<div class="activity-entry activity-action-entry"><span class="activity-entry-top"><b>${esc(action.case_type)} · ${esc(action.target_name)}</b><i class="activity-case-number">#${esc(action.case_number)}</i></span><span class="activity-entry-summary">${esc(action.reason)}</span><small>${esc(action.moderator_name)} · ${Number.isNaN(time.getTime()) ? "Recent" : esc(time.toLocaleString())}</small></div>`;
+  }).join("");
+  return `<aside class="control-activity-panel"><div class="activity-panel-head"><div><div class="eyebrow">SERVER ACTIVITY</div><h2>Recent reports &amp; actions</h2></div><a class="activity-panel-link" href="/moderate?guild_id=${encodeURIComponent(guildId)}">View moderation page ↗</a></div><section class="activity-panel-section"><h3>Reports</h3>${reportRows || `<p class="activity-panel-empty">${activityData?.reports_configured ? "No reports found in the configured channel." : "No reports channel configured."}</p>`}</section><section class="activity-panel-section"><h3>Moderation actions</h3>${actionRows || `<p class="activity-panel-empty">No moderation actions recorded yet.</p>`}</section></aside>`;
+}
+
 async function save(moduleKey, key, value) {
   await api(`/api/control-panel/${encodeURIComponent(guildId)}/setting`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ module: moduleKey, key, value }) });
   const module = panel.modules.find((item) => item.key === moduleKey);
@@ -84,7 +102,7 @@ async function save(moduleKey, key, value) {
 
 function render() {
   const guild = panel.guild;
-  root.innerHTML = `<div class="dashboard-shell"><nav class="topbar">${brand()}<div class="topnav"><span class="signed-in-label">CONTROL PANEL</span><button class="signout-button" id="signout">Sign out</button></div></nav><main class="control-panel"><a class="back-link" href="/?dashboard=1">← All servers</a><header class="control-header">${guild.icon ? `<img src="https://cdn.discordapp.com/icons/${encodeURIComponent(guild.id)}/${encodeURIComponent(guild.icon)}.png?size=96" alt="">` : `<span class="control-server-fallback">${esc(guild.name.slice(0, 1).toUpperCase())}</span>`}<div><div class="eyebrow">OBSERVER CONTROL PANEL</div><h1>${esc(guild.name)}</h1><p>Browse each cog, see what it does, and configure server options.</p></div><span class="bot-online-pill"><i></i> BOT CONNECTED</span></header><div class="control-toolbar"><div><h2>Features</h2><p>${panel.modules.length} cogs and feature groups</p></div><input id="module-search" type="search" placeholder="Search cogs and features…" autocomplete="off"></div><div id="module-grid" class="module-grid"></div><section id="module-editor" class="module-editor" hidden></section><div id="save-notice" class="save-notice" role="status"></div></main></div>`;
+  root.innerHTML = `<div class="dashboard-shell"><nav class="topbar">${brand()}<div class="topnav"><span class="signed-in-label">CONTROL PANEL</span><button class="signout-button" id="signout">Sign out</button></div></nav><main class="control-panel"><a class="back-link" href="/?dashboard=1">← All servers</a><header class="control-header">${guild.icon ? `<img src="https://cdn.discordapp.com/icons/${encodeURIComponent(guild.id)}/${encodeURIComponent(guild.icon)}.png?size=96" alt="">` : `<span class="control-server-fallback">${esc(guild.name.slice(0, 1).toUpperCase())}</span>`}<div><div class="eyebrow">OBSERVER CONTROL PANEL</div><h1>${esc(guild.name)}</h1><p>Browse each cog, see what it does, and configure server options.</p></div></header><div class="control-content-layout"><section class="control-feature-area"><div class="control-toolbar"><div><h2>Features</h2><p>${panel.modules.length} cogs and feature groups</p></div><input id="module-search" type="search" placeholder="Search cogs and features…" autocomplete="off"></div><div id="module-grid" class="module-grid"></div><section id="module-editor" class="module-editor" hidden></section><div id="save-notice" class="save-notice" role="status"></div></section>${activityPanel()}</div></main></div>`;
   renderCards();
   document.querySelector("#module-search").addEventListener("input", renderCards);
   document.querySelector("#signout").addEventListener("click", async () => { await api("/auth/logout", { method: "POST" }); location.assign("/"); });
@@ -140,7 +158,13 @@ function syncPicker(input) {
 async function start() {
   try {
     if (!guildId) { location.replace("/"); return; }
-    panel = await api(`/api/control-panel/${encodeURIComponent(guildId)}`);
+    const results = await Promise.allSettled([
+      api(`/api/control-panel/${encodeURIComponent(guildId)}`),
+      api(`/api/mod-dashboard/${encodeURIComponent(guildId)}`),
+    ]);
+    if (results[0].status === "rejected") throw results[0].reason;
+    panel = results[0].value;
+    activityData = results[1].status === "fulfilled" ? results[1].value : { error: results[1].reason.message };
     render();
   } catch (error) {
     root.innerHTML = `<main class="server-error"><div class="error-mark">!</div><h1>Could not load the control panel.</h1><p>${esc(error.message)}</p><a class="back-link" href="/">Return to servers</a></main>`;
