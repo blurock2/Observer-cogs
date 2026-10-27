@@ -10,7 +10,11 @@ from discord import app_commands
 from discord.ext import commands
 
 from cogs import setup_ui
-from cogs.config import OBSERVER_SUPPORT_GUILD_ID, PRIORITY_TICKET_ROLE_ID
+from cogs.config import (
+    OBSERVER_SUPPORT_GUILD_ID,
+    PRIORITY_TICKET_CHANNEL_ID,
+    PRIORITY_TICKET_ROLE_ID,
+)
 from cogs.setup_ui import (
     DB_PATH,
     SetupConfigStore,
@@ -251,7 +255,7 @@ class TicketCog(ObserverCog):
     def _priority_ticket_channel_id(self, guild_id: int) -> int | None:
         if guild_id != OBSERVER_SUPPORT_GUILD_ID:
             return None
-        return self._get_id(guild_id, "priority_ticket_channel")
+        return PRIORITY_TICKET_CHANNEL_ID
 
     def _should_ping_support_role(
         self,
