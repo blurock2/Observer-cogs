@@ -17,37 +17,6 @@ function discordIcon() {
 
 function brand() { return `<a class="brand" href="/" aria-label="Observer home"><span class="brand-mark"><img src="/observer.png?v=3" alt=""></span><span>OBSERVER</span></a>`; }
 
-function openLandingReportDrawer() {
-  root.insertAdjacentHTML("beforeend", `<div class="home-report-drawer" id="home-report-drawer"><button class="home-report-backdrop" type="button" aria-label="Close recent reports"></button><aside class="home-report-panel" role="dialog" aria-modal="true" aria-labelledby="home-report-title"><div class="home-report-head"><div><div class="eyebrow">OBSERVER REPORTS</div><h2 id="home-report-title">Recent report reasons</h2><p>Up to five of the latest reasons from each server using Observer.</p></div><button class="home-report-close" type="button" aria-label="Close">×</button></div><div class="home-report-content" id="home-report-content"><div class="home-report-loading">Loading report reasons…</div></div></aside></div>`);
-  const drawer = root.querySelector("#home-report-drawer");
-  const close = () => {
-    drawer.classList.remove("is-open");
-    document.body.classList.remove("home-report-open");
-    window.removeEventListener("keydown", onKeyDown);
-    window.setTimeout(() => {
-      drawer.remove();
-      root.querySelector("#open-home-reports")?.focus();
-    }, 240);
-  };
-  const onKeyDown = (event) => { if (event.key === "Escape") close(); };
-  drawer.querySelector(".home-report-backdrop").addEventListener("click", close);
-  drawer.querySelector(".home-report-close").addEventListener("click", close);
-  window.addEventListener("keydown", onKeyDown);
-  document.body.classList.add("home-report-open");
-  requestAnimationFrame(() => drawer.classList.add("is-open"));
-  drawer.querySelector(".home-report-close").focus();
-
-  const content = drawer.querySelector("#home-report-content");
-  api("/api/public-reports").then((result) => {
-    const reasons = result.reasons || [];
-    content.innerHTML = reasons.length
-      ? `<div class="home-report-list">${reasons.map((reason) => `<article class="home-report-item"><p>${esc(reason || "No reason provided")}</p></article>`).join("")}</div>`
-      : `<div class="home-report-empty"><span>✓</span><h3>No reports found</h3><p>No report reasons are available yet.</p></div>`;
-  }).catch((error) => {
-    content.innerHTML = `<div class="home-report-empty"><span>!</span><h3>Couldn’t load reports</h3><p>${esc(error.message)}</p></div>`;
-  });
-}
-
 async function loadLanding() {
   const session = await api("/api/session");
   const publicInfo = await api("/api/public-info");
@@ -83,14 +52,13 @@ async function loadLanding() {
         <div class="hero-foot"><span>MODERATION · SECURITY · COMMUNITY</span><span>SCROLL TO DISCOVER <b>↓</b></span></div>
       </section>
       <section class="project-facts" aria-label="Observer project details"><span>BUILT WITH</span><b>Python</b><i></i><b>discord.py</b><i></i><b>SQLite</b><i></i><b>Modular cogs</b><span class="facts-status">IN ACTIVE DEVELOPMENT</span></section>
-      <section class="impact-section" aria-labelledby="impact-heading"><div class="impact-section-head"><div class="impact-heading"><div class="eyebrow">OBSERVER AT WORK</div><h2 id="impact-heading">Protection in numbers.</h2></div><p>All-time totals recorded across servers using Observer.</p></div><div class="impact-stats"><button type="button" class="impact-stat impact-reports-trigger" id="open-home-reports" aria-haspopup="dialog" aria-label="View recent report reasons"><span>REPORTS SUBMITTED</span><strong>${formatCount(publicStats.reports)}</strong><small>member reports recorded</small><span class="impact-report-hint">VIEW RECENT REASONS ↗</span></button><article class="impact-stat"><span>HONEYPOT BANS</span><strong>${formatCount(publicStats.honeypot_bans)}</strong><small>automatic bans from honeypot traps</small></article><article class="impact-stat"><span>IMAGE SCAM BANS</span><strong>${formatCount(publicStats.image_scam_bans)}</strong><small>automatic bans from image scam signals</small></article></div><p class="impact-note">Counts reflect successful bans and reports in Observer's recorded history.</p></section>
+      <section class="impact-section" aria-labelledby="impact-heading"><div class="impact-section-head"><div class="impact-heading"><div class="eyebrow">OBSERVER AT WORK</div><h2 id="impact-heading">Protection in numbers.</h2></div><p>All-time totals recorded across servers using Observer.</p></div><div class="impact-stats"><article class="impact-stat"><span>REPORTS SUBMITTED</span><strong>${formatCount(publicStats.reports)}</strong><small>aggregate count only ? report details stay private</small></article><article class="impact-stat"><span>HONEYPOT BANS</span><strong>${formatCount(publicStats.honeypot_bans)}</strong><small>automatic bans from honeypot traps</small></article><article class="impact-stat"><span>IMAGE SCAM BANS</span><strong>${formatCount(publicStats.image_scam_bans)}</strong><small>automatic bans from image scam signals</small></article></div><p class="impact-note">Counts reflect successful bans and reports in Observer's recorded history.</p></section>
       <section class="feature-section" id="features"><div class="section-intro"><div><div class="eyebrow">A LITTLE MORE PEACE OF MIND</div><h2>One bot. A calmer server.</h2></div><p>Useful tools for the everyday work of keeping a community welcoming, safe, and running smoothly.</p></div>
         <div class="feature-grid"><article class="feature-card feature-featured"><div class="feature-icon icon-shield">⌑</div><span class="feature-index">01 / PROTECT</span><h3>See trouble sooner.</h3><p>Scam detection, raid safeguards, and audit logs help your moderators spot issues before they spread.</p><span class="feature-decoration">◉</span></article><article class="feature-card"><div class="feature-icon icon-gavel">⌁</div><span class="feature-index">02 / MODERATE</span><h3>Keep actions clear.</h3><p>Manage reports and moderation cases with a record your staff can follow.</p><span class="feature-decoration">↗</span></article><article class="feature-card"><div class="feature-icon icon-spark">✳</div><span class="feature-index">03 / RUN YOUR SERVER</span><h3>Make room for community.</h3><p>Configure helpful tools for tickets, roles, leveling, reminders, and more.</p><span class="feature-decoration">✦</span></article></div>
       </section>
-      <section class="updates-section" id="updates">
-        <div class="updates-intro"><div class="eyebrow">CHANGELOG</div><h2>Recent updates.</h2><p>New tools, improvements, and fixes from Observer.</p></div>
-        <div class="updates-list" aria-live="polite"><p class="updates-loading">Loading recent updates...</p></div>
-      
+      <section class="updates-section" id="updates" aria-labelledby="updates-heading">
+        <div class="updates-intro"><div><div class="eyebrow">LATEST FROM OBSERVER</div><h2 id="updates-heading">Recent updates.</h2></div><p>New safeguards, useful community features, and steady improvements to the systems behind Observer.</p></div>
+        <div class="updates-list" aria-live="polite"><p class="updates-loading">Loading recent updates…</p></div>
       </section>
       <section class="engineering-section" id="engineering"><div class="section-intro"><div><div class="eyebrow">DESIGNED FOR REAL SERVER WORK</div><h2>Useful systems, with room to grow.</h2></div><p>Observer is built as a set of focused features that share server settings and work together when your community needs them.</p></div><div class="project-engineering-grid"><article class="project-engineering-item"><span class="project-engineering-label">01 / MODULAR</span><h3>Features stay organized.</h3><p>Moderation, reports, tickets, leveling, and utilities live in separate cogs, so each part can be maintained and improved on its own.</p></article><article class="project-engineering-item"><span class="project-engineering-label">02 / PERSISTENT</span><h3>Settings belong to your server.</h3><p>Per-server configuration is stored in SQLite and remains available across bot restarts.</p></article><article class="project-engineering-item"><span class="project-engineering-label">03 / PERMISSION AWARE</span><h3>Staff controls matter.</h3><p>Moderation tools use Discord permissions and configured staff roles to help keep actions limited to the right people.</p></article></div><p class="engineering-note">Observer is an independent project built with Python and discord.py. Core features are designed to work without paid AI services.</p></section>
       <section class="workflow-section" id="workflow">
@@ -102,7 +70,6 @@ async function loadLanding() {
       <section class="about-section" id="about"><div class="about-orb"></div><div class="about-copy"><div class="eyebrow">MADE FOR REAL COMMUNITIES</div><h2>Good moderation makes<br>everything else possible.</h2><p>Observer is an independent Discord bot project built to help community teams spend less time juggling tools and more time looking after their people.</p><a class="button button-primary" href="${loginUrl}">${discordIcon()} Get started with Discord</a></div><div class="about-details"><div class="detail-block"><span class="eyebrow">CREATED BY</span><a href="${esc(publicInfo.portfolio_url)}" target="_blank" rel="noreferrer">${esc(publicInfo.creator)} <span>↗</span></a><small>Independent developer and creator of Observer.</small></div><div class="detail-block"><span class="eyebrow">COME SAY HELLO</span><a href="${esc(publicInfo.support_url)}" target="_blank" rel="noreferrer">Observer Support <span>↗</span></a></div><div class="detail-block"><span class="eyebrow">SOURCE CODE</span><a href="${esc(publicInfo.source_url)}" target="_blank" rel="noreferrer">Observer on GitHub <span>↗</span></a></div></div></section>
     </main><footer class="site-footer"><div class="footer-brand">${brand()}<small>© ${new Date().getFullYear()} Observer. Independent community software.</small></div><div class="footer-links"><a href="${esc(publicInfo.source_url)}" target="_blank" rel="noreferrer">Source code</a><a href="${esc(publicInfo.portfolio_url)}" target="_blank" rel="noreferrer">Creator portfolio</a><a href="${esc(publicInfo.support_url)}" target="_blank" rel="noreferrer">Support</a><details class="footer-legal"><summary>Privacy &amp; terms</summary><div class="legal-copy"><section><h3>Privacy</h3><p>Sign-in uses Discord OAuth to identify you and list servers where you are an owner or have moderation permissions. Observer stores a protected sign-in session, your basic Discord profile, and that manageable-server list for up to seven days. Discord access tokens are not stored. Server configuration changes are saved in Observer’s database for the bot to use.</p><p>You can end your sign-in session with “Sign out”. Contact the creator through the support server for questions about stored information.</p></section><section><h3>Terms</h3><p>Use Observer only in servers you own or are authorized to manage. Dashboard changes apply to the connected server and may affect its members. You are responsible for reviewing settings, permissions, and applicable laws before enabling features.</p><p>Observer is provided as an independent community project and is not affiliated with or endorsed by Discord Inc. Service availability and features may change.</p></section></div></details></div><span class="footer-disclaimer">Not affiliated with Discord Inc.</span><a class="footer-top" href="#top" onclick="window.scrollTo({top:0,behavior:'smooth'});return false">BACK TO TOP ↑</a></footer>
   </div>`;
-  root.querySelector("#open-home-reports")?.addEventListener("click", () => openLandingReportDrawer());
   initLandingScrollReveal();
   document.querySelectorAll("#open-dashboard, #open-dashboard-hero, #open-dashboard-workflow").forEach((button) => button.addEventListener("click", openDashboard));
   void loadPublicUpdates();
@@ -120,6 +87,11 @@ async function loadPublicUpdates() {
         return `<article class="update-item"><time datetime="${esc(date)}">${esc(date)}</time><div class="update-copy"><span class="update-type">${esc(update.type || "Update")}</span><h3>${esc(update.title || "Untitled update")}</h3><p>${esc(update.description || "")}</p></div></article>`;
       }).join("")
       : `<p class="updates-loading">No updates published yet.</p>`;
+    list.querySelectorAll(".update-item").forEach((item, index) => {
+      item.dataset.scrollReveal = "";
+      item.style.setProperty("--reveal-delay", `${index * 95}ms`);
+      requestAnimationFrame(() => item.classList.add("is-visible"));
+    });
   } catch {
     list.innerHTML = `<p class="updates-loading">Recent updates are temporarily unavailable.</p>`;
   }
