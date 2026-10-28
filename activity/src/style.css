@@ -614,3 +614,7 @@ body.modal-open { overflow: hidden; }
 .mod-metric.metric-claimed strong{color:#c4a7ff}.mod-status.is-claimed,.activity-status.is-claimed{color:#c4a7ff;border-color:#695493;background:#241d30}.mod-report-symbol.is-claimed{color:#c4a7ff;background:#241d30}
 
 @media(min-width:1000px){.mod-metrics{grid-template-columns:repeat(5,minmax(0,1fr))}}
+
+/* Compact project facts strip */
+.project-facts{width:min(1172px,calc(100% - 68px));min-height:64px;margin:0 auto;padding:15px 0;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:10px 15px;border-bottom:1px solid #ffffff0c;color:#9aa8aa;font:500 10px/1.4 ui-monospace,monospace;letter-spacing:.45px}.project-facts>span:first-child,.project-facts .facts-status{color:#6e7c7f;font-size:8px;letter-spacing:1.15px}.project-facts>b{color:#c7d1d2;font:550 10px/1.4 system-ui,sans-serif;letter-spacing:0}.project-facts>i{width:3px;height:3px;border-radius:50%;background:#42d7e8;opacity:.65}.project-facts .facts-status{margin-left:10px;padding-left:15px;border-left:1px solid #29383c}
+@media(max-width:600px){.project-facts{width:calc(100% - 40px);justify-content:flex-start;gap:9px 11px;padding:14px 0}.project-facts .facts-status{width:100%;margin:2px 0 0;padding:0;border:0}}
