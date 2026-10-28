@@ -643,3 +643,12 @@ body.home-report-open { overflow: hidden; }
   .update-copy h3 { font-size: 15px; }
   .update-copy p { font-size: 11px; }
 }
+
+/* Setup guidance and save-state clarity */
+.getting-started{display:grid;grid-template-columns:minmax(180px,.7fr) minmax(0,1.3fr);gap:20px;margin:0 0 28px;padding:20px;border:1px solid #2d4549;border-radius:10px;background:linear-gradient(135deg,#121d1f,#101315)}
+.getting-started h2{margin:8px 0 5px;font-size:18px}.getting-started p,.getting-started li small{color:#929a9d;font-size:10px;line-height:1.65}.getting-started ol{display:grid;gap:8px;margin:0;padding-left:20px}.getting-started li{padding-left:4px;color:#42d7e8}.getting-started li button{border:0;background:none;color:#e3eff0;font:600 11px system-ui;text-align:left;cursor:pointer}.getting-started li button:hover{color:#42d7e8}.getting-started li small{display:block;margin-top:3px}.pending-save-bar{position:sticky;top:0;z-index:2;display:flex;justify-content:space-between;align-items:center;gap:12px;margin:14px 0;padding:10px 12px;border:1px solid #2b4448;border-radius:7px;background:#12191b;color:#a2b1b4;font-size:10px}.pending-save-bar button:disabled{opacity:.5;cursor:not-allowed}.setting-timing{display:block;margin-top:5px;color:#78878a;font-size:9px}
+@media(max-width:620px){.getting-started{grid-template-columns:1fr}.pending-save-bar{align-items:flex-start;flex-direction:column}}
+
+.mod-metric.metric-claimed strong{color:#c4a7ff}.mod-status.is-claimed,.activity-status.is-claimed{color:#c4a7ff;border-color:#695493;background:#241d30}.mod-report-symbol.is-claimed{color:#c4a7ff;background:#241d30}
+
+@media(min-width:1000px){.mod-metrics{grid-template-columns:repeat(5,minmax(0,1fr))}}

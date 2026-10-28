@@ -1081,7 +1081,8 @@ class ActivityServer:
                     # counted with closed reports there. Discord keeps its own
                     # claim/unclaim controls for the assigned moderator.
                     accepted = "accepted by staff" in fields
-                    closed = bool(claimed_fields) or accepted
+                    closed = accepted
+                    report_status = "closed" if accepted else "claimed" if claimed_fields else "open"
                     claimed_member = guild.get_member(int(claimed_id)) if claimed_id else None
                     accepted_raw = fields.get("accepted by staff", "")
                     accepted_match = re.search(r"<@!?(\d{15,22})>", accepted_raw)
@@ -1104,7 +1105,7 @@ class ActivityServer:
                         "reason": fields.get("reason", "No reason provided"),
                         "created_at": message.created_at.isoformat(),
                         "url": message.jump_url,
-                        "status": "closed" if closed else "open",
+                        "status": report_status,
                         "claimed": bool(claimed_fields),
                         "claimed_by": claimed_id,
                         "claimed_by_name": claimed_member.display_name if claimed_member else (f"User {claimed_id}" if claimed_id else None),
@@ -1118,7 +1119,7 @@ class ActivityServer:
                 raise web.HTTPServiceUnavailable(text="Observer needs permission to view the configured reports channel")
             except discord.HTTPException:
                 raise web.HTTPBadGateway(text="Could not load reports from Discord")
-        visible_reports = [report for report in reports if not report["claimed"]]
+        visible_reports = reports
         source_ids = sorted({
             report["reported_message_id"]
             for report in visible_reports
@@ -1154,6 +1155,7 @@ class ActivityServer:
                         report["linked_actions"] = linked_by_message.get(report["reported_message_id"], [])
 
         open_reports = sum(report["status"] == "open" for report in reports)
+        claimed_reports = sum(report["status"] == "claimed" for report in reports)
         closed_reports = sum(report["status"] == "closed" for report in reports)
         recent_actions = []
         with connect_sqlite(DB_PATH) as db:
@@ -1187,6 +1189,7 @@ class ActivityServer:
             "bot_online": self.bot.is_ready(),
             "member_count": guild.member_count or 0,
             "open_reports": open_reports,
+            "claimed_reports": claimed_reports,
             "closed_reports": closed_reports,
             "reports": visible_reports,
             "recent_report_reasons": [
