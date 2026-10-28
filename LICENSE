@@ -1,22 +1,24 @@
 Observer Source License
-Version 1.0
+Version 1.1
 
-Copyright (c) 2026 blurock2 (Rocky / Rockus26)
+Copyright (c) 2026 Observer's creator
 Project: https://github.com/blurock2/Observer-cogs
 
-1. Permission
+1. Permission and scope
 
-Subject to the conditions below, the copyright holder grants you a worldwide, royalty-free, non-exclusive license to use, copy, modify, run, and distribute the software in this repository and works derived from it, for personal or commercial purposes.
+Subject to the conditions below, the copyright holder grants you a worldwide, royalty-free, non-exclusive license to use, copy, modify, run, and distribute the bot code in this repository and works derived from it, for personal or commercial purposes.
+
+This license does not cover the website or dashboard, including the frontend in activity/, website-specific backend code, website design, and associated branding and assets. Those materials are governed by WEBSITE-LICENSE. Shared code is covered by this license when used as part of the bot; no permission to use it to operate or reproduce the website or dashboard is granted here.
 
 2. Attribution and distribution
 
-When distributing the software or a derivative, in source or binary form, you must include this license and its copyright notice and provide a reasonably visible credit to blurock2 (Rocky / Rockus26) or a link to https://github.com/blurock2/Observer-cogs, for example in a README, documentation, or an about page.
+When distributing the bot or a derivative, in source or binary form, you must include this license and its copyright notice and provide a reasonably visible credit to the Observer project or a link to https://github.com/blurock2/Observer-cogs, for example in a README, documentation, or an about page.
 
-If you provide the software or a derivative as a service to others, provide the same credit in a reasonably visible place accessible to its users, such as an about page or service documentation. You must not suggest that the original author endorses your version without permission.
+If you provide the bot or a derivative as a service to others, provide the same credit in a reasonably visible place accessible to its users, such as an about page or service documentation. You must not suggest that the original author endorses your version without permission.
 
 3. Prohibited malicious use
 
-You may not use, modify, or distribute the software or a derivative for the purpose of, or in a way that knowingly facilitates: unauthorized access to systems or accounts; stealing credentials or personal data; deploying malware, ransomware, or other harmful code; or fraud, phishing, harassment, or disruption of services. This restriction does not prohibit authorized security testing or legitimate moderation of a server that you are authorized to manage.
+You may not use, modify, or distribute the bot or a derivative for the purpose of, or in a way that knowingly facilitates: unauthorized access to systems or accounts; stealing credentials or personal data; deploying malware, ransomware, or other harmful code; or fraud, phishing, harassment, or disruption of services. This restriction does not prohibit authorized security testing or legitimate moderation of a server that you are authorized to manage.
 
 4. Ownership and third-party materials
 
