@@ -276,8 +276,13 @@ class SpotifyShow(ObserverCog):
         loop (see get_track_info's caller).
         """
         try:
-            with Image.open(BytesIO(image_bytes)) as img:
-                img = img.convert("RGB")
+            with Image.open(BytesIO(image_bytes)) as source:
+                # Pillow warns when palette images with byte-based transparency
+                # are converted straight to RGB. Normalize through RGBA first.
+                if source.mode == "P":
+                    img = source.convert("RGBA").convert("RGB")
+                else:
+                    img = source.convert("RGB")
                 img.thumbnail((100, 100))
 
                 paletted = img.quantize(colors=5)
@@ -344,7 +349,7 @@ class SpotifyShow(ObserverCog):
 
         if artist:
             embed.set_author(
-                name=f"Spotify • {artist}",
+                name=f"Spotify â€¢ {artist}",
                 icon_url=SPOTIFY_LOGO_URL,
             )
         else:
@@ -516,3 +521,4 @@ class SpotifyShow(ObserverCog):
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(SpotifyShow(bot))
+
