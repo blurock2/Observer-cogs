@@ -42,6 +42,27 @@ The website gives server owners and authorized staff a place to work with Observ
 
 The options available depend on your access and whether Observer is present in the server.
 
+## Permissions and privacy
+
+Observer's official invite asks Discord for a set of feature permissions; it does **not** request Administrator. You can review the requested permissions on Discord's authorization screen and restrict the bot's role or channel access afterward. Give it only what you are comfortable with: features that need a permission may not work if it is removed.
+
+| Permission | Why it may be needed |
+| --- | --- |
+| View Channels, Send Messages, Embed Links, Attach Files, and Read Message History | Let Observer respond, post reports and logs, send formatted messages or attachments, and retrieve messages for supported features in channels it can access. |
+| Add Reactions | Supports reaction-based interactions such as reaction roles. |
+| Manage Messages | Allows supported moderation and safety features to remove messages. |
+| Kick Members, Ban Members, and Moderate Members | Allow authorized moderation actions, including kicks, bans, and timeouts. |
+| Manage Roles | Assigns and removes roles for features such as reaction roles and verification; Discord's role hierarchy still applies. |
+| Manage Channels and Move Members | Support channel-based tools such as temporary voice channels and moving members into them. |
+| View Audit Log | Helps audit logging identify who performed certain server actions. |
+| Send Messages in Threads | Lets Observer send messages in accessible threads. |
+
+The current invite also requests **Create Instant Invite, Manage Server, Connect, Speak, Mute Members, Deafen Members, Change Nickname, Manage Nicknames, Manage Webhooks, Create Public Threads, Create Private Threads, and Use External Stickers**. Their necessity for the currently loaded features has not been fully verified; review these particularly carefully and remove any your server does not need. Discord permissions and channel overrides control what the bot can do, and you can change them or remove the bot at any time.
+
+**What Observer can access:** Message-based safety and reporting features depend on access to messages and, for image checks, attachments in channels the bot can see. Moderation records, server settings, and feature state are stored by the bot. Dashboard sign-in requests Discord's `identify` and `guilds` scopes to identify your account and find eligible servers; signing in does not give Observer your Discord password. Review the website's privacy information and your server's configuration before enabling features. The code includes a public report feed that can expose report reasons without identities; review that behavior and avoid placing sensitive information in report reasons.
+
+You can inspect the bot's source in this repository and adjust its permissions to suit your community. Source availability and permission controls help you make an informed choice; they are not a guarantee that the software is free of bugs.
+
 ## Running your own bot
 
 You can run your own copy of the bot under the [Observer Source License](LICENSE). The website and dashboard have separate, restricted terms; see [Licenses](#licenses).
@@ -64,7 +85,7 @@ You can run your own copy of the bot under the [Observer Source License](LICENSE
 3. Copy `.env.example` to `.env` and set `DISCORD_TOKEN` and `BOT_OWNER_ID`. Keep your token and other secrets private.
 4. Start the bot with `python bot.py` and use `/setup` in your server to configure your instance.
 
-Image scam scanning requires Tesseract installed separately and available on your PATH. Some owner-only and support-related functions exist; if you use them, manually select or configure your own support or home server. Review instance-specific settings before deployment.
+Image scam scanning requires Tesseract installed separately and available on your PATH. The application bridge is for the creator's private desktop app, which is not publicly available; it is not needed to use Observer. Some owner-only and support-related functions exist; if you use them, manually select or configure your own support or home server. Review instance-specific settings before deployment.
 
 For persistent VPS hosting, see the files in `deploy/`. Back up your databases and keep runtime data and secrets out of version control.
 
