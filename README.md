@@ -107,3 +107,8 @@ Observer is an independent project and is not affiliated with or endorsed by Dis
 **Bot code:** The custom [Observer Source License](LICENSE) allows use, modification, and redistribution with attribution, subject to its restrictions on malicious use. It is source-available, not an OSI-approved open-source license.
 
 **Website and dashboard:** Copyright belongs to Observer's creator. The website and dashboard are reserved for Observer and may not be copied, modified, deployed, or otherwise used by others without the creator's specific permission. Normal use of the official website by its visitors is allowed. See the [Observer Website License](WEBSITE-LICENSE).
+
+<p align="center">
+  <a href="https://ko-fi.com/supporting_observer"><img src="https://img.shields.io/badge/Support%20on%20Ko--fi-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white" alt="Support Observer on Ko-fi"></a>
+  <a href="https://discord.gg/tccYb2XSxR"><img src="https://img.shields.io/badge/Support%20server-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Join the Discord support server"></a>
+</p>
