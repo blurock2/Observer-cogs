@@ -90,6 +90,17 @@ LOCKDOWN_TIMEOUT_MINUTES = 30
 SCAM_ALERT_COOLDOWN_SECONDS = 60
 SCAM_SENDER_QUARANTINE_SECONDS = 600
 SCAM_UNCERTAIN_TIMEOUT_MINUTES = 1440
+
+
+class NotScamImageView(discord.ui.View):
+    def __init__(self, cog: "AntiScam", hashes: list[dict[str, str]]):
+        super().__init__(timeout=30 * 24 * 60 * 60)
+        self.cog = cog
+        self.hashes = hashes
+
+    @discord.ui.button(label="Not a scam image", style=discord.ButtonStyle.success)
+    async def mark_good(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.cog._not_a_scam_callback(interaction, self.hashes)
 SHORTENED_DOMAINS = {
     "bit.ly", "goo.gl", "tinyurl.com", "t.co", "is.gd", "cutt.ly", "shorturl.at",
     "rebrand.ly", "buff.ly", "ow.ly", "rb.gy", "lnkd.in", "s.id", "soo.gd",
@@ -280,7 +291,7 @@ def detect_scam_giveaway_signals(text: str) -> list[str]:
     """Detect Nitro prize claims that require adding a bot or waiting for a DM."""
     lowered = re.sub(r"\s+", " ", text.lower())
     claims_prize = bool(re.search(
-        r"\b(?:you\s+(?:have\s+)?won|you['’]ve\s+won|congratulations|you['’]ve\s+been\s+selected)\b",
+        r"\b(?:you\s+(?:have\s+)?won|you['â€™]ve\s+won|congratulations|you['â€™]ve\s+been\s+selected)\b",
         lowered,
     ))
     mentions_nitro = "nitro" in lowered and any(
@@ -329,7 +340,7 @@ def detect_nitro_gift_image_signals(text: str) -> list[str]:
     """Catch fake gift-card screenshots that imitate Discord's Nitro claim UI."""
     normalized = re.sub(r"\s+", " ", text.lower())
     gifted = bool(re.search(
-        r"you['’]?ve\s+been\s+gifted.{0,60}(?:nitro|subscription)|"
+        r"you['â€™]?ve\s+been\s+gifted.{0,60}(?:nitro|subscription)|"
         r"gifted\s+nitro.{0,40}(?:month|subscription)",
         normalized,
     ))
@@ -407,6 +418,9 @@ class AntiScam(ObserverCog):
         self.global_scam_image_hashes, self.guild_scam_image_hashes = (
             self._load_scam_image_hashes()
         )
+        self.global_good_image_hashes, self.guild_good_image_hashes = (
+            self._load_good_image_hashes()
+        )
 
     @staticmethod
     def _valid_image_hashes(value) -> list[dict[str, str]]:
@@ -470,6 +484,8 @@ class AntiScam(ObserverCog):
                 {
                     "global": self.global_scam_image_hashes,
                     "guilds": self.guild_scam_image_hashes,
+                    "good_global": self.global_good_image_hashes,
+                    "good_guilds": self.guild_good_image_hashes,
                 },
                 output,
                 indent=2,
@@ -478,6 +494,56 @@ class AntiScam(ObserverCog):
             os.fsync(output.fileno())
             temp_path = Path(output.name)
         os.replace(temp_path, SCAM_IMAGE_HASHES)
+
+    def _load_good_image_hashes(self):
+        try:
+            value = json.loads(SCAM_IMAGE_HASHES.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return [], {}
+        if not isinstance(value, dict):
+            return [], {}
+        guilds = value.get("good_guilds", {})
+        valid_guilds = {
+            str(guild_id): self._valid_image_hashes(items)
+            for guild_id, items in guilds.items()
+        } if isinstance(guilds, dict) else {}
+        return self._valid_image_hashes(value.get("good_global", [])), valid_guilds
+
+    def _image_is_trained_good(self, image_hash: str, image_bytes: bytes, guild_id: int | None) -> bool:
+        known = list(self.global_good_image_hashes)
+        if guild_id is not None:
+            known.extend(self.guild_good_image_hashes.get(str(guild_id), ()))
+        sha256 = hashlib.sha256(image_bytes).hexdigest()
+        return any(
+            item.get("sha256") == sha256
+            or self._hash_distance(image_hash, item["hash"]) <= IMAGE_HASH_DISTANCE
+            for item in known
+        )
+
+    async def _train_good_image_hashes(self, guild_id: int, hashes: list[dict[str, str]]) -> int:
+        if not hashes:
+            return 0
+        async with self._scam_hash_lock:
+            trained = self.guild_good_image_hashes.setdefault(str(guild_id), [])
+            known = {item.get("sha256") for item in trained}
+            added = [item for item in hashes if item.get("sha256") not in known]
+            trained.extend(added)
+            if added:
+                await asyncio.to_thread(self._save_scam_image_hashes)
+        return len(added)
+
+    async def _not_a_scam_callback(self, interaction: discord.Interaction, hashes: list[dict[str, str]]) -> None:
+        if not isinstance(interaction.user, discord.Member) or not interaction.user.guild_permissions.manage_messages:
+            await interaction.response.send_message("Manage Messages permission is required.", ephemeral=True)
+            return
+        if interaction.guild_id is None:
+            await interaction.response.send_message("This action is only available in a server.", ephemeral=True)
+            return
+        count = await self._train_good_image_hashes(interaction.guild_id, hashes)
+        await interaction.response.send_message(
+            f"Marked this as a good image. Added {count} benign image fingerprint(s); matching images will no longer be flagged by image scanning in this server.",
+            ephemeral=True,
+        )
 
     @staticmethod
     def _average_hash(image_bytes: bytes) -> str:
@@ -774,6 +840,9 @@ class AntiScam(ObserverCog):
                 logger.debug("Attachment bytes are not a scannable image", exc_info=True)
                 return []
 
+        if self._image_is_trained_good(image_hash, image_bytes, guild_id):
+            return []
+
         signals: list[str] = []
         known_hashes = list(self.global_scam_image_hashes)
         if guild_id is not None:
@@ -854,16 +923,18 @@ class AntiScam(ObserverCog):
                 f"Image test failed. Error ID: {error_id}", ephemeral=True,
             )
             return
-        signals = image_ocr_text_signals(text)
-        for value in qr_values:
-            if URL_RE.search(value):
-                signals.append("QR code contains a link")
-                signals.extend(f"QR link {signal}" for signal in detect_scam_signals(value))
+        trained_good = self._image_is_trained_good(image_hash, data, interaction.guild_id)
+        signals = [] if trained_good else image_ocr_text_signals(text)
+        if not trained_good:
+            for value in qr_values:
+                if URL_RE.search(value):
+                    signals.append("QR code contains a link")
+                    signals.extend(f"QR link {signal}" for signal in detect_scam_signals(value))
         known = list(self.global_scam_image_hashes)
         known.extend(self.guild_scam_image_hashes.get(str(interaction.guild_id), ()))
         matches = [item for item in known
                    if self._hash_distance(image_hash, item["hash"]) <= IMAGE_HASH_DISTANCE]
-        if matches:
+        if matches and not trained_good:
             signals.append("image resembles confirmed scam: trained fingerprint")
         signals = list(dict.fromkeys(signals))
         key = hashlib.sha256(data).hexdigest()
@@ -880,6 +951,7 @@ class AntiScam(ObserverCog):
             f"Moderation log channel: {self.store.get(interaction.guild_id, 'moderation', 'log_channel', None)}\n"
             f"Your configured bypass role applies: {self._has_scam_bypass_role(interaction)}\n"
             f"Signals: {len(signals)}\n"
+            + ("Training: moderator-confirmed benign image\n" if trained_good else "")
             + "\n".join(f"- {signal}" for signal in signals)
             + "\n\nThis diagnostic performs no moderation actions. GIFs use the first frame."
             + "\n\nExtracted text:\n" + (text or "[none]")
@@ -1276,7 +1348,6 @@ class AntiScam(ObserverCog):
 
         reason = None
         title = None
-        result = "not applied"
         enforcement_cache_seconds = 600
         if confirmed_enabled:
             source = await asyncio.to_thread(
@@ -1359,6 +1430,7 @@ class AntiScam(ObserverCog):
         description: str,
         *,
         ping_role: discord.Role | None = None,
+        view: discord.ui.View | None = None,
     ) -> None:
         channel_id = self.store.get(guild.id, "moderation", "log_channel")
         if channel_id is None:
@@ -1373,6 +1445,7 @@ class AntiScam(ObserverCog):
             await channel.send(
                 content=ping_role.mention if ping_role is not None else None,
                 embed=discord.Embed(title=title, description=description, color=0xED4245),
+                view=view,
                 allowed_mentions=(
                     discord.AllowedMentions(
                         everyone=False,
@@ -1816,11 +1889,20 @@ class AntiScam(ObserverCog):
             ),
             return_exceptions=True,
         )
+        benign_training_hashes = []
         for attachment, result in zip(attachments, attachment_results):
             if isinstance(result, Exception):
                 logger.debug("Could not scan attachment %s: %s", attachment.id, result)
                 continue
             signals.extend(result)
+            prepared = prepared_images.get(attachment.id)
+            if prepared is not None:
+                image_bytes, image_hash = prepared
+                benign_training_hashes.append({
+                    "hash": image_hash,
+                    "label": "moderator-confirmed benign image",
+                    "sha256": hashlib.sha256(image_bytes).hexdigest(),
+                })
         signals.extend(await self._embedded_image_scam_signals(message))
         signals = list(dict.fromkeys(signals))
         # Message behavior adds context to image scanning. These are review
@@ -2080,6 +2162,8 @@ class AntiScam(ObserverCog):
             f"Recent normal text activity: {'seen' if normal_activity_seen else 'not seen'}\n"
             f"Message handling: {deletion_result}\nModeration: {scam_action_result}",
             ping_role=moderator_role,
+            view=(NotScamImageView(self, benign_training_hashes)
+                  if image_signal and benign_training_hashes else None),
         )
 
     @app_commands.command(
@@ -2283,3 +2367,4 @@ class AntiScam(ObserverCog):
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(AntiScam(bot))
+
