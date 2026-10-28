@@ -607,7 +607,7 @@ class ActivityServer:
         with connect_sqlite(DB_PATH) as db:
             saved_messages = db.execute(
                 """SELECT channel_id, message_id, style, payload_json, updated_at
-                   FROM custom_embed_messages WHERE guild_id = ? ORDER BY updated_at DESC LIMIT 50""",
+                   FROM custom_embed_messages WHERE guild_id = ? ORDER BY updated_at DESC LIMIT 5""",
                 (guild.id,),
             ).fetchall()
         messages = []
@@ -648,7 +648,7 @@ class ActivityServer:
                 (guild.id, channel_id, message_id),
             ).fetchone()
         if row is None:
-            raise web.HTTPNotFound(text="That message is not saved by Observerâ€™s custom sender")
+            raise web.HTTPNotFound(text="That message is not saved by Observer’s custom sender")
         channel = guild.get_channel(channel_id)
         if not isinstance(channel, discord.TextChannel):
             raise web.HTTPNotFound(text="The message channel is no longer available")
@@ -918,7 +918,7 @@ class ActivityServer:
                         (guild.id, channel.id, edit_message_id),
                     ).fetchone()
                 if saved is None:
-                    raise web.HTTPNotFound(text="That message is not saved by Observerâ€™s custom sender")
+                    raise web.HTTPNotFound(text="That message is not saved by Observer’s custom sender")
                 if saved["style"] != style:
                     raise web.HTTPBadRequest(text="Discord does not allow switching the format of an existing message")
                 message = await channel.fetch_message(edit_message_id)
@@ -1446,7 +1446,7 @@ class ActivityServer:
             reporter_id, newly_accepted = report_cog.reports.accept(message.id, guild.id)
             embed.add_field(
                 name="Accepted by staff",
-                value=f"<@{user_id}> Â· <t:{int(datetime.now(timezone.utc).timestamp())}:f>",
+                value=f"<@{user_id}> · <t:{int(datetime.now(timezone.utc).timestamp())}:f>",
                 inline=False,
             )
             if reporter_id is not None and newly_accepted:
@@ -1489,7 +1489,7 @@ class ActivityServer:
             target_label = target.mention if target else f"User {target_id}"
             embed.add_field(
                 name="Moderation action",
-                value=f"{action.title()} on {target_label} Â· Case #{action_result['case_number']} by <@{user_id}>",
+                value=f"{action.title()} on {target_label} · Case #{action_result['case_number']} by <@{user_id}>",
                 inline=False,
             )
         from cogs.report_msg import ClaimReportView
@@ -1688,14 +1688,14 @@ class ActivityServer:
             footer = value.get("panel_footer")
             reasons = value.get("reason_options")
             if not isinstance(title, str) or not title.strip() or len(title) > 256:
-                raise web.HTTPBadRequest(text="Panel title must be 1â€“256 characters")
+                raise web.HTTPBadRequest(text="Panel title must be 1–256 characters")
             if not isinstance(description, str) or len(description) > 2048:
                 raise web.HTTPBadRequest(text="Panel description must be at most 2048 characters")
             if not isinstance(footer, str) or len(footer) > 2048:
                 raise web.HTTPBadRequest(text="Panel footer must be at most 2048 characters")
             if (not isinstance(reasons, list) or not 1 <= len(reasons) <= MAX_TICKET_REASON_OPTIONS
                     or any(not isinstance(reason, str) or not reason.strip() or len(reason) > 100 for reason in reasons)):
-                raise web.HTTPBadRequest(text=f"Add 1â€“{MAX_TICKET_REASON_OPTIONS} ticket reasons of up to 100 characters each")
+                raise web.HTTPBadRequest(text=f"Add 1–{MAX_TICKET_REASON_OPTIONS} ticket reasons of up to 100 characters each")
             for field, field_value in (("panel_title", title.strip()), ("panel_description", description), ("panel_footer", footer), ("reason_options", [reason.strip() for reason in reasons])):
                 store.set(guild.id, module.key, field, field_value)
             return web.json_response({"ok": True, "value": value}, headers={"Cache-Control": "no-store"})
@@ -1947,4 +1947,3 @@ class ActivityServer:
             },
             headers=headers,
         )
-

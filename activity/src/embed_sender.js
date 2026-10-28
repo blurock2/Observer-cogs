@@ -343,7 +343,7 @@ async function start() {
         const saved = { url: result.message_url, style: values.style, title: values.title, channel_name: channelSelect.selectedOptions[0]?.textContent.replace(/ \(card only\)$/, "").split("#").pop() || "channel" };
         if (index >= 0) savedMessages.splice(index, 1);
         savedMessages.unshift(saved);
-        savedMessages.splice(50);
+        savedMessages.splice(5);
         renderSavedMessages();
       } catch (error) {
         status.textContent = error.message;
