@@ -589,21 +589,21 @@ body.modal-open { overflow: hidden; }
 .updates-list { display: grid; }
 .update-item { display: grid; grid-template-columns: 125px minmax(0, 1fr); gap: 20px; padding: 23px 8px; border-top: 1px solid #ffffff12; transition: background .18s ease; }
 .update-item:hover { background: linear-gradient(90deg, rgba(66,215,232,.045), transparent 78%); }
-.update-item time { padding-top: 2px; color: #88aeb3; font: 9px ui-monospace, monospace; letter-spacing: .4px; }
+.update-item time { padding-top: 2px; color: #88aeb3; font: 10px ui-monospace, monospace; letter-spacing: .4px; }
 .update-copy { min-width: 0; }
-.update-type { color: #62d8e4; font: 8px ui-monospace, monospace; letter-spacing: 1.3px; }
-.update-copy h3 { margin: 7px 0 8px; color: #eaf3f4; font: 600 16px/1.35 system-ui; letter-spacing: -.25px; }
-.update-copy p { max-width: 820px; margin: 0; color: #a0adaf; font-size: 12px; line-height: 1.75; }
+.update-type { color: #62d8e4; font: 9px ui-monospace, monospace; letter-spacing: 1.3px; }
+.update-copy h3 { margin: 8px 0 9px; color: #eaf3f4; font: 600 18px/1.35 system-ui; letter-spacing: -.25px; }
+.update-copy p { max-width: 900px; margin: 0; color: #a0adaf; font-size: 14px; line-height: 1.75; }
 .update-copy p { white-space: pre-line; }
-.update-copy code { padding: 2px 5px; border: 1px solid #2a4247; border-radius: 4px; background: #111a1c; color: #9ce7ed; font: 10px ui-monospace, monospace; }
-.updates-loading { margin: 0; padding: 20px 8px; border-top: 1px solid #ffffff12; color: #94a2a4; font-size: 12px; }
+.update-copy code { padding: 2px 5px; border: 1px solid #2a4247; border-radius: 4px; background: #111a1c; color: #9ce7ed; font: 12px ui-monospace, monospace; }
+.updates-loading { margin: 0; padding: 20px 8px; border-top: 1px solid #ffffff12; color: #94a2a4; font-size: 14px; }
 @media(max-width:650px) {
   .updates-section { width: calc(100% - 40px); padding: 58px 0 62px; }
   .updates-intro { display: block; }
   .updates-intro > p { margin-top: 12px; }
   .update-item { grid-template-columns: 1fr; gap: 9px; padding: 18px 4px; }
-  .update-copy h3 { font-size: 15px; }
-  .update-copy p { font-size: 11px; }
+  .update-copy h3 { font-size: 17px; }
+  .update-copy p { font-size: 13px; }
 }
 
 /* Setup guidance and save-state clarity */
