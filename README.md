@@ -1,380 +1,98 @@
 # Observer
 
-> A modular, configurable Discord bot built for moderation, automation, community management, and server utilities.
+**A modular Discord bot for moderation, server safety, and community management.**
 
-Observer is a multi-purpose Discord bot built with **Python** and **discord.py**.
+Observer brings server tools and a web dashboard together: configure your server, review reports, and manage day-to-day community features through Discord and the browser.
 
-Instead of relying on one massive command system, Observer is split into independently maintained **cogs**, allowing features to stay modular while sharing persistent per-server configuration through SQLite.
+[Website & dashboard](https://observer-dashboard.observer/) · [Source code](https://github.com/blurock2/Observer-cogs)
 
-The goal is simple: provide the tools a Discord server actually needs without turning configuration into a mess.
+> Observer is actively developed. Features and configuration may change.
 
-> **Status:** Observer is actively developed. Features, commands, and configuration may change between versions.
+## What Observer does
 
----
+- **Moderation:** moderation commands, records, cases, statistics, and audit logs.
+- **Safety:** scam message and link protection, join-burst and honeypot protections, and image checks using OCR, QR decoding, and trained fingerprints.
+- **Reports and support:** message reports, anonymous reporting, ticket panels, and staff workflows.
+- **Community:** reaction roles, rules, tags, leveling, temporary voice channels, reminders, and other member utilities.
+- **Configuration:** per-server settings through `/setup` in Discord and the web dashboard.
+- **Web tools:** Discord sign-in, a server picker, configuration for server owners, moderation and report views for authorized moderators, and custom messages for users with access.
 
-## Features
+Available features depend on configuration, Discord permissions, and the version being run. The dashboard uses Discord sign-in; the options shown depend on your server access.
 
-### Moderation
+## Getting started
 
-Tools for handling moderation while keeping actions organized and traceable.
+### Use the hosted bot
 
-- Ban, kick, timeout, and other moderation commands
-- Persistent moderation records
-- Moderation statistics
-- Mod logging
-- Permission and role-based command restrictions
-- Reversal / undo support where available
+Visit the [Observer website](https://observer-dashboard.observer/) and sign in with Discord to find your eligible servers and add Observer. Once it joins, use `/setup` to configure the features you need. Grant only the Discord permissions required for the features you enable.
 
-### Security & Audit Logging
+### Run your own instance
 
-Observer can monitor important server activity and provide moderation teams with additional visibility.
+1. Create a bot application in the [Discord Developer Portal](https://discord.com/developers/applications). Enable the privileged **Server Members**, **Message Content**, and **Presence** intents required by this instance in the Bot settings. Invite it with appropriate bot permissions and application commands.
+2. Clone the repository and create a Python virtual environment:
 
-- Audit logging
-- Security-related server tools
-- Combined scam message, link, honeypot, and join-burst protection
-- Image scam checks using OCR, QR decoding, and trained visual fingerprints
-- `/scam-image-train` for moderator-confirmed scam image examples
-- Owner-only `/scam-image-train-global` for cross-server image training
-- Role and permission-aware protections
-- Configurable access restrictions
-- Server event tracking
+   ```bash
+   git clone https://github.com/blurock2/Observer-cogs.git
+   cd Observer-cogs
+   python -m venv .venv
+   ```
 
-### Server Configuration
+   Activate it with `source .venv/bin/activate` on Linux/macOS or `.venv\Scripts\activate` on Windows.
 
-Each server has its own persistent configuration.
+3. Install dependencies:
 
-- In-Discord setup interface
-- Per-server settings stored in SQLite
-- Configurable staff roles
-- Configurable tester roles
-- Module-specific configuration
-- Bot access restrictions
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-No configuration files need to be manually edited for normal server setup.
+   Image scam scanning also uses the Tesseract application: install it separately and make sure `tesseract` is on your PATH.
 
-### Tickets & Reports
+4. Copy `.env.example` to `.env` and set `DISCORD_TOKEN` and `BOT_OWNER_ID`. Review the remaining example settings before enabling integrations. Keep tokens and secrets private and never commit your real `.env`.
+5. Start the bot:
 
-Built-in systems for communication between members and staff.
+   ```bash
+   python bot.py
+   ```
 
-- Ticket panels
-- Configurable support roles
-- Ticket channels
-- Message reporting
-- Anonymous reporting support
-- Report cooldowns
-- Configurable report destinations
+   Configure the server with `/setup`. Command availability and Discord permissions may affect what you can use.
 
-### Community Tools
+## Website and dashboard
 
-Features designed for everyday server management and member interaction.
-
-- Reaction roles
-- Server rules
-- Tags
-- Leveling
-- Member information commands
-- Mention tools and protection
-- Temporary voice channels
-
-### Messaging
-
-Tools for working with messages across Discord.
-
-- Message quoting
-- Message relaying
-- Multi-channel relay support
-- Cross-server relay support
-- Bot-message filtering
-- Word filtering
-
-### Utilities
-
-General-purpose functionality that does not require external AI services.
-
-- Reminders
-- Server statistics
-- Weather information
-- Spotify display features
-- In-Discord help system
-
-### Integrations
-
-Observer also contains infrastructure for features that communicate with external services.
-
-- Account linking
-- Application bridge
-- Optional external-service integrations
-
----
-
-## Modular Architecture
-
-Observer uses Discord.py extensions located inside `cogs/`.
-
-Each major feature is separated into its own module:
-
-```text
-Observer-cogs/
-├── bot.py
-├── database.py
-├── logging_config.py
-├── vps_manager.py
-│
-├── cogs/
-│   ├── setup_ui.py
-│   ├── audit_log.py
-│   ├── acc_link.py
-│   ├── reaction_roles.py
-│   ├── message_quoter.py
-│   ├── utilities.py
-│   ├── report_msg.py
-│   ├── server_stats.py
-│   ├── temporary_voice.py
-│   ├── rules.py
-│   ├── tickets.py
-│   ├── reminder.py
-│   ├── message_relay.py
-│   ├── moderation.py
-│   ├── anti_scam.py
-│   ├── tags.py
-│   ├── mentions.py
-│   ├── member_commands.py
-│   ├── help.py
-│   ├── leveling.py
-│   ├── weather.py
-│   ├── spotify_show.py
-│   └── app_bridge.py
-│
-├── tests/
-├── deploy/
-├── data/
-├── .env.example
-├── requirements.txt
-└── VERSION
-```
-
-This structure keeps individual systems isolated and makes features easier to maintain, test, reload, and expand.
-
----
-
-## Database
-
-Observer uses **SQLite** for persistent storage.
-
-The database layer handles data such as:
-
-- Guild configuration
-- Moderation records
-- Leveling data
-- Module settings
-- Persistent feature state
-- Database migrations
-- Backups
-
-Runtime database files are stored locally and should **not** be committed to the repository.
-
----
-
-## Installation
-
-### 1. Clone the repository
+The frontend lives in `activity/` and is served by the bot's aiohttp service. To build it:
 
 ```bash
-git clone https://github.com/blurock2/Observer-cogs.git
-cd Observer-cogs
+cd activity
+npm install
+npm run build
 ```
 
-### 2. Create a virtual environment
+For a hosted dashboard, configure `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, and `PUBLIC_BASE_URL` in `.env`; add `{PUBLIC_BASE_URL}/auth/callback` to the Discord application's OAuth2 redirect URLs. For a VPS, the existing deployment guidance uses `ACTIVITY_HOST=127.0.0.1` and an HTTPS reverse proxy to port 8081. Use your own domain and credentials when self-hosting.
 
-```bash
-python -m venv .venv
-```
+The web interface includes server configuration, report and moderation views, and a custom-message editor. Access depends on the user's server permissions. Some functionality also remains available through Discord commands. Website sessions expire and a bot restart signs users out.
 
-Activate it.
+## Project structure
 
-**Windows**
+- `bot.py` — bot startup, intents, and extension loading.
+- `cogs/` — modular Discord features and setup.
+- `database.py` and `data/` — SQLite persistence and runtime data.
+- `activity/` and `activity_server.py` — web frontend and service.
+- `tests/` — automated tests.
+- `deploy/` — deployment files.
 
-```bash
-.venv\Scripts\activate
-```
-
-**Linux / macOS**
-
-```bash
-source .venv/bin/activate
-```
-
-### 3. Install dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-Image scam scanning uses Tesseract OCR and OpenCV QR decoding. Install the
-Tesseract application for your operating system and make sure `tesseract` is
-available on `PATH`; the Python packages are included in `requirements.txt`.
-
-### 4. Configure environment variables
-
-Copy the included example:
-
-```bash
-cp .env.example .env
-```
-
-On Windows:
-
-```bash
-copy .env.example .env
-```
-
-Then configure:
-
-```env
-DISCORD_TOKEN=your-discord-bot-token
-BOT_OWNER_ID=your-discord-user-id
-```
-
-Never commit your real Discord token.
-
-### 5. Start Observer
-
-```bash
-python bot.py
-```
-
----
-
-## Discord Bot Setup
-
-Before running Observer, create an application through the Discord Developer Portal and add a bot user.
-
-Observer requires the appropriate Discord permissions and gateway intents for the features you enable.
-
-Once the bot is running, configuration can primarily be handled through Observer's in-Discord setup system.
-
----
+Keep runtime databases, backups, tokens, and other private data out of version control. Back up persistent data before deploying or migrating an instance. Some integrations and support-server settings are specific to the official installation and should be reviewed before self-hosting.
 
 ## Development
 
-Install the normal project dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
-The repository includes automated tests using **pytest**.
-
-Run them with:
+Install the dependencies from `requirements.txt`, then run:
 
 ```bash
 pytest
-```
-
-Code can also be checked with:
-
-```bash
 ruff check .
 ```
 
----
-
-## Adding a Cog
-
-Observer features are implemented as Discord.py extensions.
-
-A basic cog follows the usual Discord.py extension structure:
-
-```python
-import discord
-from discord.ext import commands
-
-
-class Example(commands.Cog):
-    def __init__(self, bot: commands.Bot):
-        self.bot = bot
-
-
-async def setup(bot: commands.Bot):
-    await bot.add_cog(Example(bot))
-```
-
-Place new extensions inside:
-
-```text
-cogs/
-```
-
-Keep feature-specific logic inside its cog where possible and use the shared database layer for persistent data.
-
----
-
-## Deployment
-
-The `deploy/` directory contains deployment-related files for running Observer on a server/VPS.
-
-Observer is designed to support persistent hosting where its SQLite databases and runtime data remain available between restarts.
-
----
-
-## Project Goals
-
-Observer is built around a few core principles:
-
-- **Modular** — features should remain independently maintainable.
-- **Persistent** — server configuration should survive restarts.
-- **Configurable** — different servers should be able to use Observer differently.
-- **Practical** — features should solve actual Discord server management problems.
-- **Self-contained** — core functionality should not depend on paid AI APIs.
-- **Maintainable** — adding new systems should not require rewriting existing ones.
-
----
-
-## Contributing
-
-Observer is still under active development.
-
-Bug reports, improvements, and feature suggestions are welcome through GitHub Issues or Pull Requests.
-
-When contributing:
-
-1. Keep features modular.
-2. Avoid unnecessary dependencies.
-3. Preserve existing per-server configuration behavior.
-4. Add or update tests where appropriate.
-5. Run the test suite before submitting changes.
-
----
-
-## Disclaimer
-
-Observer is an independent Discord bot project and is not affiliated with or endorsed by Discord Inc.
-
----
+Cogs are discord.py extensions. Keep new features modular, preserve per-server settings, and add or update tests where appropriate. Issues and pull requests are welcome.
 
 ## License
 
-Free use with credits to original creator.
----
+Observer is available under the custom [Observer Source License](LICENSE). It permits use, modification, and redistribution, including commercial use, subject to attribution and restrictions on malicious use. It is **source-available**, not an OSI-approved open-source license. See the license for the actual terms.
 
-<p align="center">
-  <strong>Observer</strong><br>
-  Moderation • Security • Automation • Community • Utilities
-</p>
-
-
-### Support error reports
-
-In **Observer Support** (server ID `1535974879554437210`), use `/setup` → **Bot System** → **Global error channel** and select a text channel. This setting is hidden and rejected in other servers. Clear the setting to disable reports. The bot needs View Channel, Send Messages, and Embed Links there.
-
-Unexpected failures give users an `OBS-…` error ID. The same ID appears in VPS logs and sanitized reports in the selected support channel. ERROR/CRITICAL logs from commands, UI callbacks, listeners, startup and background tasks are included; ordinary invalid input, cooldowns and permission checks are excluded. Reports contain identifiers, code locations, exception types and timestamps, without raw exception messages, message contents or full tracebacks. Use a staff channel for reports.
-
-Bursts are batched into at most one message every five seconds, with up to 15 errors per message and a bounded 200-item queue. Overflow and failed deliveries remain in VPS logs; reports are best effort, not a persistent audit trail.
-
-### Observer website
-
-The website is served by the bot's existing `aiohttp` service. Build its frontend from `activity/` with `npm install` and `npm run build`; the bot serves `activity/dist` at the site root. On the VPS, keep `ACTIVITY_HOST=127.0.0.1` and proxy HTTPS traffic from the domain to `127.0.0.1:8081`.
-
-Set `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, and `PUBLIC_BASE_URL` in the VPS `.env`. Add `{PUBLIC_BASE_URL}/auth/callback` to the Discord application's OAuth2 redirect URLs. OAuth sign-in requests `identify` and `guilds`; the dashboard lists only servers where the signed-in account is the owner and marks whether Observer is connected. Sign-in sessions are held in bot memory and expire after seven days, so a bot restart signs website users out. The website currently provides the public overview, Discord sign-in, owner-only server picker, and add-bot links; server settings remain on `/setup` in Discord until the web editor is implemented.
-
-Optional landing-page details use `OBSERVER_CREATOR_NAME`, `OBSERVER_SUPPORT_URL`, and `OBSERVER_SOURCE_URL`. Set the source URL only when you have a public repository link to show.
+Created by [blurock2 (Rocky / Rockus26)](https://github.com/blurock2). Observer is an independent project and is not affiliated with or endorsed by Discord Inc.
