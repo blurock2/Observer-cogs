@@ -550,7 +550,14 @@ class AntiScam(ObserverCog):
         with Image.open(BytesIO(image_bytes)) as source:
             if source.width * source.height > IMAGE_SCAN_MAX_PIXELS:
                 raise ValueError("Image dimensions are too large to scan")
-            pixels = list(source.convert("L").resize((8, 8)).getdata())
+            # Pillow warns when a palette image with byte-based transparency is
+            # converted directly. Normalize its palette and transparency first.
+            if source.mode == "P":
+                with source.convert("RGBA") as normalized:
+                    grayscale = normalized.convert("L")
+            else:
+                grayscale = source.convert("L")
+            pixels = list(grayscale.resize((8, 8)).getdata())
         average = sum(pixels) / len(pixels)
         value = sum((1 << index) for index, pixel in enumerate(pixels) if pixel >= average)
         return f"{value:016x}"
@@ -578,7 +585,7 @@ class AntiScam(ObserverCog):
                 raise ValueError("Image dimensions are too large to scan")
             # Palette PNGs can carry transparency as raw bytes; Pillow warns
             # when converting those directly to RGB, so normalize alpha first.
-            if source.mode == "P" and "transparency" in source.info:
+            if source.mode == "P":
                 with source.convert("RGBA") as normalized:
                     normalized.thumbnail(
                         (OCR_MAX_SIDE, OCR_MAX_SIDE), Image.Resampling.LANCZOS
