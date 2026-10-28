@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+from io import BytesIO
 import json
 import logging
 import os
@@ -12,6 +13,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from time import monotonic
 from urllib.parse import urlencode, urlparse
+
+from PIL import Image
 
 import aiohttp
 import discord
@@ -32,6 +35,9 @@ from database import connect_sqlite
 logger = logging.getLogger("observer.activity")
 ACTIVITY_DIR = Path(__file__).resolve().parent / "activity"
 SESSION_TTL = 7 * 24 * 60 * 60
+CUSTOM_EMBED_IMAGE_MAX_BYTES = 8 * 1024 * 1024
+CUSTOM_EMBED_IMAGE_TOTAL_MAX_BYTES = 25 * 1024 * 1024
+CUSTOM_EMBED_IMAGE_MAX_COUNT = 10
 
 
 def _report_user_id(value: str) -> str | None:
@@ -71,7 +77,7 @@ def _custom_card_view(payload: dict) -> tuple[discord.ui.LayoutView, bool]:
     title = payload.get("title", "").strip()
     description = payload.get("description", "").strip()
     footer = payload.get("footer", "").strip()
-    image_url = payload.get("image_url", "").strip()
+    image_urls = payload.get("image_urls") or ([payload.get("image_url", "").strip()] if payload.get("image_url", "").strip() else [])
     card_text = "\n\n".join(part for part in (
         f"# {title}" if title else "",
         description,
@@ -80,8 +86,10 @@ def _custom_card_view(payload: dict) -> tuple[discord.ui.LayoutView, bool]:
     if footer:
         card.add_item(discord.ui.Separator())
         card.add_item(discord.ui.TextDisplay(footer))
-    if image_url:
-        card.add_item(discord.ui.MediaGallery(discord.MediaGalleryItem(image_url)))
+    if image_urls:
+        card.add_item(discord.ui.MediaGallery(*[
+            discord.MediaGalleryItem(image_url) for image_url in image_urls[:CUSTOM_EMBED_IMAGE_MAX_COUNT]
+        ]))
     view.add_item(card)
 
     buttons = []
@@ -167,7 +175,7 @@ class ActivityServer:
             logger.info("Activity web server disabled; set DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET to enable it")
             return
         self.session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=12))
-        app = web.Application(client_max_size=64 * 1024)
+        app = web.Application(client_max_size=CUSTOM_EMBED_IMAGE_TOTAL_MAX_BYTES + 1024 * 1024)
         app.router.add_get("/auth/login", self.login)
         app.router.add_get("/auth/callback", self.oauth_callback)
         app.router.add_post("/auth/logout", self.logout)
@@ -176,6 +184,8 @@ class ActivityServer:
         app.router.add_get("/api/control-panel/{guild_id}", self.control_panel)
         app.router.add_post("/api/control-panel/{guild_id}/setting", self.save_control_panel_setting)
         app.router.add_post("/api/control-panel/{guild_id}/ticket-panel", self.send_ticket_panel)
+        app.router.add_get("/api/public-reports", self.public_reports)
+        app.router.add_get("/api/public-updates", self.public_updates)
         app.router.add_get("/api/custom-embed/{guild_id}", self.custom_embed_info)
         app.router.add_get("/api/custom-embed/{guild_id}/message", self.custom_embed_message)
         app.router.add_post("/api/custom-embed/{guild_id}", self.send_custom_embed)
@@ -183,8 +193,6 @@ class ActivityServer:
         app.router.add_post("/api/mod-dashboard/{guild_id}/reports/{message_id}/{action}", self.mod_report_action)
         app.router.add_get("/api/public-info", self.public_info)
         app.router.add_get("/observer-stats.json", self.observer_stats)
-        app.router.add_get("/api/public-reports", self.public_reports)
-        app.router.add_get("/api/public-updates", self.public_updates)
         app.router.add_post("/api/token", self.exchange_code)
         app.router.add_get("/api/activity/{view}", self.activity_data)
         app.router.add_get("/healthz", self.health)
@@ -342,7 +350,6 @@ class ActivityServer:
             "stats": stats,
         }
         return web.json_response(info, headers={"Cache-Control": "public, max-age=300"})
-
 
     async def public_updates(self, request: web.Request) -> web.Response:
         """Proxy the portfolio's shared devlog so both sites display the same updates."""
@@ -641,7 +648,7 @@ class ActivityServer:
                 (guild.id, channel_id, message_id),
             ).fetchone()
         if row is None:
-            raise web.HTTPNotFound(text="That message is not saved by Observer’s custom sender")
+            raise web.HTTPNotFound(text="That message is not saved by Observerâ€™s custom sender")
         channel = guild.get_channel(channel_id)
         if not isinstance(channel, discord.TextChannel):
             raise web.HTTPNotFound(text="The message channel is no longer available")
@@ -657,19 +664,44 @@ class ActivityServer:
             payload = json.loads(row["payload_json"])
         except (TypeError, ValueError):
             raise web.HTTPBadGateway(text="Saved message details could not be read")
+        image_names = payload.get("image_attachments")
+        if not isinstance(image_names, list):
+            image_names = [payload.get("image_attachment", "")]
+        image_names = {name for name in image_names if isinstance(name, str) and name}
         return web.json_response({
             "ok": True,
             "message_url": message.jump_url,
             "channel_id": str(channel_id),
             "style": row["style"],
             "payload": payload,
+            "image_preview_urls": [
+                attachment.url for attachment in message.attachments
+                if attachment.filename in image_names
+            ],
         }, headers={"Cache-Control": "no-store"})
 
     async def send_custom_embed(self, request: web.Request) -> web.Response:
         session, guild = await self._require_custom_embed_access(request)
         try:
-            payload = await request.json()
-        except (ValueError, web.HTTPException):
+            uploaded_images = []
+            if request.content_type == "multipart/form-data":
+                reader = await request.multipart()
+                payload = None
+                while part := await reader.next():
+                    if part.name == "payload":
+                        try:
+                            payload = json.loads(await part.text())
+                        except (ValueError, TypeError):
+                            raise web.HTTPBadRequest(text="Invalid embed details")
+                    elif part.name == "image_file":
+                        if len(uploaded_images) >= CUSTOM_EMBED_IMAGE_MAX_COUNT:
+                            raise web.HTTPBadRequest(text="Upload up to 10 images per message")
+                        uploaded_images.append((await part.read(decode=False), part.filename or "image"))
+            else:
+                payload = await request.json()
+        except web.HTTPException:
+            raise
+        except (ValueError, TypeError):
             raise web.HTTPBadRequest(text="Invalid request body")
         if not isinstance(payload, dict):
             raise web.HTTPBadRequest(text="Invalid embed details")
@@ -696,6 +728,36 @@ class ActivityServer:
         text_values = (title, description, content, author_name, author_url, author_icon_url, title_url, thumbnail_url, footer, footer_icon_url, image_url, color, message_url, *button_values)
         if not all(isinstance(value, str) for value in text_values):
             raise web.HTTPBadRequest(text="Embed fields must be text")
+        image_files = []
+        image_attachment_names = []
+        total_image_bytes = 0
+        used_image_names = set()
+        for uploaded_image, uploaded_filename in uploaded_images:
+            total_image_bytes += len(uploaded_image)
+            if not uploaded_image or len(uploaded_image) > CUSTOM_EMBED_IMAGE_MAX_BYTES:
+                raise web.HTTPBadRequest(text="Each image must be 8 MB or smaller")
+            if total_image_bytes > CUSTOM_EMBED_IMAGE_TOTAL_MAX_BYTES:
+                raise web.HTTPBadRequest(text="Uploaded images must total 25 MB or less")
+            try:
+                with Image.open(BytesIO(uploaded_image)) as uploaded:
+                    uploaded.verify()
+                    image_format = uploaded.format
+            except Exception:
+                raise web.HTTPBadRequest(text="Choose a valid image file")
+            extension = {"JPEG": ".jpg", "PNG": ".png", "GIF": ".gif", "WEBP": ".webp"}.get(image_format)
+            if extension is None:
+                raise web.HTTPBadRequest(text="Use a PNG, JPG, GIF, or WebP image")
+            raw_name = (uploaded_filename or "image").replace("\\", "/").rsplit("/", 1)[-1]
+            stem = re.sub(r"[^A-Za-z0-9_-]+", "_", Path(raw_name).stem).strip("_") or "image"
+            base_name = f"{stem[:76]}{extension}"
+            attachment_name = base_name
+            suffix = 2
+            while attachment_name.casefold() in used_image_names:
+                attachment_name = f"{stem[:70]}_{suffix}{extension}"
+                suffix += 1
+            used_image_names.add(attachment_name.casefold())
+            image_attachment_names.append(attachment_name)
+            image_files.append(discord.File(BytesIO(uploaded_image), filename=attachment_name))
         if not isinstance(timestamp, bool) or not isinstance(fields, list) or len(fields) > 25:
             raise web.HTTPBadRequest(text="Embed timestamp or fields are invalid")
         normalized_fields = []
@@ -781,9 +843,21 @@ class ActivityServer:
                 message_embed.timestamp = datetime.now(timezone.utc)
             if thumbnail_url.strip():
                 message_embed.set_thumbnail(url=thumbnail_url.strip())
-            if image_url:
-                message_embed.set_image(url=image_url)
-            send_kwargs = {"content": content.strip() or None, "embed": message_embed}
+            image_refs = (
+                [f"attachment://{name}" for name in image_attachment_names]
+                or ([image_url] if image_url else [])
+            )
+            if image_refs:
+                message_embed.set_image(url=image_refs[0])
+            if len(image_refs) > 1:
+                extra_embeds = []
+                for image_ref in image_refs[1:]:
+                    image_embed = discord.Embed()
+                    image_embed.set_image(url=image_ref)
+                    extra_embeds.append(image_embed)
+                send_kwargs = {"content": content.strip() or None, "embeds": [message_embed, *extra_embeds]}
+            else:
+                send_kwargs = {"content": content.strip() or None, "embed": message_embed}
         else:
             card_text = "\n\n".join(part for part in (
                 f"# {title.strip()}" if title.strip() else "",
@@ -804,7 +878,11 @@ class ActivityServer:
                     parsed_button_url = urlparse(url)
                     if len(label) > 80 or len(url) > 512 or parsed_button_url.scheme not in {"http", "https"} or not parsed_button_url.netloc:
                         raise web.HTTPBadRequest(text="Link buttons need a label under 80 characters and a valid http(s) URL")
-            view, has_custom_buttons = _custom_card_view(payload)
+            image_refs = (
+                [f"attachment://{name}" for name in image_attachment_names]
+                or ([image_url] if image_url else [])
+            )
+            view, has_custom_buttons = _custom_card_view({**payload, "image_urls": image_refs})
             send_kwargs = {"view": view}
         saved_payload = {
             "channel_id": str(channel.id),
@@ -819,7 +897,9 @@ class ActivityServer:
             "thumbnail_url": thumbnail_url.strip(),
             "footer": footer.strip(),
             "footer_icon_url": footer_icon_url.strip(),
-            "image_url": image_url.strip(),
+            "image_url": "" if image_attachment_names else image_url.strip(),
+            "image_attachment": image_attachment_names[0] if image_attachment_names else "",
+            "image_attachments": image_attachment_names,
             "color": color.strip(),
             "timestamp": timestamp,
             "fields": normalized_fields,
@@ -833,20 +913,70 @@ class ActivityServer:
             if edit_parts:
                 with connect_sqlite(DB_PATH) as db:
                     saved = db.execute(
-                        """SELECT style FROM custom_embed_messages
+                        """SELECT style, payload_json FROM custom_embed_messages
                            WHERE guild_id = ? AND channel_id = ? AND message_id = ?""",
                         (guild.id, channel.id, edit_message_id),
                     ).fetchone()
                 if saved is None:
-                    raise web.HTTPNotFound(text="That message is not saved by Observer’s custom sender")
+                    raise web.HTTPNotFound(text="That message is not saved by Observerâ€™s custom sender")
                 if saved["style"] != style:
                     raise web.HTTPBadRequest(text="Discord does not allow switching the format of an existing message")
                 message = await channel.fetch_message(edit_message_id)
                 if not self.bot.user or message.author.id != self.bot.user.id:
                     raise web.HTTPForbidden(text="Observer can only edit its own saved messages")
-                await message.edit(**send_kwargs, allowed_mentions=discord.AllowedMentions.none())
+                try:
+                    previous_payload = json.loads(saved["payload_json"] or "{}")
+                except (TypeError, ValueError):
+                    previous_payload = {}
+                existing_attachments = previous_payload.get("image_attachments")
+                if not isinstance(existing_attachments, list):
+                    existing_attachments = [previous_payload.get("image_attachment", "")]
+                existing_attachments = [name for name in existing_attachments if isinstance(name, str) and name]
+                if image_attachment_names:
+                    saved_payload["image_attachments"] = image_attachment_names
+                    saved_payload["image_attachment"] = image_attachment_names[0]
+                    image_refs = [f"attachment://{name}" for name in image_attachment_names]
+                elif image_url.strip():
+                    saved_payload["image_attachments"] = []
+                    saved_payload["image_attachment"] = ""
+                    image_refs = [image_url.strip()]
+                elif existing_attachments:
+                    saved_payload["image_attachments"] = existing_attachments
+                    saved_payload["image_attachment"] = existing_attachments[0]
+                    image_refs = [f"attachment://{name}" for name in existing_attachments]
+                else:
+                    saved_payload["image_attachments"] = []
+                    saved_payload["image_attachment"] = ""
+                    image_refs = []
+                if style == "embed":
+                    message_embed.set_image(url=None)
+                    if image_refs:
+                        message_embed.set_image(url=image_refs[0])
+                    if len(image_refs) > 1:
+                        extra_embeds = []
+                        for image_ref in image_refs[1:]:
+                            image_embed = discord.Embed()
+                            image_embed.set_image(url=image_ref)
+                            extra_embeds.append(image_embed)
+                        send_kwargs.pop("embed", None)
+                        send_kwargs["embeds"] = [message_embed, *extra_embeds]
+                    else:
+                        send_kwargs.pop("embeds", None)
+                        send_kwargs["embed"] = message_embed
+                else:
+                    view, has_custom_buttons = _custom_card_view({**saved_payload, "image_urls": image_refs})
+                    send_kwargs["view"] = view
+                if image_files:
+                    attachments = image_files
+                elif existing_attachments and image_url.strip():
+                    attachments = []
+                else:
+                    attachments = list(message.attachments)
+                await message.edit(**send_kwargs, attachments=attachments, allowed_mentions=discord.AllowedMentions.none())
                 action = "updated"
             else:
+                if image_files:
+                    send_kwargs["files"] = image_files
                 message = await channel.send(**send_kwargs, allowed_mentions=discord.AllowedMentions.none())
                 action = "sent"
             if style == "card" and has_custom_buttons:
@@ -872,7 +1002,11 @@ class ActivityServer:
         except discord.HTTPException:
             logger.exception("Failed to send custom %s in guild %s", style, guild.id)
             raise web.HTTPBadGateway(text="Discord could not send the message")
-        return web.json_response({"ok": True, "action": action, "message_url": message.jump_url}, headers={"Cache-Control": "no-store"})
+        image_preview_urls = [
+            attachment.url for attachment in message.attachments
+            if attachment.filename in set(saved_payload.get("image_attachments", []))
+        ]
+        return web.json_response({"ok": True, "action": action, "message_url": message.jump_url, "image_preview_urls": image_preview_urls}, headers={"Cache-Control": "no-store"})
 
     @staticmethod
     def _oauth_can_moderate(guild: dict) -> bool:
@@ -1312,7 +1446,7 @@ class ActivityServer:
             reporter_id, newly_accepted = report_cog.reports.accept(message.id, guild.id)
             embed.add_field(
                 name="Accepted by staff",
-                value=f"<@{user_id}> · <t:{int(datetime.now(timezone.utc).timestamp())}:f>",
+                value=f"<@{user_id}> Â· <t:{int(datetime.now(timezone.utc).timestamp())}:f>",
                 inline=False,
             )
             if reporter_id is not None and newly_accepted:
@@ -1355,7 +1489,7 @@ class ActivityServer:
             target_label = target.mention if target else f"User {target_id}"
             embed.add_field(
                 name="Moderation action",
-                value=f"{action.title()} on {target_label} · Case #{action_result['case_number']} by <@{user_id}>",
+                value=f"{action.title()} on {target_label} Â· Case #{action_result['case_number']} by <@{user_id}>",
                 inline=False,
             )
         from cogs.report_msg import ClaimReportView
@@ -1554,14 +1688,14 @@ class ActivityServer:
             footer = value.get("panel_footer")
             reasons = value.get("reason_options")
             if not isinstance(title, str) or not title.strip() or len(title) > 256:
-                raise web.HTTPBadRequest(text="Panel title must be 1–256 characters")
+                raise web.HTTPBadRequest(text="Panel title must be 1â€“256 characters")
             if not isinstance(description, str) or len(description) > 2048:
                 raise web.HTTPBadRequest(text="Panel description must be at most 2048 characters")
             if not isinstance(footer, str) or len(footer) > 2048:
                 raise web.HTTPBadRequest(text="Panel footer must be at most 2048 characters")
             if (not isinstance(reasons, list) or not 1 <= len(reasons) <= MAX_TICKET_REASON_OPTIONS
                     or any(not isinstance(reason, str) or not reason.strip() or len(reason) > 100 for reason in reasons)):
-                raise web.HTTPBadRequest(text=f"Add 1–{MAX_TICKET_REASON_OPTIONS} ticket reasons of up to 100 characters each")
+                raise web.HTTPBadRequest(text=f"Add 1â€“{MAX_TICKET_REASON_OPTIONS} ticket reasons of up to 100 characters each")
             for field, field_value in (("panel_title", title.strip()), ("panel_description", description), ("panel_footer", footer), ("reason_options", [reason.strip() for reason in reasons])):
                 store.set(guild.id, module.key, field, field_value)
             return web.json_response({"ok": True, "value": value}, headers={"Cache-Control": "no-store"})
@@ -1620,6 +1754,7 @@ class ActivityServer:
             "channel_id": str(channel.id),
             "channel_name": channel.name,
         }, headers={"Cache-Control": "no-store"})
+
     def _bot_invite_url(self) -> str:
         if not self.client_id:
             return "https://discord.com/developers/applications"
@@ -1789,7 +1924,6 @@ class ActivityServer:
     async def health(self, request: web.Request) -> web.Response:
         return web.json_response({"status": "online", "servers": len(self.bot.guilds)})
 
-
     async def observer_stats(self, request: web.Request) -> web.Response:
         """Expose only aggregate bot counts to the public portfolio page."""
         member_count = sum(guild.member_count or 0 for guild in self.bot.guilds)
@@ -1813,3 +1947,4 @@ class ActivityServer:
             },
             headers=headers,
         )
+
