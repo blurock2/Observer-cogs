@@ -431,8 +431,8 @@ def progress_bar(
     filled = round(percentage * length)
 
     return (
-        "#" * filled
-        + "-" * (length - filled)
+        "\u25b0" * filled
+        + "\u25b1" * (length - filled)
         + f" `{percentage:.0%}`"
     )
 
@@ -889,7 +889,7 @@ class Leveling(ObserverCog):
         )
 
         embed = themed_embed(
-            title=f"{member.display_name}'s Rank",
+            title=f"\U0001f4ca {member.display_name}'s Rank",
             description=(
                 f"Current leveling progress for {member.mention}."
             ),
@@ -900,25 +900,25 @@ class Leveling(ObserverCog):
         embed.set_thumbnail(url=member.display_avatar.url)
 
         embed.add_field(
-            name="Level",
+            name="\U0001f947 Level",
             value=f"```yaml\n{level}\n```",
             inline=True,
         )
 
         embed.add_field(
-            name="Total XP",
+            name="\u2728 Total XP",
             value=f"```yaml\n{xp:,}\n```",
             inline=True,
         )
 
         embed.add_field(
-            name="Messages",
+            name="\U0001f4ac Messages",
             value=f"```yaml\n{messages:,}\n```",
             inline=True,
         )
 
         embed.add_field(
-            name="Progress",
+            name="\U0001f4c8 Progress",
             value=(
                 f"{progress_bar(progress, needed)}\n"
                 f"`{progress:,} / {needed:,} XP`"
@@ -927,7 +927,7 @@ class Leveling(ObserverCog):
         )
 
         embed.add_field(
-            name="Next Level",
+            name="\U0001f3af Next Level",
             value=(
                 f"Level **{level + 1}** "
                 f"at **{next_level_xp:,} XP**"
