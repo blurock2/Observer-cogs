@@ -1416,5 +1416,5 @@ body:has(.site-shell.is-website-broken) { background: #03070a; }
 @media (max-width: 600px) { .website-break-reset { top: 10px; left: 12px; } .break-terminal { max-width: 78vw; font-size: 7px; } }
 @media (prefers-reduced-motion: reduce) { .break-circuit-art path,.break-circuit-nodes circle,.break-binary-row,.easter-egg-fallen,.website-break-spark-burst i { animation: none !important; } .easter-egg-fallen { opacity: 0; transform: translateY(125vh); } }
 
-
-
+.live-stats-secret-trigger { padding: 0; border: 0; background: transparent; text-align: left; cursor: default; }
+.live-stats-secret-trigger:focus-visible { border-radius: 2px; outline: 2px solid currentColor; outline-offset: 5px; }
