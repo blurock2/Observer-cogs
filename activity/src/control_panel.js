@@ -5,6 +5,16 @@ let panel;
 let activityData;
 let selectedModule = null;
 const dirtySettings = new Set();
+const MODULE_EMOJIS = Object.freeze({
+  afk: "\\u{1F4A4}", autorole: "\\u{1F3AD}", verification: "\\u2705", reminders: "\\u23F0", bot: "\\u{1F916}",
+  audit_log: "\\u{1F9FE}", reaction_roles: "\\u{1F501}", message_quoter: "\\u{1F4AC}", spotify: "\\u{1F3B5}",
+  acc_link: "\\u{1F517}", utilities: "\\u{1F9F0}", report_msg: "\\u{1F4E3}", server_stats: "\\u{1F4CA}",
+  temporary_voice: "\\u{1F50A}", rules: "\\u{1F4DC}", tickets: "\\u{1F3AB}", message_relay: "\\u{1F4E1}",
+  moderation: "\\u{1F6E1}\\uFE0F", mentions: "\\u{1F514}", security: "\\u{1F6E1}\\uFE0F", tags: "\\u{1F3F7}\\uFE0F",
+  member_commands: "\\u{1F465}", help: "\\u2753", leveling: "\\u{1F4C8}", weather: "\\u{1F324}\\uFE0F",
+  auto_responder: "\\u{1F4AC}", setup_ui: "\\u2699\\uFE0F",
+});
+const moduleEmoji = (module) => MODULE_EMOJIS[module.key] || module.emoji || "";
 
 async function api(url, options = {}) {
   const response = await fetch(url, { credentials: "same-origin", ...options });
@@ -22,7 +32,7 @@ function renderCards() {
     const enabled = module.settings.find((setting) => setting.key === "enabled");
     const state = enabled ? (enabled.value ? "Enabled" : "Disabled") : "Configure options";
     const count = module.key === "auto_responder" ? `${module.responses?.length || 0} RESPONSES` : `${module.settings.length} SETTINGS`;
-    return `<article class="control-module" data-open-module="${module.key}" tabindex="0"><div class="module-card-top"><span class="module-emoji">${esc(module.emoji)}</span><span class="module-count">${count}</span></div><h2>${esc(module.label)}</h2><p>${esc(module.description)}</p><div class="module-card-actions">${enabled ? `<label class="web-toggle"><input type="checkbox" data-toggle-setting="${module.key}|enabled" ${enabled.value ? "checked" : ""}><span></span><b>${state}</b></label>` : `<span class="module-state">${state}</span>`}<button class="configure-module" data-config-module="${module.key}">Configure <span>&#8594;</span></button></div></article>`;
+    return `<article class="control-module" data-open-module="${module.key}" tabindex="0"><div class="module-card-top"><span class="module-emoji">${esc(moduleEmoji(module))}</span><span class="module-count">${count}</span></div><h2>${esc(module.label)}</h2><p>${esc(module.description)}</p><div class="module-card-actions">${enabled ? `<label class="web-toggle"><input type="checkbox" data-toggle-setting="${module.key}|enabled" ${enabled.value ? "checked" : ""}><span></span><b>${state}</b></label>` : `<span class="module-state">${state}</span>`}<button class="configure-module" data-config-module="${module.key}">Configure <span>&#8594;</span></button></div></article>`;
   }).join("") || `<p class="empty-settings">No features match that search.</p>`;
 }
 
@@ -81,12 +91,12 @@ function renderEditor(key, animate = true, force = false) {
   editor.hidden = false;
   if (animate) editor.classList.remove("is-open");
   if (module.key === "auto_responder") {
-    editor.innerHTML = `<div class="module-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="module-editor-title"><div class="editor-head"><div><div class="eyebrow">CONFIGURE FEATURE</div><h2 id="module-editor-title">${esc(module.emoji)} ${esc(module.label)}</h2><p>${esc(module.description)}</p></div><button id="close-module-editor" class="editor-close" aria-label="Close settings">&#215;</button></div>${autoResponseEditor(module)}</div>`;
+    editor.innerHTML = `<div class="module-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="module-editor-title"><div class="editor-head"><div><div class="eyebrow">CONFIGURE FEATURE</div><h2 id="module-editor-title">${esc(moduleEmoji(module))} ${esc(module.label)}</h2><p>${esc(module.description)}</p></div><button id="close-module-editor" class="editor-close" aria-label="Close settings">&#215;</button></div>${autoResponseEditor(module)}</div>`;
     document.body.classList.add("modal-open");
     if (animate) requestAnimationFrame(() => editor.classList.add("is-open"));
     return;
   }
-  editor.innerHTML = `<div class="module-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="module-editor-title"><div class="editor-head"><div><div class="eyebrow">CONFIGURE FEATURE</div><h2 id="module-editor-title">${esc(module.emoji)} ${esc(module.label)}</h2><p>${esc(module.description)}</p></div><button id="close-module-editor" class="editor-close" aria-label="Close settings">&#215;</button></div>${module.key === "bot" ? `<a class="embed-tool-link" href="/embeds?guild_id=${encodeURIComponent(guildId)}">Open custom embed sender <span>&#8599;</span></a>` : ""}<div class="editor-enable">${enabled ? `<span>${esc(enabled.label)}</span><label class="web-toggle"><input type="checkbox" data-toggle-setting="${module.key}|enabled" ${enabled.value ? "checked" : ""}><span></span><b>${enabled.value ? "Enabled" : "Disabled"}</b></label>` : `<span>This feature has no master switch. Configure its options below.</span>`}</div><div class="pending-save-bar"><span>Unsaved edits stay here until you save them.</span><button class="save-setting" data-save-all disabled>Save changes</button></div><div class="settings-list">${module.settings.map((setting) => controlFor(module, setting)).join("") || `<p class="empty-settings">No web settings are defined for this feature yet.</p>`}</div></div>`;
+  editor.innerHTML = `<div class="module-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="module-editor-title"><div class="editor-head"><div><div class="eyebrow">CONFIGURE FEATURE</div><h2 id="module-editor-title">${esc(moduleEmoji(module))} ${esc(module.label)}</h2><p>${esc(module.description)}</p></div><button id="close-module-editor" class="editor-close" aria-label="Close settings">&#215;</button></div>${module.key === "bot" ? `<a class="embed-tool-link" href="/embeds?guild_id=${encodeURIComponent(guildId)}">Open custom embed sender <span>&#8599;</span></a>` : ""}<div class="editor-enable">${enabled ? `<span>${esc(enabled.label)}</span><label class="web-toggle"><input type="checkbox" data-toggle-setting="${module.key}|enabled" ${enabled.value ? "checked" : ""}><span></span><b>${enabled.value ? "Enabled" : "Disabled"}</b></label>` : `<span>This feature has no master switch. Configure its options below.</span>`}</div><div class="pending-save-bar"><span>Unsaved edits stay here until you save them.</span><button class="save-setting" data-save-all disabled>Save changes</button></div><div class="settings-list">${module.settings.map((setting) => controlFor(module, setting)).join("") || `<p class="empty-settings">No web settings are defined for this feature yet.</p>`}</div></div>`;
   document.body.classList.add("modal-open");
   if (animate) requestAnimationFrame(() => editor.classList.add("is-open"));
 }
