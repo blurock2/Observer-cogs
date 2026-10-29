@@ -261,15 +261,28 @@ function activateWebsiteBreak() {
   if (site._websiteBreakClickSparks) site.removeEventListener("click", site._websiteBreakClickSparks, true);
   site.querySelector(".website-break-reset")?.remove();
   site.querySelectorAll(".website-break-slot").forEach((slot) => {
-    const card = slot.querySelector(".easter-egg-fallen");
+    const card = slot._websiteBreakCard;
     if (card) {
-      card.classList.remove("easter-egg-fallen");
+      card._websiteBreakDrag?.abort();
+      window.clearTimeout(card._websiteBreakLandTimer);
+      card.classList.remove("easter-egg-fallen", "website-break-debris-card", "is-dragging");
       card.style.removeProperty("--break-rotation");
       card.style.removeProperty("--break-delay");
-      slot.before(card);
+      card.style.removeProperty("--debris-rotation");
+      card.style.removeProperty("position");
+      card.style.removeProperty("left");
+      card.style.removeProperty("top");
+      card.style.removeProperty("z-index");
+      card.style.removeProperty("margin");
+      card.style.removeProperty("transform");
+      card.removeAttribute("tabindex");
+      card.removeAttribute("aria-label");
+      slot.append(card);
     }
     slot.remove();
   });
+  site._websiteBreakTray?.remove();
+  site._websiteBreakTray = null;
 
   const reset = document.createElement("button");
   reset.className = "website-break-reset";
@@ -293,9 +306,53 @@ function activateWebsiteBreak() {
   }
   const maxDrops = Math.max(1, Math.min(5, candidates.length - 1));
   const dropCount = 1 + Math.floor(Math.random() * maxDrops);
+  const tray = document.createElement("div");
+  tray.className = "website-break-debris-tray";
+  tray.setAttribute("role", "group");
+  tray.setAttribute("aria-label", "Fallen cards. Hold and drag a card to move it.");
+  const trayLabel = document.createElement("span");
+  trayLabel.className = "website-break-debris-label";
+  trayLabel.textContent = "FALLEN CARDS · DRAG TO MOVE";
+  tray.append(trayLabel);
+  document.body.append(tray);
+  site._websiteBreakTray = tray;
+
+  const enableDrag = (card) => {
+    const controller = new AbortController();
+    card._websiteBreakDrag = controller;
+    let drag = null;
+    card.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0 || drag) return;
+      event.preventDefault();
+      const rect = card.getBoundingClientRect();
+      drag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, left: rect.left, top: rect.top };
+      card.classList.add("is-dragging");
+      card.style.position = "fixed";
+      card.style.left = `${rect.left}px`;
+      card.style.top = `${rect.top}px`;
+      card.style.zIndex = "10000";
+      card.style.margin = "0";
+      card.setPointerCapture(event.pointerId);
+    }, { signal: controller.signal });
+    card.addEventListener("pointermove", (event) => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      card.style.left = `${drag.left + event.clientX - drag.startX}px`;
+      card.style.top = `${drag.top + event.clientY - drag.startY}px`;
+    }, { signal: controller.signal });
+    const finishDrag = (event) => {
+      if (!drag || (event && event.pointerId !== drag.pointerId)) return;
+      drag = null;
+      card.classList.remove("is-dragging");
+    };
+    card.addEventListener("pointerup", finishDrag, { signal: controller.signal });
+    card.addEventListener("pointercancel", finishDrag, { signal: controller.signal });
+  };
+
   candidates.slice(0, dropCount).forEach((card, index) => {
     const slot = document.createElement("div");
     slot.className = "website-break-slot";
+    slot.style.height = `${card.getBoundingClientRect().height}px`;
+    slot._websiteBreakCard = card;
     const cardLayout = window.getComputedStyle(card);
     if (cardLayout.gridColumn !== "auto") slot.style.gridColumn = cardLayout.gridColumn;
     if (cardLayout.gridRow !== "auto") slot.style.gridRow = cardLayout.gridRow;
@@ -319,6 +376,25 @@ function activateWebsiteBreak() {
     card.style.setProperty("--break-delay", `${index * 110 + Math.random() * 180}ms`);
     slot.style.setProperty("--break-delay", card.style.getPropertyValue("--break-delay"));
     card.classList.add("easter-egg-fallen");
+
+    let landed = false;
+    const landCard = (event) => {
+      if (event && (event.target !== card || event.animationName !== "easter-egg-card-drop")) return;
+      if (landed || !site.classList.contains("is-website-broken") || !slot.isConnected) return;
+      landed = true;
+      window.clearTimeout(card._websiteBreakLandTimer);
+      card.removeEventListener("animationend", landCard);
+      card.classList.remove("easter-egg-fallen");
+      card.classList.add("website-break-debris-card");
+      card.style.setProperty("--debris-rotation", `${Math.round(Math.random() * 10 - 5)}deg`);
+      card.setAttribute("tabindex", "0");
+      card.setAttribute("aria-label", "Fallen card. Hold and drag to move it.");
+      tray.append(card);
+      enableDrag(card);
+    };
+    card.addEventListener("animationend", landCard);
+    const delayMs = Number.parseFloat(card.style.getPropertyValue("--break-delay")) || 0;
+    card._websiteBreakLandTimer = window.setTimeout(landCard, delayMs + 1300);
   });
 
   const sparkAt = (x, y) => {
@@ -349,15 +425,30 @@ function activateWebsiteBreak() {
     site.classList.remove("is-website-broken");
     reset.remove();
     site.querySelectorAll(".website-break-slot").forEach((slot) => {
-      const card = slot.querySelector(".easter-egg-fallen");
-      if (card) slot.before(card);
+      const card = slot._websiteBreakCard;
+      if (card) {
+        card._websiteBreakDrag?.abort();
+        window.clearTimeout(card._websiteBreakLandTimer);
+        card.classList.remove("easter-egg-fallen", "website-break-debris-card", "is-dragging");
+        card.style.removeProperty("--break-rotation");
+        card.style.removeProperty("--break-delay");
+        card.style.removeProperty("--debris-rotation");
+        card.style.removeProperty("position");
+        card.style.removeProperty("left");
+        card.style.removeProperty("top");
+        card.style.removeProperty("z-index");
+        card.style.removeProperty("margin");
+        card.style.removeProperty("transform");
+        card.removeAttribute("tabindex");
+        card.removeAttribute("aria-label");
+        slot.append(card);
+      }
+      slot.style.removeProperty("height");
+      slot.style.removeProperty("--break-delay");
       slot.remove();
     });
-    site.querySelectorAll(".easter-egg-fallen").forEach((card) => {
-      card.classList.remove("easter-egg-fallen");
-      card.style.removeProperty("--break-rotation");
-      card.style.removeProperty("--break-delay");
-    });
+    tray.remove();
+    site._websiteBreakTray = null;
   };
   reset.addEventListener("click", resetWebsite, { once: true });
   site._websiteBreakClickSparks = clickSparks;
