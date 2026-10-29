@@ -1,47 +1,83 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 720" fill="none">
   <defs>
-    <linearGradient id="gold" x1="20" y1="0" x2="190" y2="700" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#f8e4a0"/>
-      <stop offset=".48" stop-color="#d6af54"/>
-      <stop offset="1" stop-color="#8b6d31"/>
+    <linearGradient id="gold" x1="18" y1="0" x2="196" y2="710" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff0b0"/>
+      <stop offset=".52" stop-color="#e0b94f"/>
+      <stop offset="1" stop-color="#a7792d"/>
     </linearGradient>
+    <radialGradient id="bauble" cx="0" cy="0" r="1" gradientTransform="matrix(0 28 -28 0 98 585)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8a352c"/>
+      <stop offset="1" stop-color="#421a19"/>
+    </radialGradient>
+    <filter id="soft-glow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="2.2"/>
+    </filter>
   </defs>
-  <g stroke="url(#gold)" stroke-linecap="round" stroke-linejoin="round">
-    <!-- A quiet evergreen bough with warm lights -->
-    <path d="M8 26c40 25 82 28 132 4 24-12 48-18 72-16" stroke-width="1.6" opacity=".7"/>
-    <path d="m37 37-14-16m28 21L42 19m31 20L67 11m34 24-1-20m34 10 10-17m2 9 20 20m3-27 17 22m7-21 13 17" stroke-width="1.15" opacity=".58"/>
-    <path d="M28 30v16m46-6v14m54-22v16m47-24v17" stroke-width="1"/>
-    <circle cx="28" cy="48" r="4.5" fill="#e8c45f"/>
-    <circle cx="74" cy="55" r="4" fill="#c76d62"/>
-    <circle cx="128" cy="52" r="4.5" fill="#e8c45f"/>
-    <circle cx="175" cy="49" r="4" fill="#dce8c8"/>
 
-    <!-- Eight-point Bethlehem star -->
-    <path d="M109 103 115 119l16-6-6 16 16 7-16 6 6 16-16-6-6 16-6-16-16 6 6-16-16-6 16-7-6-16 16 6 6-16Z" stroke-width="1.7" fill="#d6af5424"/>
-    <path d="M109 111v50m-25-25h50m-42-17 34 34m0-34-34 34" stroke-width="1" opacity=".7"/>
-    <circle cx="109" cy="136" r="3.5" fill="#f3d985"/>
-
-    <!-- Orthodox cross, with its three bars and slanted footrest -->
-    <path d="M109 213v103m-17-79h34m-26-18h18m-29 54h42m-34 0-14 10m38-10 14 10" stroke-width="2"/>
-    <path d="M101 228h16m-24 9h32m-34 36h36m-14-58h-8" stroke-width="1.2"/>
-    <circle cx="109" cy="211" r="3" fill="#e8c45f"/>
-
-    <!-- A small evergreen tree, varied ornaments and a star -->
-    <path d="m166 383 8 15-13-3 11 15-18-2 14 17-23-2 14 17-31-2 23 20h-55l23-20-31 2 14-17-23 2 14-17-18 2 11-15-13 3 8-15 27 15 27-15Z" stroke-width="1.45" fill="#17221688"/>
-    <path d="M128 460v26m-13 0h26" stroke-width="2"/>
-    <path d="m128 367 4 8 9 1-7 6 2 9-8-5-8 5 2-9-7-6 9-1 4-8Z" stroke-width="1.4" fill="#e8c45f33"/>
-    <circle cx="112" cy="414" r="3.5" fill="#c76d62"/>
-    <circle cx="143" cy="420" r="3.5" fill="#e8c45f"/>
-    <circle cx="121" cy="438" r="3.5" fill="#dce8c8"/>
-    <circle cx="151" cy="442" r="3.5" fill="#c76d62"/>
-    <path d="M103 400h49m-63 19h77m-89 20h101" stroke-width=".8" opacity=".5"/>
-
-    <!-- Hanging ornament and scattered stars -->
-    <path d="M52 552v28m-5 0h10m-5 0c-14 5-18 20-11 31 8 13 25 13 33 0 7-11 3-26-11-31" stroke-width="1.35"/>
-    <path d="M52 589c-7 7-7 18 0 24 7-6 7-17 0-24Z" stroke-width="1"/>
-    <circle cx="52" cy="581" r="3" fill="#f1d378"/>
-    <path d="M179 564 183 575l11 4-11 4-4 11-4-11-11-4 11-4 4-11Zm-80 115 3 8 8 3-8 3-3 8-3-8-8-3 8-3 3-8Z" stroke-width="1.2" fill="#d6af541c"/>
-    <circle cx="34" cy="660" r="2.5" fill="#c76d62"/>
-    <circle cx="191" cy="665" r="2.5" fill="#e8c45f"/>
+  <!-- Full evergreen bough with warm bulbs -->
+  <path d="M10 31C48 52 82 49 112 38s62-28 98-17" stroke="#315032" stroke-width="8" stroke-linecap="round" opacity=".6"/>
+  <path d="M10 31C48 52 82 49 112 38s62-28 98-17" stroke="url(#gold)" stroke-width="1.8" stroke-linecap="round"/>
+  <g stroke="#547348" stroke-width="2" stroke-linecap="round">
+    <path d="m31 40-17-18m29 24L34 15m20 32L49 17m24 27L72 12m24 34L97 17m31 15 7-17m7 12 17 16m1-21 20 19m1-25 19 17m-162 7 10-8m30 14 11-9m38 0 10-12m50-2 10-10m14 15 12-9"/>
   </g>
+  <g fill="#ffda77">
+    <circle cx="38" cy="47" r="3.8"/><circle cx="80" cy="50" r="4.1"/>
+    <circle cx="126" cy="35" r="4.1"/><circle cx="175" cy="24" r="4.2"/>
+  </g>
+  <g fill="#ffda77" filter="url(#soft-glow)" opacity=".7">
+    <circle cx="38" cy="47" r="6"/><circle cx="80" cy="50" r="6"/>
+    <circle cx="126" cy="35" r="6"/><circle cx="175" cy="24" r="6"/>
+  </g>
+
+  <!-- Bethlehem star with eight long rays -->
+  <circle cx="110" cy="132" r="43" fill="#d6af5410"/>
+  <path d="m110 83 9 31 27-17-17 27 31 8-31 9 17 27-27-17-9 31-9-31-27 17 17-27-31-9 31-8-17-27 27 17 9-31Z" fill="#e7c76720" stroke="url(#gold)" stroke-width="2.2" stroke-linejoin="round"/>
+  <path d="m110 101 6 25 25 6-25 6-6 25-6-25-25-6 25-6 6-25Z" fill="#ffe9a1" stroke="#fff0bd" stroke-width="1.4" stroke-linejoin="round"/>
+  <circle cx="110" cy="132" r="5" fill="#fff3bc"/>
+
+  <!-- Orthodox cross: short upper bar, long crossbar and slanted footrest -->
+  <path d="M110 211v119" stroke="url(#gold)" stroke-width="5" stroke-linecap="round"/>
+  <path d="M99 225h22M73 254h74" stroke="url(#gold)" stroke-width="5" stroke-linecap="round"/>
+  <path d="m78 301 64-13" stroke="url(#gold)" stroke-width="4" stroke-linecap="round"/>
+  <path d="M110 204v7m0 119v10" stroke="#fff0b0" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="110" cy="208" r="5" fill="#e8c45f"/>
+  <path d="M93 218h34M67 254h86" stroke="#fff0b0" stroke-width="1" opacity=".7"/>
+
+  <!-- Layered evergreen with visible branches, a star and colorful baubles -->
+  <path d="M110 355c-9 15-17 24-31 32 10 4 20 3 31-3 11 6 21 7 31 3-14-8-22-17-31-32Z" fill="#213b25" stroke="#79904d" stroke-width="1.7" stroke-linejoin="round"/>
+  <path d="M110 378c-13 21-27 34-47 44 14 7 29 5 47-4 18 9 33 11 47 4-20-10-34-23-47-44Z" fill="#1b3421" stroke="#718a47" stroke-width="1.8" stroke-linejoin="round"/>
+  <path d="M110 408c-16 25-36 43-62 56 20 9 40 7 62-5 22 12 42 14 62 5-26-13-46-31-62-56Z" fill="#18301e" stroke="#718a47" stroke-width="1.8" stroke-linejoin="round"/>
+  <path d="M110 443c-20 29-44 50-74 66 24 11 49 9 74-6 25 15 50 17 74 6-30-16-54-37-74-66Z" fill="#14291b" stroke="#6d8544" stroke-width="1.9" stroke-linejoin="round"/>
+  <path d="M101 510h18v27h-18z" fill="#76502a" stroke="url(#gold)" stroke-width="1.3"/>
+  <path d="M110 345v191" stroke="#d3b25d" stroke-width="1.2" opacity=".65"/>
+  <path d="m110 344 4 8 9 1-7 6 2 9-8-5-8 5 2-9-7-6 9-1 4-8Z" fill="#ffe08a" stroke="#fff0ae" stroke-width="1.4" stroke-linejoin="round"/>
+  <g stroke="#f4dda0" stroke-width="1" opacity=".8">
+    <path d="M79 424v7m-3.5-3.5h7M139 437v7m-3.5-3.5h7M91 468v7m-3.5-3.5h7M128 487v7m-3.5-3.5h7"/>
+  </g>
+  <g stroke="#d4b257" stroke-width="1.2">
+    <path d="M88 421v8m44 8v8m-26 23v8m29 15v8"/>
+  </g>
+  <circle cx="88" cy="434" r="5" fill="#ba5143" stroke="#ffe09a" stroke-width="1.3"/>
+  <circle cx="132" cy="447" r="5" fill="#e5bd55" stroke="#fff0b0" stroke-width="1.3"/>
+  <circle cx="106" cy="470" r="5" fill="#d8e1c1" stroke="#fff0b0" stroke-width="1.3"/>
+  <circle cx="135" cy="502" r="5" fill="#ba5143" stroke="#ffe09a" stroke-width="1.3"/>
+
+  <!-- Hanging glass baubles with caps and painted bands -->
+  <path d="M54 565v14m-7 0h14" stroke="url(#gold)" stroke-width="2" stroke-linecap="round"/>
+  <path d="M54 579c-18 8-22 27-14 41 8 15 20 21 28 21s20-6 28-21c8-14 4-33-14-41" fill="url(#bauble)" stroke="url(#gold)" stroke-width="2"/>
+  <path d="M54 586c-8 9-11 20-8 31m8-31c10 9 12 20 8 31" stroke="#f0ce72" stroke-width="1.6" opacity=".9"/>
+  <path d="M45 614c6 5 12 7 18 7m-19-12c7 5 16 7 24 7" stroke="#e7bb53" stroke-width="1.3" opacity=".8"/>
+  <circle cx="47" cy="594" r="3" fill="#ffedac"/>
+
+  <path d="M163 580v11m-6 0h12" stroke="url(#gold)" stroke-width="2" stroke-linecap="round"/>
+  <path d="M163 591c-15 7-18 23-11 35 6 12 16 17 22 17s16-5 22-17c7-12 4-28-11-35" fill="#18333a" stroke="url(#gold)" stroke-width="2"/>
+  <path d="M163 598c-6 8-9 17-6 27m6-27c8 8 9 17 6 27" stroke="#b8d7c4" stroke-width="1.4" opacity=".9"/>
+  <circle cx="157" cy="600" r="2.8" fill="#fff0b0"/>
+
+  <!-- Snowflakes and a small hanging star -->
+  <g stroke="#e8d18c" stroke-width="1.7" stroke-linecap="round">
+    <path d="M36 680v26m-11-20 22 14m0-14-22 14m7-21 4 5 4-5m-8 22 4-5 4 5m-15-16 6 1m14 12-6-1"/>
+    <path d="m133 673 4 8 9 1-7 6 2 9-8-5-8 5 2-9-7-6 9-1 4-8Z" fill="#d6af5420"/>
+  </g>
+  <circle cx="187" cy="686" r="3" fill="#d6af54"/>
 </svg>
