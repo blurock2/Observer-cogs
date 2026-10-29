@@ -1421,3 +1421,11 @@ html[data-observer-theme="christmas"] .dashboard-shell .diary-entry-kind, html[d
 .break-warning-vignette { position: fixed; z-index: 9998; inset: 0; border: 1px solid #f3d476b8; box-shadow: inset 0 0 0 3px #f3d47624, inset 0 0 60px 14px #f3c94b3d; pointer-events: none; animation: break-warning-flash 1.35s steps(1,end) both; }
 @keyframes break-warning-flash { 0%,100% { opacity: 0; } 10%,34%,58% { opacity: .92; } 22%,46%,72% { opacity: .16; } 88% { opacity: .42; } }
 @media (prefers-reduced-motion: reduce) { .break-warning-vignette { animation: none; opacity: .55; } }
+.website-break-debris-tray { position: fixed; z-index: 9990; right: 12px; bottom: 12px; left: 12px; display: flex; align-items: flex-end; justify-content: center; gap: 10px; max-height: 32vh; overflow-x: auto; overflow-y: visible; padding: 12px 8px 4px; pointer-events: none; scrollbar-width: none; }
+.website-break-debris-tray::-webkit-scrollbar { display: none; }
+.website-break-debris-label { flex: 0 0 auto; align-self: flex-end; margin: 0 2px 8px 0; color: #a8c5c2; font: 650 8px/1.4 ui-monospace,monospace; letter-spacing: 1px; text-shadow: 0 2px 8px #000; white-space: nowrap; }
+.website-break-debris-card { flex: 0 0 clamp(126px,18vw,210px) !important; width: clamp(126px,18vw,210px) !important; height: 132px !important; min-height: 0 !important; max-height: 132px !important; margin: 0 !important; padding: 12px !important; overflow: hidden !important; border-radius: 9px !important; cursor: grab; pointer-events: auto; touch-action: none; user-select: none; transform: rotate(var(--debris-rotation)) scale(.98); box-shadow: 0 12px 34px #000a, 0 0 20px #55d9e526; animation: break-card-land .32s cubic-bezier(.16,.8,.22,1) both; }
+.website-break-debris-card.is-dragging { z-index: 10000 !important; cursor: grabbing; transform: rotate(0deg) scale(1.04); box-shadow: 0 18px 42px #000d, 0 0 28px #55d9e54d; }
+.website-break-debris-card h3 { font-size: 13px !important; }
+.website-break-debris-card p { font-size: 9px !important; line-height: 1.35 !important; }
+@keyframes break-card-land { from { opacity: 0; transform: translateY(22px) rotate(var(--debris-rotation)) scale(.92); } to { opacity: 1; transform: translateY(0) rotate(var(--debris-rotation)) scale(.98); } }
