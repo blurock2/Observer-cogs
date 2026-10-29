@@ -144,9 +144,19 @@ class ActivityServer:
                     discord_user_id TEXT PRIMARY KEY,
                     theme TEXT NOT NULL DEFAULT 'observer',
                     theme_unlocked INTEGER NOT NULL DEFAULT 0,
+                    christmas_unlocked INTEGER NOT NULL DEFAULT 0,
                     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )"""
             )
+            preference_columns = {
+                row["name"]
+                for row in db.execute("PRAGMA table_info(website_user_preferences)").fetchall()
+            }
+            if "christmas_unlocked" not in preference_columns:
+                db.execute(
+                    "ALTER TABLE website_user_preferences "
+                    "ADD COLUMN christmas_unlocked INTEGER NOT NULL DEFAULT 0"
+                )
             db.execute("DELETE FROM activity_sessions WHERE expires_at <= ?", (datetime.now(timezone.utc).timestamp(),))
             db.execute(
                 """CREATE TABLE IF NOT EXISTS custom_embed_messages (
@@ -452,14 +462,15 @@ class ActivityServer:
         user_id = str(session["user"].get("id", ""))
         with connect_sqlite(DB_PATH) as db:
             row = db.execute(
-                "SELECT theme, theme_unlocked FROM website_user_preferences WHERE discord_user_id = ?",
+                "SELECT theme, theme_unlocked, christmas_unlocked FROM website_user_preferences WHERE discord_user_id = ?",
                 (user_id,),
             ).fetchone()
         return web.json_response(
             {
                 "exists": row is not None,
-                "theme": row["theme"] if row and row["theme"] in {"observer", "error"} else "observer",
+                "theme": row["theme"] if row and row["theme"] in {"observer", "error", "christmas"} else "observer",
                 "theme_unlocked": bool(row["theme_unlocked"]) if row else False,
+                "christmas_unlocked": bool(row["christmas_unlocked"]) if row else False,
             },
             headers={"Cache-Control": "no-store"},
         )
@@ -473,21 +484,23 @@ class ActivityServer:
         if not isinstance(payload, dict):
             raise web.HTTPBadRequest(text="Theme preferences must be an object")
         theme = payload.get("theme", "observer")
-        if theme not in {"observer", "error"}:
-            raise web.HTTPBadRequest(text="Choose Observer theme or Error theme")
+        if theme not in {"observer", "error", "christmas"}:
+            raise web.HTTPBadRequest(text="Choose Observer, Error, or Orthodox Christmas theme")
         unlocked = payload.get("theme_unlocked") is True
+        christmas_unlocked = payload.get("christmas_unlocked") is True
         user_id = str(session["user"].get("id", ""))
         with connect_sqlite(DB_PATH) as db:
             db.execute(
-                """INSERT INTO website_user_preferences (discord_user_id, theme, theme_unlocked)
-                   VALUES (?, ?, ?)
+                """INSERT INTO website_user_preferences (discord_user_id, theme, theme_unlocked, christmas_unlocked)
+                   VALUES (?, ?, ?, ?)
                    ON CONFLICT(discord_user_id) DO UPDATE SET
                        theme = excluded.theme,
                        theme_unlocked = MAX(website_user_preferences.theme_unlocked, excluded.theme_unlocked),
+                       christmas_unlocked = MAX(website_user_preferences.christmas_unlocked, excluded.christmas_unlocked),
                        updated_at = CURRENT_TIMESTAMP""",
-                (user_id, theme, int(unlocked)),
+                (user_id, theme, int(unlocked), int(christmas_unlocked)),
             )
-        return web.json_response({"ok": True, "theme": theme, "theme_unlocked": unlocked}, headers={"Cache-Control": "no-store"})
+        return web.json_response({"ok": True, "theme": theme, "theme_unlocked": unlocked, "christmas_unlocked": christmas_unlocked}, headers={"Cache-Control": "no-store"})
 
     async def _user_guilds(self, session: dict) -> list[dict]:
         if "guilds" in session:
