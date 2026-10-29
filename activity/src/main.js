@@ -16,17 +16,16 @@ function discordIcon() {
 }
 
 function brand() { return `<a class="brand" href="/" aria-label="Observer home"><span class="brand-mark"><img src="/observer.png?v=3" alt=""></span><span>OBSERVER</span></a>`; }
-function ensurePolicyFooter() {
-  if (!root.firstElementChild) return;
-  const links = '<nav class="policy-footer-links" aria-label="Legal links"><a href="/privacy">Privacy Policy</a><a href="/terms">Terms of Service</a></nav>';
-  const siteFooter = root.querySelector(".site-footer");
-  if (siteFooter) {
-    if (!siteFooter.querySelector(".policy-footer-links")) (siteFooter.querySelector(".footer-links") || siteFooter).insertAdjacentHTML("beforeend", links);
-  } else if (!root.querySelector(".site-policy-footer")) {
-    root.insertAdjacentHTML("beforeend", '<footer class="site-policy-footer"><span>Observer</span>' + links + '</footer>');
-  }
+function sharedFooter() {
+  return `<footer class="site-footer shared-site-footer"><div class="footer-brand">${brand()}<small>&#169; ${new Date().getFullYear()} Blurock2 / Fedja Podobnik.</small></div><div class="shared-footer-main"><nav class="footer-links" aria-label="Footer links"><a href="https://github.com/blurock2/Observer-cogs" target="_blank" rel="noreferrer">Source code</a><a href="https://my-website.rockus26.workers.dev/#projects" target="_blank" rel="noreferrer">Creator portfolio</a><a href="https://discord.gg/tccYb2XSxR" target="_blank" rel="noreferrer">Support server</a><a href="/privacy">Privacy Policy</a><a href="/terms">Terms of Service</a></nav><div class="footer-meta"><span class="footer-disclaimer">Not affiliated with Discord Inc.</span><a class="footer-top" href="#top" onclick="window.scrollTo({top:0,behavior:'smooth'});return false">BACK TO TOP &#8593;</a></div></div></footer>`;
 }
-new MutationObserver(ensurePolicyFooter).observe(root, { childList: true });
+function ensureSiteFooter() {
+  if (!root.firstElementChild || root.querySelector(".shared-site-footer")) return;
+  const oldFooter = root.querySelector(".site-footer, .site-policy-footer");
+  if (oldFooter) oldFooter.outerHTML = sharedFooter();
+  else root.insertAdjacentHTML("beforeend", sharedFooter());
+}
+new MutationObserver(ensureSiteFooter).observe(root, { childList: true });
 
 async function loadLanding() {
   const session = await api("/api/session");
