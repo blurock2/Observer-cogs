@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 720" fill="none">
+  <defs>
+    <linearGradient id="gold" x1="20" y1="0" x2="190" y2="700" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f8e4a0"/>
+      <stop offset=".48" stop-color="#d6af54"/>
+      <stop offset="1" stop-color="#8b6d31"/>
+    </linearGradient>
+  </defs>
+  <g stroke="url(#gold)" stroke-linecap="round" stroke-linejoin="round">
+    <!-- A quiet evergreen bough with warm lights -->
+    <path d="M8 26c40 25 82 28 132 4 24-12 48-18 72-16" stroke-width="1.6" opacity=".7"/>
+    <path d="m37 37-14-16m28 21L42 19m31 20L67 11m34 24-1-20m34 10 10-17m2 9 20 20m3-27 17 22m7-21 13 17" stroke-width="1.15" opacity=".58"/>
+    <path d="M28 30v16m46-6v14m54-22v16m47-24v17" stroke-width="1"/>
+    <circle cx="28" cy="48" r="4.5" fill="#e8c45f"/>
+    <circle cx="74" cy="55" r="4" fill="#c76d62"/>
+    <circle cx="128" cy="52" r="4.5" fill="#e8c45f"/>
+    <circle cx="175" cy="49" r="4" fill="#dce8c8"/>
+
+    <!-- Eight-point Bethlehem star -->
+    <path d="M109 103 115 119l16-6-6 16 16 7-16 6 6 16-16-6-6 16-6-16-16 6 6-16-16-6 16-7-6-16 16 6 6-16Z" stroke-width="1.7" fill="#d6af5424"/>
+    <path d="M109 111v50m-25-25h50m-42-17 34 34m0-34-34 34" stroke-width="1" opacity=".7"/>
+    <circle cx="109" cy="136" r="3.5" fill="#f3d985"/>
+
+    <!-- Orthodox cross, with its three bars and slanted footrest -->
+    <path d="M109 213v103m-17-79h34m-26-18h18m-29 54h42m-34 0-14 10m38-10 14 10" stroke-width="2"/>
+    <path d="M101 228h16m-24 9h32m-34 36h36m-14-58h-8" stroke-width="1.2"/>
+    <circle cx="109" cy="211" r="3" fill="#e8c45f"/>
+
+    <!-- A small evergreen tree, varied ornaments and a star -->
+    <path d="m166 383 8 15-13-3 11 15-18-2 14 17-23-2 14 17-31-2 23 20h-55l23-20-31 2 14-17-23 2 14-17-18 2 11-15-13 3 8-15 27 15 27-15Z" stroke-width="1.45" fill="#17221688"/>
+    <path d="M128 460v26m-13 0h26" stroke-width="2"/>
+    <path d="m128 367 4 8 9 1-7 6 2 9-8-5-8 5 2-9-7-6 9-1 4-8Z" stroke-width="1.4" fill="#e8c45f33"/>
+    <circle cx="112" cy="414" r="3.5" fill="#c76d62"/>
+    <circle cx="143" cy="420" r="3.5" fill="#e8c45f"/>
+    <circle cx="121" cy="438" r="3.5" fill="#dce8c8"/>
+    <circle cx="151" cy="442" r="3.5" fill="#c76d62"/>
+    <path d="M103 400h49m-63 19h77m-89 20h101" stroke-width=".8" opacity=".5"/>
+
+    <!-- Hanging ornament and scattered stars -->
+    <path d="M52 552v28m-5 0h10m-5 0c-14 5-18 20-11 31 8 13 25 13 33 0 7-11 3-26-11-31" stroke-width="1.35"/>
+    <path d="M52 589c-7 7-7 18 0 24 7-6 7-17 0-24Z" stroke-width="1"/>
+    <circle cx="52" cy="581" r="3" fill="#f1d378"/>
+    <path d="M179 564 183 575l11 4-11 4-4 11-4-11-11-4 11-4 4-11Zm-80 115 3 8 8 3-8 3-3 8-3-8-8-3 8-3 3-8Z" stroke-width="1.2" fill="#d6af541c"/>
+    <circle cx="34" cy="660" r="2.5" fill="#c76d62"/>
+    <circle cx="191" cy="665" r="2.5" fill="#e8c45f"/>
+  </g>
+</svg>
