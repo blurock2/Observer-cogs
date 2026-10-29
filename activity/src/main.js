@@ -1,4 +1,5 @@
 import "./style.css";
+import christmasNativityAsset from "./assets/christmas-nativity.svg";
 
 const root = document.querySelector("#app");
 const esc = (value = "") => String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
@@ -360,7 +361,7 @@ async function loadLanding() {
           <div class="hero-actions">${session.signed_in ? `<button type="button" class="button button-primary" id="open-dashboard-hero">Manage your servers</button>` : `<a class="button button-primary" href="${loginUrl}">${discordIcon()} Continue with Discord</a>`}<a class="button button-quiet" href="#features">Explore Observer <span>↓</span></a></div>
           <div class="hero-note"><span class="note-check">✓</span> Discord sign-in · servers you own or moderate</div>
         </div>
-        <div class="hero-art" aria-label="Preview of Observer moderation dashboard"><div class="christmas-nativity" aria-hidden="true"><img src="/christmas-nativity.svg" alt=""></div>
+        <div class="hero-art" aria-label="Preview of Observer moderation dashboard"><div class="christmas-nativity" aria-hidden="true"><img src="${christmasNativityAsset}" alt=""></div>
           <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
           <div class="preview-card"><div class="preview-head"><div class="preview-brand"><span class="mini-mark"><img src="/observer.png?v=3" alt=""></span><span>OBSERVER</span></div><span class="preview-live"><i></i> ALL SYSTEMS READY</span></div>
             <div class="preview-title"><div><span class="eyebrow">SERVER OVERVIEW</span><h2>Good evening, team.</h2></div><span class="server-pill"><span class="server-glyph">&#9672;</span> Your community</span></div>
