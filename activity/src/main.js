@@ -45,6 +45,43 @@ setInterval(refreshLiveStats, 60_000);
 
 const liveStatusClickTimes = new WeakMap();
 
+const liveThemeUnlockedKey = "observer-live-theme-unlocked";
+const liveThemeChoiceKey = "observer-live-theme";
+
+function initLiveThemePicker() {
+  const shell = root.querySelector(".site-shell");
+  const stats = root.querySelector(".live-stats-section");
+  if (!shell || !stats) return;
+  stats.insertAdjacentHTML("beforeend", `<div class="live-theme-picker" id="live-theme-picker" hidden aria-labelledby="live-theme-heading"><div class="live-theme-copy"><div class="eyebrow">EASTER EGG UNLOCKED</div><h3 id="live-theme-heading">Choose a theme.</h3><p>Your choice is saved in this browser.</p></div><div class="live-theme-choices" role="group" aria-label="Choose website theme"><button type="button" data-site-theme-choice="observer" aria-pressed="true">Black &amp; cyan<span>Observer</span></button><button type="button" data-site-theme-choice="red-alert" aria-pressed="false">Dark red, red &amp; black<span>Red alert</span></button></div></div>`);
+  const panel = root.querySelector("#live-theme-picker");
+  if (!panel) return;
+  let unlocked = false;
+  let savedTheme = "observer";
+  try {
+    unlocked = localStorage.getItem(liveThemeUnlockedKey) === "true";
+    savedTheme = localStorage.getItem(liveThemeChoiceKey) === "red-alert" ? "red-alert" : "observer";
+  } catch { /* Theme preference is optional when browser storage is unavailable. */ }
+  shell.dataset.theme = savedTheme;
+  panel.hidden = !unlocked;
+  panel.querySelectorAll("[data-site-theme-choice]").forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.siteThemeChoice === savedTheme));
+    button.addEventListener("click", () => {
+      const theme = button.dataset.siteThemeChoice === "red-alert" ? "red-alert" : "observer";
+      shell.dataset.theme = theme;
+      panel.querySelectorAll("[data-site-theme-choice]").forEach((choice) => {
+        choice.setAttribute("aria-pressed", String(choice === button));
+      });
+      try { localStorage.setItem(liveThemeChoiceKey, theme); } catch { /* Keep the selection for this page view. */ }
+    });
+  });
+}
+
+function unlockLiveThemes() {
+  try { localStorage.setItem(liveThemeUnlockedKey, "true"); } catch { /* Unlock for this page view even without storage. */ }
+  const picker = root.querySelector("#live-theme-picker");
+  if (picker) picker.hidden = false;
+}
+
 function playLiveStatusEasterEgg(card) {
   if (card.dataset.glitching) return;
   const section = card.closest(".live-stats-section");
@@ -110,6 +147,7 @@ function playLiveStatusEasterEgg(card) {
     delete card.dataset.glitching;
     effect?.remove();
     reducedNote?.remove();
+    unlockLiveThemes();
   }, 4700);
 }
 
@@ -182,6 +220,7 @@ async function loadLanding() {
     </main><footer class="site-footer"><div class="footer-brand">${brand()}<small>© ${new Date().getFullYear()} Observer. Independent community software.</small></div><div class="footer-links"><a href="${esc(publicInfo.source_url)}" target="_blank" rel="noreferrer">Source code</a><a href="${esc(publicInfo.portfolio_url)}" target="_blank" rel="noreferrer">Creator portfolio</a><a href="${esc(publicInfo.support_url)}" target="_blank" rel="noreferrer">Support</a><details class="footer-legal"><summary>Privacy &amp; terms</summary><div class="legal-copy"><section><h3>Privacy</h3><p>Sign-in uses Discord OAuth to identify you and list servers where you are an owner or have moderation permissions. Observer stores a protected sign-in session, your basic Discord profile, and that manageable-server list for up to seven days. Discord access tokens are not stored. Server configuration changes are saved in Observer&#8217;s database for the bot to use.</p><p>You can end your sign-in session with “Sign out”. Contact the creator through the support server for questions about stored information.</p></section><section><h3>Terms</h3><p>Use Observer only in servers you own or are authorized to manage. Dashboard changes apply to the connected server and may affect its members. You are responsible for reviewing settings, permissions, and applicable laws before enabling features.</p><p>Observer is provided as an independent community project and is not affiliated with or endorsed by Discord Inc. Service availability and features may change.</p></section></div></details></div><span class="footer-disclaimer">Not affiliated with Discord Inc.</span><a class="footer-top" href="#top" onclick="window.scrollTo({top:0,behavior:'smooth'});return false">BACK TO TOP ↑</a></footer>
   </div>`;
   initLandingScrollReveal();
+  initLiveThemePicker();
   root.querySelector("#live-stat-card")?.addEventListener("click", (event) => trackLiveStatusClick(event.currentTarget));
   document.querySelectorAll("#open-dashboard, #open-dashboard-hero, #open-dashboard-workflow").forEach((button) => button.addEventListener("click", openDashboard));
   void loadPublicUpdates();
