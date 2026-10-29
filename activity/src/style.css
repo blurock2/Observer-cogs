@@ -1321,3 +1321,14 @@ html[data-observer-theme="christmas"] .dashboard-shell {
     background-size: 18px 560px, 18px 560px, auto, auto;
   }
 }
+
+
+/* Keep the saved-message picker compact and free of seasonal overlays. */
+html[data-observer-theme="christmas"] .dashboard-shell .saved-message-item::before,
+html[data-observer-theme="christmas"] .dashboard-shell .saved-message-item::after {
+  content: none;
+  display: none;
+  background: none;
+  filter: none;
+  box-shadow: none;
+}
