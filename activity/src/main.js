@@ -337,10 +337,10 @@ function activateWebsiteBreak() {
       if (event.button !== 0 || drag) return;
       event.preventDefault();
       const rect = card.getBoundingClientRect();
-      const trayRect = tray.getBoundingClientRect();
-      drag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, left: rect.left - trayRect.left, top: rect.top - trayRect.top };
+      drag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, left: rect.left, top: rect.top };
+      document.body.append(card);
       card.classList.add("is-dragging");
-      card.style.position = "absolute";
+      card.style.position = "fixed";
       card.style.left = `${drag.left}px`;
       card.style.top = `${drag.top}px`;
       card.style.zIndex = "10000";
@@ -351,8 +351,8 @@ function activateWebsiteBreak() {
     }, { signal: controller.signal });
     card.addEventListener("pointermove", (event) => {
       if (!drag || event.pointerId !== drag.pointerId) return;
-      const maxLeft = Math.max(0, tray.clientWidth - card.offsetWidth);
-      const maxTop = Math.max(0, tray.clientHeight - card.offsetHeight);
+      const maxLeft = Math.max(0, window.innerWidth - card.offsetWidth);
+      const maxTop = Math.max(0, window.innerHeight - card.offsetHeight);
       const left = Math.min(maxLeft, Math.max(0, drag.left + event.clientX - drag.startX));
       const top = Math.min(maxTop, Math.max(0, drag.top + event.clientY - drag.startY));
       card.style.left = `${left}px`;
