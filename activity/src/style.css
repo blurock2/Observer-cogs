@@ -1412,7 +1412,16 @@ html[data-observer-theme="christmas"] .dashboard-shell .diary-entry-kind, html[d
 .website-break-landing-slot { min-width: 0; min-height: 100px; border: 1px dashed #344649; border-radius: 10px; background: linear-gradient(145deg,#101619,#0b0f10); transition: border-color .25s, background .25s; }
 .website-break-landing-slot.has-card { border-color: transparent; background: transparent; }
 .website-break-debris-card { position: relative; z-index: 2; margin: 0 !important; cursor: grab; touch-action: none; user-select: none; transform: rotate(var(--debris-rotation)); transition: box-shadow .18s, transform .18s; animation: break-card-land .28s ease both; }
+.website-break-debris-card.website-break-workflow-card { display: flex; align-items: flex-start; gap: 14px; width: 100%; min-height: 145px; padding: 20px; border: 1px solid #29383c; border-radius: 10px; background: linear-gradient(145deg,#12191b,#0e1214); }
+.website-break-workflow-card > span { display: grid; place-items: center; width: 30px; height: 30px; flex: 0 0 30px; border: 1px solid #31535a; border-radius: 8px; color: #62d8e4; font: 10px ui-monospace,monospace; }
+.website-break-workflow-card h3 { margin: 2px 0 7px; color: #eaf3f4; font: 600 15px/1.4 system-ui,sans-serif; }
+.website-break-workflow-card p { margin: 0; color: #94a2a4; font-size: 11px; line-height: 1.7; }
 .website-break-debris-card.is-dragging { z-index: 10000 !important; cursor: grabbing; transform: rotate(0deg); box-shadow: 0 18px 42px #000c, 0 0 0 1px #55d9e566; }
+html[data-observer-theme="error"] .site-shell .website-break-workflow-card { border-color: #40252a; background: linear-gradient(145deg,#1a1114,#101012); }
+html[data-observer-theme="error"] .site-shell .website-break-workflow-card > span { border-color: #632a32; color: #ff4b5e; }
+html[data-observer-theme="error"] .site-shell .website-break-workflow-card h3 { color: #f0e9ea; }
+html[data-observer-theme="christmas"] .site-shell .website-break-workflow-card { border-color: #59482a; background: linear-gradient(145deg,#1b170f,#110f0a); }
+html[data-observer-theme="christmas"] .site-shell .website-break-workflow-card > span { border-color: #806733; color: #e8c45f; }
 html[data-observer-theme="error"] .site-shell .website-break-debris-area { border-color: #572c34; background: linear-gradient(145deg,#1a1215,#100e10); }
 html[data-observer-theme="error"] .site-shell .website-break-debris-heading .eyebrow { color: #ff6671; }
 html[data-observer-theme="christmas"] .site-shell .website-break-debris-area { border-color: #59482a; background: linear-gradient(145deg,#1b170f,#110f0a); }
