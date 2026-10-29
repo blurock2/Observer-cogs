@@ -284,9 +284,10 @@ function activateWebsiteBreak() {
       card.style.removeProperty("transform");
       card.removeAttribute("tabindex");
       card.removeAttribute("aria-label");
-      slot.append(card);
+      slot.replaceWith(card);
+    } else {
+      slot.remove();
     }
-    slot.remove();
   });
   site._websiteBreakDebrisArea?.remove();
   site._websiteBreakDebrisArea = null;
@@ -501,11 +502,10 @@ function activateWebsiteBreak() {
         card.style.removeProperty("transform");
         card.removeAttribute("tabindex");
         card.removeAttribute("aria-label");
-        slot.append(card);
+        slot.replaceWith(card);
+      } else {
+        slot.remove();
       }
-      slot.style.removeProperty("height");
-      slot.style.removeProperty("--break-delay");
-      slot.remove();
     });
     debrisArea.remove();
     site._websiteBreakDebrisArea = null;
