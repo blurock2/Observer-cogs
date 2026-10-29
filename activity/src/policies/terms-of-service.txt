@@ -1,0 +1,105 @@
+TERMS OF SERVICE
+Last Updated: October 7, 2026
+These Terms of Service ("Terms") govern the use of Observer ("the Bot"), operated by
+Fedja Podobnik – bluerock2 ("Bot Owner", "we", "us", or "our").
+By adding, accessing, or using Observer, you ("User", "you", or "your") agree to these
+Terms. If you do not agree with these Terms, you must discontinue use of the Bot.
+1. Use of Observer
+The Bot Owner grants you a limited, non-exclusive, non-transferable, and revocable right to
+use Observer in accordance with these Terms.
+You are responsible for ensuring that your use of Observer complies with Discord's Terms of
+Service, Community Guidelines, and all applicable laws and regulations.
+2. Prohibited Use
+You may not use Observer:
+● For unlawful, fraudulent, abusive, or malicious purposes.
+● In a way that violates Discord's Terms of Service or Community Guidelines.
+● To harass, threaten, exploit, or otherwise harm another person.
+● To interfere with, disrupt, exploit, or attempt to gain unauthorized access to Observer
+or its infrastructure.
+● To intentionally abuse commands, features, bugs, vulnerabilities, or automated
+systems.
+● To copy, redistribute, sell, sublicense, or impersonate Observer without permission
+from the Bot Owner.
+The Bot Owner reserves the right to restrict or revoke access to Observer if these Terms are
+violated.
+
+3. Availability and Service Changes
+Observer is provided on an "as is" and "as available" basis.
+The Bot Owner does not guarantee that Observer will always be available, uninterrupted,
+secure, or free from errors.
+Observer may be updated, modified, suspended, or discontinued at any time. Features may
+also be added, changed, restricted, or removed without prior notice.
+The Bot Owner shall not be liable for losses resulting from downtime, feature changes,
+service interruptions, or discontinuation of the Bot.
+4. Limitation of Liability
+To the fullest extent permitted by applicable law, the Bot Owner shall not be liable for any
+direct, indirect, incidental, special, consequential, or other damages resulting from:
+● The use or inability to use Observer.
+● Loss of data or server configuration.
+● Service interruptions or downtime.
+● Actions performed using Observer's moderation or administrative features.
+● Unauthorized access to or alteration of information.
+● Reliance on information provided by Observer.
+Server owners and administrators remain responsible for how they configure and use
+Observer within their Discord servers.
+5. User Responsibility
+Users are responsible for commands and actions they perform through Observer.
+Server owners and administrators are responsible for configuring the Bot appropriately,
+assigning suitable permissions, and determining which users or roles may access
+administrative or moderation features.
+The Bot Owner is not responsible for actions taken by server administrators, moderators, or
+other authorized users through Observer.
+
+6. Intellectual Property
+Observer, including its name, branding, software, original content, and related materials,
+remains the property of the Bot Owner unless otherwise stated.
+You may not copy, reproduce, modify, redistribute, sell, sublicense, or represent Observer or
+its source code as your own without permission from the Bot Owner, except where explicitly
+permitted by an applicable open-source license.
+7. Suspension and Termination
+The Bot Owner may suspend, restrict, or terminate access to Observer at any time where
+reasonably necessary, including in cases of:
+● Abuse of the Bot or its infrastructure.
+● Violation of these Terms.
+● Security concerns.
+● Attempts to exploit vulnerabilities.
+● Activity that may harm Observer, its users, or Discord communities.
+You may stop using Observer at any time by removing the Bot from your Discord server or
+ceasing interaction with it.
+8. Data and Privacy
+Observer may process information necessary to provide its features, including Discord user
+IDs, server IDs, channel IDs, role IDs, message-related information, configuration settings,
+moderation records, and other data required by enabled features.
+The handling of such information may be described separately in Observer's Privacy
+Policy.
+By using Observer, you acknowledge that limited Discord-related information may be
+processed as necessary for the Bot to operate.
+
+9. Third-Party Services
+Observer operates through Discord and may interact with third-party services or APIs.
+The Bot Owner is not responsible for the availability, operation, policies, or actions of
+Discord or other third-party services.
+Your use of those services remains subject to their respective terms and policies.
+10. Indemnification
+To the extent permitted by applicable law, you agree to hold the Bot Owner harmless from
+claims, liabilities, damages, losses, and reasonable costs arising from your misuse of
+Observer, violation of these Terms, or violation of the rights of another person.
+11. Changes to These Terms
+These Terms may be updated from time to time to reflect changes to Observer, legal
+requirements, security practices, or operational policies.
+Continued use of Observer after updated Terms take effect constitutes acceptance of the
+revised Terms.
+The date at the top of this document indicates when these Terms were last updated.
+12. Governing Law
+These Terms shall be governed by and interpreted in accordance with the laws of the
+Republic of Slovenia, without regard to conflict-of-law principles.
+13. Severability
+If any provision of these Terms is found to be invalid, unlawful, or unenforceable, the
+remaining provisions shall remain in effect.
+14. Entire Agreement
+These Terms constitute the agreement between the User and the Bot Owner regarding the
+
+use of Observer and supersede previous agreements or representations concerning the Bot,
+unless otherwise expressly agreed in writing.
+By using Observer, you acknowledge that you have read, understood, and agreed to these
+Terms of Service.
