@@ -716,17 +716,17 @@ body.modal-open { overflow: hidden; }
 .live-stat-clickable { width: 100%; color: inherit; font: inherit; cursor: pointer; appearance: none; }
 .live-stat-clickable:focus-visible { outline: 2px solid #42d7e8; outline-offset: 4px; }
 .live-stat-clickable.is-glitching { z-index: 3; border-color: #ff5368; background: linear-gradient(145deg, #24151a, #151114); box-shadow: 0 0 0 1px #ff53684d, 0 0 28px #ff33443b; animation: live-stat-jitter .12s linear 7; }
-.live-status-chaos { position: absolute; z-index: 6; inset: -24px -16px -22px; overflow: visible; pointer-events: none; }
-.live-status-rain-log { position: absolute; top: -42px; z-index: 7; display: block; max-width: min(320px, 75vw); overflow: hidden; padding: 6px 8px; border: 1px solid #ff5268a6; border-radius: 5px; background: #211116eF; color: #ff8290; box-shadow: 0 7px 23px #0009, 0 0 15px #ff33442b; font: 650 9px/1.3 ui-monospace, monospace; letter-spacing: .15px; white-space: nowrap; text-overflow: ellipsis; animation: status-code-rain var(--rain-duration) var(--rain-delay) linear both; }
+.live-status-chaos { position: absolute; z-index: 6; inset: -20px -16px; overflow: visible; pointer-events: none; }
+.live-status-rain-log { position: absolute; top: 50%; z-index: 7; display: block; max-width: min(320px, 75vw); overflow: hidden; padding: 6px 8px; border: 1px solid #ff5268a6; border-radius: 5px; background: #211116eF; color: #ff8290; box-shadow: 0 7px 23px #0009, 0 0 15px #ff33442b; font: 650 9px/1.3 ui-monospace, monospace; letter-spacing: .15px; white-space: nowrap; text-overflow: ellipsis; animation: status-code-rain var(--rain-duration) var(--rain-delay) linear both; }
 .live-status-rain-log-1 { color: #ff9a8f; border-color: #ff806a9c; }
 .live-status-rain-log-2 { color: #ff7186; border-color: #ff52686f; }
-.live-status-confetti { position: absolute; z-index: 8; display: block; width: 7px; height: 11px; border-radius: 2px; background: var(--confetti-color); box-shadow: 0 0 9px color-mix(in srgb, var(--confetti-color), transparent 35%); animation: status-confetti-pop 1.9s var(--confetti-delay) cubic-bezier(.15,.75,.3,1) both; }
+.live-status-spark { position: absolute; z-index: 8; display: block; width: 3px; height: 15px; border-radius: 99px; background: var(--spark-color); box-shadow: 0 0 8px color-mix(in srgb, var(--spark-color), transparent 25%); transform: translate(-50%,-50%) rotate(var(--spark-rotation)) scale(.35); animation: status-spark-burst 1.35s var(--spark-delay) cubic-bezier(.12,.72,.26,1) both; }
 .live-status-reduced-note { position: absolute; z-index: 8; top: 50%; left: 50%; width: max-content; max-width: 90%; padding: 8px 10px; transform: translate(-50%,-50%); border: 1px solid #ff5368; border-radius: 6px; background: #211116; color: #ff8290; font: 650 9px/1.4 ui-monospace, monospace; text-align: center; }
-@keyframes status-code-rain { 0% { opacity: 0; transform: translateY(-25px) skew(-5deg); } 12% { opacity: .96; } 82% { opacity: .85; } 100% { opacity: 0; transform: translate(var(--rain-drift), 430px) skew(0); } }
-@keyframes status-confetti-pop { 0% { opacity: 0; transform: translate(0,0) rotate(0) scale(.55); } 12% { opacity: 1; } 100% { opacity: 0; transform: translate(var(--confetti-x),var(--confetti-y)) rotate(var(--confetti-rotation)) scale(1); } }
+@keyframes status-code-rain { 0% { opacity: 0; transform: translateY(-50%) skew(-5deg) scale(.9); } 12% { opacity: .96; } 82% { opacity: .85; } 100% { opacity: 0; transform: translate(var(--rain-drift), 235px) skew(0) scale(1); } }
+@keyframes status-spark-burst { 0% { opacity: 0; transform: translate(-50%,-50%) rotate(var(--spark-rotation)) scale(.25); } 12% { opacity: 1; } 100% { opacity: 0; transform: translate(calc(-50% + var(--spark-x)),calc(-50% + var(--spark-y))) rotate(var(--spark-rotation)) scale(.7); } }
 @keyframes live-stat-jitter { 0%, 100% { transform: translate(0); } 25% { transform: translate(1px, -1px); } 75% { transform: translate(-1px, 1px); } }
 @media (prefers-reduced-motion: reduce) {
   .live-stat, .live-stat:hover, .live-stat:focus-within { transition: none; transform: none; }
   .live-stat-clickable.is-glitching { animation: none; }
-  .live-status-chaos, .live-status-confetti, .live-status-rain-log { animation: none; }
+  .live-status-chaos, .live-status-spark, .live-status-rain-log { animation: none; }
 }
