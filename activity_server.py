@@ -139,6 +139,14 @@ class ActivityServer:
                     expires_at REAL NOT NULL
                 )"""
             )
+            db.execute(
+                """CREATE TABLE IF NOT EXISTS website_user_preferences (
+                    discord_user_id TEXT PRIMARY KEY,
+                    theme TEXT NOT NULL DEFAULT 'observer',
+                    theme_unlocked INTEGER NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )"""
+            )
             db.execute("DELETE FROM activity_sessions WHERE expires_at <= ?", (datetime.now(timezone.utc).timestamp(),))
             db.execute(
                 """CREATE TABLE IF NOT EXISTS custom_embed_messages (
@@ -178,6 +186,8 @@ class ActivityServer:
         app.router.add_get("/auth/callback", self.oauth_callback)
         app.router.add_post("/auth/logout", self.logout)
         app.router.add_get("/api/session", self.session_info)
+        app.router.add_get("/api/preferences", self.get_user_preferences)
+        app.router.add_post("/api/preferences", self.save_user_preferences)
         app.router.add_get("/api/servers", self.servers)
         app.router.add_get("/api/control-panel/{guild_id}", self.control_panel)
         app.router.add_post("/api/control-panel/{guild_id}/setting", self.save_control_panel_setting)
@@ -436,6 +446,48 @@ class ActivityServer:
             "signed_in": True,
             "user": {"id": user.get("id"), "username": user.get("global_name") or user.get("username"), "avatar": user.get("avatar")},
         }, headers={"Cache-Control": "no-store"})
+
+    async def get_user_preferences(self, request: web.Request) -> web.Response:
+        session = self._get_session(request)
+        user_id = str(session["user"].get("id", ""))
+        with connect_sqlite(DB_PATH) as db:
+            row = db.execute(
+                "SELECT theme, theme_unlocked FROM website_user_preferences WHERE discord_user_id = ?",
+                (user_id,),
+            ).fetchone()
+        return web.json_response(
+            {
+                "exists": row is not None,
+                "theme": row["theme"] if row and row["theme"] in {"observer", "error"} else "observer",
+                "theme_unlocked": bool(row["theme_unlocked"]) if row else False,
+            },
+            headers={"Cache-Control": "no-store"},
+        )
+
+    async def save_user_preferences(self, request: web.Request) -> web.Response:
+        session = self._get_session(request)
+        try:
+            payload = await request.json()
+        except (json.JSONDecodeError, ValueError):
+            raise web.HTTPBadRequest(text="Theme preferences must be valid JSON")
+        if not isinstance(payload, dict):
+            raise web.HTTPBadRequest(text="Theme preferences must be an object")
+        theme = payload.get("theme", "observer")
+        if theme not in {"observer", "error"}:
+            raise web.HTTPBadRequest(text="Choose Observer theme or Error theme")
+        unlocked = payload.get("theme_unlocked") is True
+        user_id = str(session["user"].get("id", ""))
+        with connect_sqlite(DB_PATH) as db:
+            db.execute(
+                """INSERT INTO website_user_preferences (discord_user_id, theme, theme_unlocked)
+                   VALUES (?, ?, ?)
+                   ON CONFLICT(discord_user_id) DO UPDATE SET
+                       theme = excluded.theme,
+                       theme_unlocked = MAX(website_user_preferences.theme_unlocked, excluded.theme_unlocked),
+                       updated_at = CURRENT_TIMESTAMP""",
+                (user_id, theme, int(unlocked)),
+            )
+        return web.json_response({"ok": True, "theme": theme, "theme_unlocked": unlocked}, headers={"Cache-Control": "no-store"})
 
     async def _user_guilds(self, session: dict) -> list[dict]:
         if "guilds" in session:
