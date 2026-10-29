@@ -1415,6 +1415,3 @@ body:has(.site-shell.is-website-broken) { background: #03070a; }
 @keyframes website-break-spark { 0% { opacity: 1; transform: translate(-50%,-50%) rotate(var(--spark-turn)) scale(.3); } 100% { opacity: 0; transform: translate(calc(-50% + var(--spark-x)),calc(-50% + var(--spark-y))) rotate(var(--spark-turn)) scale(.75); } }
 @media (max-width: 600px) { .website-break-reset { top: 10px; left: 12px; } .break-terminal { max-width: 78vw; font-size: 7px; } }
 @media (prefers-reduced-motion: reduce) { .break-circuit-art path,.break-circuit-nodes circle,.break-binary-row,.easter-egg-fallen,.website-break-spark-burst i { animation: none !important; } .easter-egg-fallen { opacity: 0; transform: translateY(125vh); } }
-
-.live-stats-secret-trigger { padding: 0; border: 0; background: transparent; text-align: left; cursor: default; }
-.live-stats-secret-trigger:focus-visible { border-radius: 2px; outline: 2px solid currentColor; outline-offset: 5px; }
