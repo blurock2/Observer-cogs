@@ -1404,28 +1404,34 @@ html[data-observer-theme="christmas"] .dashboard-shell .diary-entry-kind, html[d
 .website-break-reset { position: fixed; z-index: 10001; top: 14px; left: 20px; padding: 9px 13px; border: 1px solid #ff7254aa; border-radius: 7px; background: #110d0df2; color: #ffd3c5; box-shadow: 0 0 22px #ff493626; font: 650 11px Inter,"DM Sans",system-ui,sans-serif; cursor: pointer; backdrop-filter: blur(12px); transition: border-color .2s, box-shadow .2s, transform .2s; }
 .website-break-reset:hover,.website-break-reset:focus-visible { border-color: #ff7254; box-shadow: 0 0 20px #ff493655; transform: translateY(-1px); outline: none; }
 .easter-egg-fallen { animation: easter-egg-card-drop 1.15s cubic-bezier(.58,.02,.82,.54) var(--break-delay) both; transform-origin: 50% 5%; }
+.website-break-debris-area { width: min(1172px,calc(100% - 68px)); margin: 62px auto 40px; padding: 23px 25px 26px; border: 1px solid #303b3c; border-radius: 12px; background: linear-gradient(145deg,#121719,#0d1112); box-shadow: 0 22px 55px #0005; }
+.website-break-debris-heading .eyebrow { color: #91aeb2; }
+.website-break-debris-heading h2 { margin: 9px 0 5px; color: #eaf1f2; font-size: 19px; }
+.website-break-debris-heading p { margin: 0; color: #94a2a4; font-size: 11px; line-height: 1.6; }
+.website-break-debris-tray { position: relative; display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,270px),1fr)); align-items: start; gap: 16px; min-height: 70px; margin-top: 22px; }
+.website-break-landing-slot { min-width: 0; min-height: 100px; border: 1px dashed #344649; border-radius: 10px; background: linear-gradient(145deg,#101619,#0b0f10); transition: border-color .25s, background .25s; }
+.website-break-landing-slot.has-card { border-color: transparent; background: transparent; }
+.website-break-debris-card { position: relative; z-index: 2; margin: 0 !important; cursor: grab; touch-action: none; user-select: none; transform: rotate(var(--debris-rotation)); transition: box-shadow .18s, transform .18s; animation: break-card-land .28s ease both; }
+.website-break-debris-card.is-dragging { z-index: 10000 !important; cursor: grabbing; transform: rotate(0deg); box-shadow: 0 18px 42px #000c, 0 0 0 1px #55d9e566; }
+html[data-observer-theme="error"] .site-shell .website-break-debris-area { border-color: #572c34; background: linear-gradient(145deg,#1a1215,#100e10); }
+html[data-observer-theme="error"] .site-shell .website-break-debris-heading .eyebrow { color: #ff6671; }
+html[data-observer-theme="christmas"] .site-shell .website-break-debris-area { border-color: #59482a; background: linear-gradient(145deg,#1b170f,#110f0a); }
+html[data-observer-theme="christmas"] .site-shell .website-break-debris-heading .eyebrow { color: #e8c45f; }
 .site-shell.is-break-shaking { animation: break-screen-shake .52s ease-in-out both; }
 .website-break-spark-burst { position: fixed; z-index: 11000; width: 1px; height: 1px; pointer-events: none; }
 .website-break-spark-burst i { position: absolute; display: block; width: 3px; height: 13px; border-radius: 4px; background: var(--spark-color,#ff6845); box-shadow: 0 0 10px currentColor; color: #ff6845; animation: website-break-spark .72s cubic-bezier(.1,.7,.2,1) var(--spark-delay) both; }
 .website-break-spark-burst i:nth-child(3n) { --spark-color: #ff3f3d; color: #ff3f3d; }
 .website-break-spark-burst i:nth-child(3n + 1) { --spark-color: #ff8a32; color: #ff8a32; }
-@keyframes easter-egg-card-drop { 0% { opacity: 1; transform: translateY(0) rotate(0); } 12% { transform: translateY(-18px) rotate(calc(var(--break-rotation) * -.25)); } 100% { opacity: 0; transform: translateY(125vh) rotate(var(--break-rotation)); } }
+@keyframes easter-egg-card-drop { 0% { opacity: 1; transform: translate(0,0) rotate(0); } 12% { transform: translate(0,-18px) rotate(calc(var(--break-rotation) * -.25)); } 100% { opacity: 1; transform: translate(var(--break-fall-x),var(--break-fall-distance)) rotate(var(--break-rotation)); } }
+@keyframes break-card-land { from { opacity: .65; transform: translateY(10px) rotate(var(--debris-rotation)); } to { opacity: 1; transform: translateY(0) rotate(var(--debris-rotation)); } }
 @keyframes break-screen-shake { 0%,100% { transform: translate3d(0,0,0); } 18% { transform: translate3d(-6px,2px,0) rotate(-.12deg); } 36% { transform: translate3d(5px,-2px,0) rotate(.12deg); } 54% { transform: translate3d(-4px,1px,0); } 72% { transform: translate3d(3px,-1px,0); } }
 @keyframes break-reveal-show { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: scale(1); } }
 @keyframes break-circuit-flow { to { stroke-dashoffset: -68; } }
 @keyframes break-node-pulse { to { opacity: .35; } }
 @keyframes break-binary-scroll { from { transform: translateX(-18%); } to { transform: translateX(18%); } }
 @keyframes website-break-spark { 0% { opacity: 1; transform: translate(-50%,-50%) rotate(var(--spark-turn)) scale(.3); } 100% { opacity: 0; transform: translate(calc(-50% + var(--spark-x)),calc(-50% + var(--spark-y))) rotate(var(--spark-turn)) scale(.75); } }
-@media (max-width: 600px) { .website-break-reset { top: 10px; left: 12px; } .break-terminal { max-width: 78%; font-size: 6px; } }
-@media (prefers-reduced-motion: reduce) { .break-circuit-art path,.break-circuit-nodes circle,.break-binary-row,.site-shell.is-break-shaking,.easter-egg-fallen,.website-break-spark-burst i { animation: none !important; } .website-break-slot.is-revealing > .website-break-reveal { opacity: 1; } .easter-egg-fallen { opacity: 0; transform: translateY(125vh); } }
+@media (max-width: 760px) { .website-break-debris-area { width: calc(100% - 40px); margin: 48px auto 28px; padding: 19px; } .website-break-debris-tray { grid-template-columns: 1fr; gap: 12px; } }
+@media (prefers-reduced-motion: reduce) { .break-circuit-art path,.break-circuit-nodes circle,.break-binary-row,.site-shell.is-break-shaking,.easter-egg-fallen,.website-break-spark-burst i { animation: none !important; } .website-break-slot.is-revealing > .website-break-reveal { opacity: 1; } .easter-egg-fallen { opacity: 0; transform: translate(var(--break-fall-x),var(--break-fall-distance)); } }
 .break-warning-vignette { position: fixed; z-index: 9998; inset: 0; border: 1px solid #f3d476b8; box-shadow: inset 0 0 0 3px #f3d47624, inset 0 0 60px 14px #f3c94b3d; pointer-events: none; animation: break-warning-flash 1.35s steps(1,end) both; }
 @keyframes break-warning-flash { 0%,100% { opacity: 0; } 10%,34%,58% { opacity: .92; } 22%,46%,72% { opacity: .16; } 88% { opacity: .42; } }
 @media (prefers-reduced-motion: reduce) { .break-warning-vignette { animation: none; opacity: .55; } }
-.website-break-debris-tray { position: fixed; z-index: 9990; right: 12px; bottom: 12px; left: 12px; display: flex; align-items: flex-end; justify-content: center; gap: 10px; max-height: 32vh; overflow-x: auto; overflow-y: visible; padding: 12px 8px 4px; pointer-events: none; scrollbar-width: none; }
-.website-break-debris-tray::-webkit-scrollbar { display: none; }
-.website-break-debris-label { flex: 0 0 auto; align-self: flex-end; margin: 0 2px 8px 0; color: #a8c5c2; font: 650 8px/1.4 ui-monospace,monospace; letter-spacing: 1px; text-shadow: 0 2px 8px #000; white-space: nowrap; }
-.website-break-debris-card { flex: 0 0 clamp(126px,18vw,210px) !important; width: clamp(126px,18vw,210px) !important; height: 132px !important; min-height: 0 !important; max-height: 132px !important; margin: 0 !important; padding: 12px !important; overflow: hidden !important; border-radius: 9px !important; cursor: grab; pointer-events: auto; touch-action: none; user-select: none; transform: rotate(var(--debris-rotation)) scale(.98); box-shadow: 0 12px 34px #000a, 0 0 20px #55d9e526; animation: break-card-land .32s cubic-bezier(.16,.8,.22,1) both; }
-.website-break-debris-card.is-dragging { z-index: 10000 !important; cursor: grabbing; transform: rotate(0deg) scale(1.04); box-shadow: 0 18px 42px #000d, 0 0 28px #55d9e54d; }
-.website-break-debris-card h3 { font-size: 13px !important; }
-.website-break-debris-card p { font-size: 9px !important; line-height: 1.35 !important; }
-@keyframes break-card-land { from { opacity: 0; transform: translateY(22px) rotate(var(--debris-rotation)) scale(.92); } to { opacity: 1; transform: translateY(0) rotate(var(--debris-rotation)) scale(.98); } }
