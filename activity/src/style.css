@@ -870,14 +870,14 @@ html[data-observer-theme="christmas"] .site-shell .feature-card {
 }
 html[data-observer-theme="christmas"] .site-shell .feature-card::before {
   content: ""; position: absolute; z-index: 3; top: -17px; left: 8px; right: 8px; height: 36px;
-  background: url("/christmas-garland-01.svg?v=2") center / 100% 100% no-repeat;
+  background: url("./assets/christmas-garland-01.svg") center / 100% 100% no-repeat;
   pointer-events: none; transform-origin: center; transition: filter .22s ease;
 }
 html[data-observer-theme="christmas"] .site-shell .feature-card:nth-child(3n + 2)::before {
-  background-image: url("/christmas-garland-02.svg?v=2");
+  background-image: url("./assets/christmas-garland-02.svg");
 }
 html[data-observer-theme="christmas"] .site-shell .feature-card:nth-child(3n)::before {
-  background-image: url("/christmas-garland-03.svg?v=2");
+  background-image: url("./assets/christmas-garland-03.svg");
 }
 html[data-observer-theme="christmas"] .site-shell .feature-card::after {
   content: "✦"; position: absolute; z-index: 4; top: -30px; right: 23px; display: grid; place-items: center;
