@@ -221,6 +221,13 @@ class ActivityServer:
         app.router.add_get("/observer.png", self.observer_icon)
         app.router.add_get("/observer-icon.svg", self.observer_favicon)
         app.router.add_get("/og-card.png", self.og_card)
+        for asset_name in (
+            "christmas-nativity.svg",
+            "christmas-garland-01.svg",
+            "christmas-garland-02.svg",
+            "christmas-garland-03.svg",
+        ):
+            app.router.add_get(f"/{asset_name}", self.christmas_asset)
         app.router.add_get("/", self.index)
         app.router.add_get("/staff", self.index)
         app.router.add_get("/setup", self.index)
@@ -1843,6 +1850,21 @@ class ActivityServer:
         response = web.json_response({"ok": True})
         response.del_cookie("observer_session", path="/")
         return response
+
+    async def christmas_asset(self, request: web.Request) -> web.FileResponse:
+        asset_name = request.path.rsplit("/", 1)[-1]
+        allowed_assets = {
+            "christmas-nativity.svg",
+            "christmas-garland-01.svg",
+            "christmas-garland-02.svg",
+            "christmas-garland-03.svg",
+        }
+        if asset_name not in allowed_assets:
+            raise web.HTTPNotFound()
+        asset = ACTIVITY_DIR / "dist" / asset_name
+        if not asset.is_file():
+            raise web.HTTPNotFound()
+        return web.FileResponse(asset, headers={"Cache-Control": "public, max-age=86400"})
 
     async def index(self, request: web.Request) -> web.StreamResponse:
         page = ACTIVITY_DIR / "dist" / "index.html"
