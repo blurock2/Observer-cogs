@@ -144,7 +144,7 @@ function initLandingScrollReveal() {
 }
 
 async function openDashboard() {
-  root.innerHTML = `<main class="dashboard-loading"><img class="loading-mark" src="/observer.png?v=3" alt="Observer logo"><p>Finding your serversâ€¦</p></main>`;
+  root.innerHTML = `<main class="dashboard-loading"><img class="loading-mark" src="/observer.png?v=3" alt="Observer logo"><p>Finding your servers&#8230;</p></main>`;
   try {
     const [session, result] = await Promise.all([api("/api/session"), api("/api/servers")]);
     if (!session.signed_in) { location.assign(loginUrl); return; }
