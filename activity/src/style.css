@@ -642,3 +642,21 @@ body.modal-open { overflow: hidden; }
 .dashboard-error-toast a { color: #69dce8; font-weight: 650; text-decoration: underline; text-underline-offset: 2px; }
 .dashboard-error-toast button { flex: 0 0 auto; padding: 2px 6px; border: 1px solid #65464a; border-radius: 5px; background: transparent; color: #e6cfd1; cursor: pointer; }
 .dashboard-error-toast button:hover { border-color: #b47279; color: #fff; }
+
+.policy-page { width: min(900px, calc(100% - 48px)); margin: 0 auto; padding: 38px 0 72px; }
+.policy-page > .back-link { margin-bottom: 28px; }
+.policy-page-head { display: block; margin: 0 0 28px; }
+.policy-page-head h1 { margin: 9px 0 0; font: 650 clamp(2rem, 5vw, 3rem)/1.1 system-ui, sans-serif; letter-spacing: -1.3px; }
+.policy-document { padding: clamp(20px, 4vw, 38px); border: 1px solid #2b393d; border-radius: 12px; background: linear-gradient(150deg, #141a1d, #101315); color: #c5d0d2; font-size: 13px; line-height: 1.8; }
+.policy-document h2 { margin: 34px 0 12px; padding-top: 19px; border-top: 1px solid #ffffff12; color: #eef5f5; font-size: 18px; line-height: 1.35; }
+.policy-document h3 { margin: 22px 0 7px; color: #dce8e9; font-size: 14px; line-height: 1.45; }
+.policy-document p { margin: 0 0 14px; overflow-wrap: anywhere; }
+.policy-document .policy-meta { margin: 0 0 4px; color: #88a0a3; font-size: 11px; }
+.policy-document ul { display: grid; gap: 5px; margin: 5px 0 17px; padding-left: 23px; }
+.policy-document li { padding-left: 3px; }
+.policy-footer-links { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 16px; }
+.policy-footer-links a { color: #83979a; font-size: 10px; text-decoration: none; }
+.policy-footer-links a:hover { color: #42d7e8; }
+.site-footer .policy-footer-links { margin-left: auto; }
+.site-policy-footer { width: min(1120px, calc(100% - 48px)); min-height: 64px; margin: 0 auto; padding: 17px 0; border-top: 1px solid #ffffff10; display: flex; align-items: center; justify-content: space-between; gap: 16px; color: #718084; font: 9px ui-monospace, monospace; letter-spacing: .5px; }
+@media(max-width:620px) { .policy-page { width: calc(100% - 32px); padding-top: 28px; } .policy-document { padding: 18px; font-size: 12px; } .policy-document h2 { font-size: 16px; } .site-policy-footer { width: calc(100% - 32px); flex-direction: column; align-items: flex-start; gap: 10px; } .site-footer .policy-footer-links { margin-left: 0; } }
