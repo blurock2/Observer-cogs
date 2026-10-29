@@ -52,50 +52,62 @@ function playLiveStatusEasterEgg(card) {
   card.dataset.glitching = "true";
   card.classList.add("is-glitching");
 
-  const effect = document.createElement("div");
-  effect.className = "live-status-chaos";
-  effect.setAttribute("aria-hidden", "true");
-  const logMessages = [
-    "ERROR: status daemon exceeded its fun quota",
-    "WARN: confetti service started unexpectedly",
-    "TRACE: observer.exe is still very much online",
-    "ERROR: seriousness.dll not found",
-    "NOTICE: no actual errors detected",
-    "WARN: vibes are outside normal parameters",
-    "TRACE: confetti.exe initialized successfully",
-    "STATUS: just kidding - all systems are online",
-  ];
-  for (let index = 0; index < 16; index += 1) {
-    const log = document.createElement("span");
-    const code = Math.floor(10_000_000 + Math.random() * 90_000_000);
-    log.className = `live-status-rain-log live-status-rain-log-${index % 3}`;
-    log.textContent = `OBS-${code}  ${logMessages[index % logMessages.length]}`;
-    log.style.left = `${Math.random() * 92}%`;
-    log.style.setProperty("--rain-delay", `${Math.random() * 1.1}s`);
-    log.style.setProperty("--rain-duration", `${2.2 + Math.random() * 1.1}s`);
-    log.style.setProperty("--rain-drift", `${Math.round(Math.random() * 80 - 40)}px`);
-    effect.append(log);
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let effect = null;
+  let reducedNote = null;
+  if (reduceMotion) {
+    reducedNote = document.createElement("span");
+    reducedNote.className = "live-status-reduced-note";
+    reducedNote.textContent = "SIMULATED ALERTS: ALL SYSTEMS OK";
+    reducedNote.setAttribute("aria-hidden", "true");
+    card.append(reducedNote);
+  } else {
+    effect = document.createElement("div");
+    effect.className = "live-status-chaos";
+    effect.setAttribute("aria-hidden", "true");
+    const logMessages = [
+      "ERROR: status daemon exceeded its fun quota",
+      "WARN: confetti service started unexpectedly",
+      "TRACE: observer.exe is still very much online",
+      "ERROR: seriousness.dll not found",
+      "NOTICE: no actual errors detected",
+      "WARN: vibes are outside normal parameters",
+      "TRACE: confetti.exe initialized successfully",
+      "STATUS: just kidding - all systems are online",
+    ];
+    for (let index = 0; index < 16; index += 1) {
+      const log = document.createElement("span");
+      const code = Math.floor(10_000_000 + Math.random() * 90_000_000);
+      log.className = `live-status-rain-log live-status-rain-log-${index % 3}`;
+      log.textContent = `OBS-${code}  ${logMessages[index % logMessages.length]}`;
+      log.style.left = `${Math.random() * 92}%`;
+      log.style.setProperty("--rain-delay", `${Math.random() * 1.1}s`);
+      log.style.setProperty("--rain-duration", `${2.2 + Math.random() * 1.1}s`);
+      log.style.setProperty("--rain-drift", `${Math.round(Math.random() * 80 - 40)}px`);
+      effect.append(log);
+    }
+    const confettiColors = ["#42d7e8", "#ff596b", "#ffd166", "#a78bfa", "#67e8a5", "#ffffff"];
+    for (let index = 0; index < 42; index += 1) {
+      const piece = document.createElement("span");
+      piece.className = "live-status-confetti";
+      piece.style.left = `${46 + Math.random() * 8}%`;
+      piece.style.top = `${32 + Math.random() * 36}%`;
+      piece.style.setProperty("--confetti-color", confettiColors[index % confettiColors.length]);
+      piece.style.setProperty("--confetti-x", `${Math.round(Math.random() * 560 - 280)}px`);
+      piece.style.setProperty("--confetti-y", `${Math.round(Math.random() * 300 - 150)}px`);
+      piece.style.setProperty("--confetti-rotation", `${Math.round(Math.random() * 900 - 450)}deg`);
+      piece.style.setProperty("--confetti-delay", `${Math.random() * 0.2}s`);
+      effect.append(piece);
+    }
+    section.append(effect);
   }
-  const confettiColors = ["#42d7e8", "#ff596b", "#ffd166", "#a78bfa", "#67e8a5", "#ffffff"];
-  for (let index = 0; index < 42; index += 1) {
-    const piece = document.createElement("span");
-    piece.className = "live-status-confetti";
-    piece.style.left = `${46 + Math.random() * 8}%`;
-    piece.style.top = `${32 + Math.random() * 36}%`;
-    piece.style.setProperty("--confetti-color", confettiColors[index % confettiColors.length]);
-    piece.style.setProperty("--confetti-x", `${Math.round(Math.random() * 560 - 280)}px`);
-    piece.style.setProperty("--confetti-y", `${Math.round(Math.random() * 300 - 150)}px`);
-    piece.style.setProperty("--confetti-rotation", `${Math.round(Math.random() * 900 - 450)}deg`);
-    piece.style.setProperty("--confetti-delay", `${Math.random() * 0.2}s`);
-    effect.append(piece);
-  }
-  section.append(effect);
 
   window.setTimeout(() => {
     card.classList.remove("is-glitching");
     delete card.dataset.glitching;
-    effect.remove();
-  }, 3900);
+    effect?.remove();
+    reducedNote?.remove();
+  }, 4700);
 }
 
 function trackLiveStatusClick(card) {
