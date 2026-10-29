@@ -1079,3 +1079,208 @@ html[data-observer-theme="christmas"] .site-shell .support-card:focus-within::af
   box-shadow: 0 0 14px var(--support-glow);
   filter: drop-shadow(0 0 4px var(--support-accent));
 }
+
+
+/* Christmas decorations across dashboard and policy pages. */
+html[data-observer-theme="christmas"] .dashboard-shell .server-row:not(.has-dashboard-cards),
+html[data-observer-theme="christmas"] .dashboard-shell .server-dashboard-card,
+html[data-observer-theme="christmas"] .dashboard-shell .control-module,
+html[data-observer-theme="christmas"] .dashboard-shell .module-editor,
+html[data-observer-theme="christmas"] .dashboard-shell .control-activity-panel,
+html[data-observer-theme="christmas"] .dashboard-shell .custom-embed-launch-card,
+html[data-observer-theme="christmas"] .dashboard-shell .embed-form,
+html[data-observer-theme="christmas"] .dashboard-shell .message-preview-panel,
+html[data-observer-theme="christmas"] .dashboard-shell .saved-message-item,
+html[data-observer-theme="christmas"] .dashboard-shell .mod-queue,
+html[data-observer-theme="christmas"] .dashboard-shell .mod-metric,
+html[data-observer-theme="christmas"] .dashboard-shell .mod-report,
+html[data-observer-theme="christmas"] .dashboard-shell .mod-action-dialog,
+html[data-observer-theme="christmas"] .dashboard-shell .report-row,
+html[data-observer-theme="christmas"] .policy-document,
+html[data-observer-theme="christmas"] .site-shell .update-item {
+  position: relative;
+  overflow: visible;
+}
+html[data-observer-theme="christmas"] .dashboard-shell .server-row:not(.has-dashboard-cards)::before,
+html[data-observer-theme="christmas"] .dashboard-shell .server-dashboard-card::before,
+html[data-observer-theme="christmas"] .dashboard-shell .control-module::before,
+html[data-observer-theme="christmas"] .dashboard-shell .module-editor::before,
+html[data-observer-theme="christmas"] .dashboard-shell .control-activity-panel::before,
+html[data-observer-theme="christmas"] .dashboard-shell .custom-embed-launch-card::before,
+html[data-observer-theme="christmas"] .dashboard-shell .embed-form::before,
+html[data-observer-theme="christmas"] .dashboard-shell .message-preview-panel::before,
+html[data-observer-theme="christmas"] .dashboard-shell .saved-message-item::before,
+html[data-observer-theme="christmas"] .dashboard-shell .mod-queue::before,
+html[data-observer-theme="christmas"] .dashboard-shell .mod-metric::before,
+html[data-observer-theme="christmas"] .dashboard-shell .mod-report::before,
+html[data-observer-theme="christmas"] .dashboard-shell .mod-action-dialog::before,
+html[data-observer-theme="christmas"] .dashboard-shell .report-row::before,
+html[data-observer-theme="christmas"] .policy-document::before,
+html[data-observer-theme="christmas"] .site-shell .update-item::before {
+  content: "";
+  position: absolute;
+  z-index: 5;
+  top: -15px;
+  left: 9px;
+  right: 9px;
+  height: 32px;
+  background: url("./assets/christmas-garland-01.svg") center / 100% 100% no-repeat;
+  pointer-events: none;
+  transition: filter .22s ease;
+}
+html[data-observer-theme="christmas"] .dashboard-shell .control-module:nth-child(3n + 2)::before,
+html[data-observer-theme="christmas"] .dashboard-shell .server-dashboard-card:nth-child(3n + 2)::before,
+html[data-observer-theme="christmas"] .dashboard-shell .saved-message-item:nth-child(3n + 2)::before,
+html[data-observer-theme="christmas"] .dashboard-shell .mod-report:nth-child(3n + 2)::before,
+html[data-observer-theme="christmas"] .site-shell .update-item:nth-child(3n + 2)::before {
+  background-image: url("./assets/christmas-garland-02.svg");
+}
+html[data-observer-theme="christmas"] .dashboard-shell .control-module:nth-child(3n)::before,
+html[data-observer-theme="christmas"] .dashboard-shell .server-dashboard-card:nth-child(3n)::before,
+html[data-observer-theme="christmas"] .dashboard-shell .saved-message-item:nth-child(3n)::before,
+html[data-observer-theme="christmas"] .dashboard-shell .mod-report:nth-child(3n)::before,
+html[data-observer-theme="christmas"] .site-shell .update-item:nth-child(3n)::before {
+  background-image: url("./assets/christmas-garland-03.svg");
+}
+html[data-observer-theme="christmas"] .dashboard-shell .server-row:not(.has-dashboard-cards)::after,
+html[data-observer-theme="christmas"] .dashboard-shell .server-dashboard-card::after,
+html[data-observer-theme="christmas"] .dashboard-shell .control-module::after,
+html[data-observer-theme="christmas"] .dashboard-shell .module-editor::after,
+html[data-observer-theme="christmas"] .dashboard-shell .control-activity-panel::after,
+html[data-observer-theme="christmas"] .dashboard-shell .custom-embed-launch-card::after,
+html[data-observer-theme="christmas"] .dashboard-shell .embed-form::after,
+html[data-observer-theme="christmas"] .dashboard-shell .message-preview-panel::after,
+html[data-observer-theme="christmas"] .dashboard-shell .saved-message-item::after,
+html[data-observer-theme="christmas"] .dashboard-shell .mod-queue::after,
+html[data-observer-theme="christmas"] .dashboard-shell .mod-metric::after,
+html[data-observer-theme="christmas"] .dashboard-shell .mod-report::after,
+html[data-observer-theme="christmas"] .dashboard-shell .mod-action-dialog::after,
+html[data-observer-theme="christmas"] .dashboard-shell .report-row::after,
+html[data-observer-theme="christmas"] .policy-document::after,
+html[data-observer-theme="christmas"] .site-shell .update-item::after {
+  content: "✦";
+  position: absolute;
+  z-index: 6;
+  top: -25px;
+  right: 22px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 24px;
+  border: 1px solid #b28b3b;
+  border-radius: 50%;
+  background: #21190d;
+  color: #f5d477;
+  font-size: 10px;
+  line-height: 1;
+  box-shadow: 0 2px 8px #e8c45f33;
+  transition: border-color .22s ease, box-shadow .22s ease, filter .22s ease;
+}
+html[data-observer-theme="christmas"] .dashboard-shell .control-module:nth-child(3n + 2)::after,
+html[data-observer-theme="christmas"] .dashboard-shell .server-dashboard-card:nth-child(3n + 2)::after,
+html[data-observer-theme="christmas"] .dashboard-shell .saved-message-item:nth-child(3n + 2)::after,
+html[data-observer-theme="christmas"] .dashboard-shell .mod-report:nth-child(3n + 2)::after,
+html[data-observer-theme="christmas"] .site-shell .update-item:nth-child(3n + 2)::after {
+  content: "❄";
+  border-color: #aabac1;
+  background: #11191c;
+  color: #d6edf2;
+}
+html[data-observer-theme="christmas"] .dashboard-shell .control-module:nth-child(3n)::after,
+html[data-observer-theme="christmas"] .dashboard-shell .server-dashboard-card:nth-child(3n)::after,
+html[data-observer-theme="christmas"] .dashboard-shell .saved-message-item:nth-child(3n)::after,
+html[data-observer-theme="christmas"] .dashboard-shell .mod-report:nth-child(3n)::after,
+html[data-observer-theme="christmas"] .site-shell .update-item:nth-child(3n)::after {
+  content: "✧";
+  border-color: #8caa8c;
+  background: #121b14;
+  color: #c5e3bf;
+}
+html[data-observer-theme="christmas"] .dashboard-shell .server-row:not(.has-dashboard-cards):hover::before,
+html[data-observer-theme="christmas"] .dashboard-shell .server-row:not(.has-dashboard-cards):focus-within::before,
+html[data-observer-theme="christmas"] .dashboard-shell .server-dashboard-card:hover::before,
+html[data-observer-theme="christmas"] .dashboard-shell .server-dashboard-card:focus-within::before,
+html[data-observer-theme="christmas"] .dashboard-shell .control-module:hover::before,
+html[data-observer-theme="christmas"] .dashboard-shell .control-module:focus-within::before,
+html[data-observer-theme="christmas"] .dashboard-shell .module-editor:hover::before,
+html[data-observer-theme="christmas"] .dashboard-shell .module-editor:focus-within::before,
+html[data-observer-theme="christmas"] .dashboard-shell .control-activity-panel:hover::before,
+html[data-observer-theme="christmas"] .dashboard-shell .custom-embed-launch-card:hover::before,
+html[data-observer-theme="christmas"] .dashboard-shell .embed-form:hover::before,
+html[data-observer-theme="christmas"] .dashboard-shell .message-preview-panel:hover::before,
+html[data-observer-theme="christmas"] .dashboard-shell .saved-message-item:hover::before,
+html[data-observer-theme="christmas"] .dashboard-shell .saved-message-item:focus-visible::before,
+html[data-observer-theme="christmas"] .dashboard-shell .mod-queue:hover::before,
+html[data-observer-theme="christmas"] .dashboard-shell .mod-metric:hover::before,
+html[data-observer-theme="christmas"] .dashboard-shell .mod-report:hover::before,
+html[data-observer-theme="christmas"] .dashboard-shell .mod-report:focus-within::before,
+html[data-observer-theme="christmas"] .dashboard-shell .mod-action-dialog:hover::before,
+html[data-observer-theme="christmas"] .dashboard-shell .report-row:hover::before,
+html[data-observer-theme="christmas"] .policy-document:hover::before,
+html[data-observer-theme="christmas"] .site-shell .update-item:hover::before,
+html[data-observer-theme="christmas"] .site-shell .update-item:focus-within::before {
+  filter: drop-shadow(0 0 3px #f1d378b0) drop-shadow(0 0 8px #e2bb5966);
+}
+html[data-observer-theme="christmas"] .dashboard-shell .server-row:not(.has-dashboard-cards):hover::after,
+html[data-observer-theme="christmas"] .dashboard-shell .server-row:not(.has-dashboard-cards):focus-within::after,
+html[data-observer-theme="christmas"] .dashboard-shell .server-dashboard-card:hover::after,
+html[data-observer-theme="christmas"] .dashboard-shell .server-dashboard-card:focus-within::after,
+html[data-observer-theme="christmas"] .dashboard-shell .control-module:hover::after,
+html[data-observer-theme="christmas"] .dashboard-shell .control-module:focus-within::after,
+html[data-observer-theme="christmas"] .dashboard-shell .module-editor:hover::after,
+html[data-observer-theme="christmas"] .dashboard-shell .module-editor:focus-within::after,
+html[data-observer-theme="christmas"] .dashboard-shell .control-activity-panel:hover::after,
+html[data-observer-theme="christmas"] .dashboard-shell .custom-embed-launch-card:hover::after,
+html[data-observer-theme="christmas"] .dashboard-shell .embed-form:hover::after,
+html[data-observer-theme="christmas"] .dashboard-shell .message-preview-panel:hover::after,
+html[data-observer-theme="christmas"] .dashboard-shell .saved-message-item:hover::after,
+html[data-observer-theme="christmas"] .dashboard-shell .saved-message-item:focus-visible::after,
+html[data-observer-theme="christmas"] .dashboard-shell .mod-queue:hover::after,
+html[data-observer-theme="christmas"] .dashboard-shell .mod-metric:hover::after,
+html[data-observer-theme="christmas"] .dashboard-shell .mod-report:hover::after,
+html[data-observer-theme="christmas"] .dashboard-shell .mod-report:focus-within::after,
+html[data-observer-theme="christmas"] .dashboard-shell .mod-action-dialog:hover::after,
+html[data-observer-theme="christmas"] .dashboard-shell .report-row:hover::after,
+html[data-observer-theme="christmas"] .policy-document:hover::after,
+html[data-observer-theme="christmas"] .site-shell .update-item:hover::after,
+html[data-observer-theme="christmas"] .site-shell .update-item:focus-within::after {
+  border-color: #ffdf83;
+  box-shadow: 0 0 14px #f1d378b0;
+  filter: drop-shadow(0 0 4px #e2bb5999);
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-observer-theme="christmas"] .dashboard-shell .server-row::before,
+  html[data-observer-theme="christmas"] .dashboard-shell .server-row::after,
+  html[data-observer-theme="christmas"] .dashboard-shell .server-dashboard-card::before,
+  html[data-observer-theme="christmas"] .dashboard-shell .server-dashboard-card::after,
+  html[data-observer-theme="christmas"] .dashboard-shell .control-module::before,
+  html[data-observer-theme="christmas"] .dashboard-shell .control-module::after,
+  html[data-observer-theme="christmas"] .dashboard-shell .module-editor::before,
+  html[data-observer-theme="christmas"] .dashboard-shell .module-editor::after,
+  html[data-observer-theme="christmas"] .dashboard-shell .control-activity-panel::before,
+  html[data-observer-theme="christmas"] .dashboard-shell .control-activity-panel::after,
+  html[data-observer-theme="christmas"] .dashboard-shell .custom-embed-launch-card::before,
+  html[data-observer-theme="christmas"] .dashboard-shell .custom-embed-launch-card::after,
+  html[data-observer-theme="christmas"] .dashboard-shell .embed-form::before,
+  html[data-observer-theme="christmas"] .dashboard-shell .embed-form::after,
+  html[data-observer-theme="christmas"] .dashboard-shell .message-preview-panel::before,
+  html[data-observer-theme="christmas"] .dashboard-shell .message-preview-panel::after,
+  html[data-observer-theme="christmas"] .dashboard-shell .saved-message-item::before,
+  html[data-observer-theme="christmas"] .dashboard-shell .saved-message-item::after,
+  html[data-observer-theme="christmas"] .dashboard-shell .mod-queue::before,
+  html[data-observer-theme="christmas"] .dashboard-shell .mod-queue::after,
+  html[data-observer-theme="christmas"] .dashboard-shell .mod-metric::before,
+  html[data-observer-theme="christmas"] .dashboard-shell .mod-metric::after,
+  html[data-observer-theme="christmas"] .dashboard-shell .mod-report::before,
+  html[data-observer-theme="christmas"] .dashboard-shell .mod-report::after,
+  html[data-observer-theme="christmas"] .dashboard-shell .mod-action-dialog::before,
+  html[data-observer-theme="christmas"] .dashboard-shell .mod-action-dialog::after,
+  html[data-observer-theme="christmas"] .dashboard-shell .report-row::before,
+  html[data-observer-theme="christmas"] .dashboard-shell .report-row::after,
+  html[data-observer-theme="christmas"] .policy-document::before,
+  html[data-observer-theme="christmas"] .policy-document::after,
+  html[data-observer-theme="christmas"] .site-shell .update-item::before,
+  html[data-observer-theme="christmas"] .site-shell .update-item::after {
+    transition: none;
+  }
+}
