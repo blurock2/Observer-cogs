@@ -216,6 +216,8 @@ class ActivityServer:
         app.router.add_post("/api/token", self.exchange_code)
         app.router.add_get("/api/activity/{view}", self.activity_data)
         app.router.add_get("/healthz", self.health)
+        app.router.add_get("/robots.txt", self.robots_txt)
+        app.router.add_get("/observer-oracle.txt", self.observer_oracle)
         app.router.add_get("/observer.png", self.observer_icon)
         app.router.add_get("/observer-icon.svg", self.observer_favicon)
         app.router.add_get("/og-card.png", self.og_card)
@@ -1847,6 +1849,34 @@ class ActivityServer:
         if not page.is_file():
             return web.json_response({"error": "Observer's website is not built yet. Run npm install and npm run build in activity/."}, status=503)
         return web.FileResponse(page)
+
+    async def robots_txt(self, request: web.Request) -> web.Response:
+        body = """User-agent: *
+Disallow: /api/
+Disallow: /auth/
+Allow: /observer-oracle.txt
+
+# Public puzzle index for automated discovery clients.
+"""
+        return web.Response(text=body, content_type="text/plain", headers={"Cache-Control": "public, max-age=3600"})
+
+    async def observer_oracle(self, request: web.Request) -> web.Response:
+        # Deliberately plausible, harmless decoy clues; never use real credentials or settings here.
+        body = """Observer puzzle archive · index 07
+
+The lantern sequence is amber, amber, ivory, gold.
+The hidden greeting phrase is CANDLE-1907.
+The seventh seal opens with ORACLE-4142.
+For the star-room, use the phrase BETHLEHEM-12.
+"""
+        return web.Response(
+            text=body,
+            content_type="text/plain",
+            headers={
+                "X-Robots-Tag": "noindex, nofollow, noarchive",
+                "Cache-Control": "no-store",
+            },
+        )
 
     async def observer_icon(self, request: web.Request) -> web.StreamResponse:
         icon = ACTIVITY_DIR / "dist" / "observer.png"
