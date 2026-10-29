@@ -306,7 +306,7 @@ class ModuleSpec:
 
     key: str                          # e.g. "leveling"
     label: str                         # e.g. "Leveling"
-    emoji: str                         # e.g. "📈"
+    emoji: str                         # e.g. "ðŸ“ˆ"
     description: str                   # one-line summary
     settings: list[SettingSpec] = field(default_factory=list)
 
@@ -315,7 +315,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="afk",
         label="AFK",
-        emoji="💤",
+        emoji="ðŸ’¤",
         description="Per-server AFK status and optional nickname prefix.",
         settings=[
             SettingSpec("nickname_prefix", "AFK nickname prefix", "text", default="[AFK]"),
@@ -325,7 +325,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="autorole",
         label="Join Autoroles",
-        emoji="🎭",
+        emoji="ðŸŽ­",
         description="Independent roles assigned when members join.",
         settings=[
             SettingSpec("enabled", "Member autoroles", "toggle", default=False),
@@ -345,7 +345,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="verification",
         label="Verification",
-        emoji="✅",
+        emoji="âœ…",
         description="Button verification and verified/unverified role settings.",
         settings=[
             SettingSpec("enabled", "Enabled", "toggle", default=False),
@@ -369,7 +369,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="reminders",
         label="Reminders",
-        emoji="⏰",
+        emoji="â°",
         description="Persistent personal reminders and delivery fallback.",
         settings=[
             SettingSpec("fallback_enabled", "Fallback to source channel", "toggle", default=False),
@@ -378,7 +378,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="bot",
         label="Bot System",
-        emoji="🤖",
+        emoji="ðŸ¤–",
         description="Core bot behavior and logging.",
         settings=[
             SettingSpec(
@@ -413,7 +413,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="audit_log",
         label="Audit Log",
-        emoji="🧾",
+        emoji="ðŸ§¾",
         description="Configurable server event logging and permission warnings.",
         settings=[
             SettingSpec("enabled", "Enabled", "toggle", default=False),
@@ -454,7 +454,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="reaction_roles",
         label="Reaction Roles",
-        emoji="🔁",
+        emoji="ðŸ”",
         description="Self-assigned roles via emoji reactions.",
         settings=[
             SettingSpec("enabled", "Reaction roles", "toggle", default=False,
@@ -466,7 +466,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="message_quoter",
         label="Message Quoter",
-        emoji="💬",
+        emoji="ðŸ’¬",
         description="Reply-quoting of messages.",
         settings=[
             SettingSpec("enabled", "Enabled", "toggle", default=False),
@@ -500,7 +500,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="spotify",
         label="Spotify",
-        emoji="🎵",
+        emoji="ðŸŽµ",
         description=(
             "Auto-embed Spotify track links posted in chat. "
             "Also available anywhere via `/spotify`."
@@ -518,7 +518,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="acc_link",
         label="Account Linking",
-        emoji="🔗",
+        emoji="ðŸ”—",
         description="Link and display public GitHub and Steam profiles.",
         settings=[
             SettingSpec(
@@ -539,7 +539,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="utilities",
         label="Utilities",
-        emoji="🧰",
+        emoji="ðŸ§°",
         description="Misc helper commands.",
         settings=[
             SettingSpec("enabled", "Enabled", "toggle", default=False),
@@ -548,7 +548,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="report_msg",
         label="Report Message",
-        emoji="📣",
+        emoji="ðŸ“£",
         description="Let users report messages to staff and configure report notifications.",
 
         settings=[
@@ -576,7 +576,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="server_stats",
         label="Server Stats",
-        emoji="📊",
+        emoji="ðŸ“Š",
         description="Live member / channel counters.",
         settings=[
             SettingSpec("enabled", "Enabled", "toggle", default=False),
@@ -589,7 +589,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="temporary_voice",
         label="Temporary Voice",
-        emoji="🔊",
+        emoji="ðŸ”Š",
         description="Join-to-create private voice channels.",
         settings=[
             SettingSpec("enabled", "Enabled", "toggle", default=False),
@@ -605,7 +605,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="rules",
         label="Rules",
-        emoji="📜",
+        emoji="ðŸ“œ",
         description="Custom rules and rule messages. Create rules with `/rule_add`, "
         "then send them using `/rules`",
         settings=[
@@ -643,7 +643,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="tickets",
         label="Tickets",
-        emoji="🎫",
+        emoji="ðŸŽ«",
         description=(
             "Support ticket panels. Configure the settings below, "
             "then use `/ticket_panel` to post the Create Ticket button."
@@ -711,7 +711,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="message_relay",
         label="Message Relay",
-        emoji="📡",
+        emoji="ðŸ“¡",
         description=(
         "Manual cross-server message relay. Configure source and target "
         "servers with `/relay_setup`, then manage channels with relay commands."
@@ -741,7 +741,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="moderation",
         label="Moderation",
-        emoji="🛡️",
+        emoji="ðŸ›¡ï¸",
         description="Moderation commands, logs, appeals, and punishment roles that persist across rejoining.",
         settings=[
             SettingSpec("enabled", "Logging enabled", "toggle", default=True,
@@ -776,7 +776,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="mentions",
         label="Mention Protection",
-        emoji="🔔",
+        emoji="ðŸ””",
         description=(
             "Prevent users from pinging protected members or roles. "
             "Configure protected and exempt roles below."
@@ -838,7 +838,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="security",
         label="Anti-Scam and Security",
-        emoji="🛡️",
+        emoji="ðŸ›¡ï¸",
         description="Scam detection, honeypot and join-burst protection, lockdown, and channel controls.",
         settings=[
             SettingSpec("enabled", "Enabled", "toggle", default=True,
@@ -897,7 +897,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="tags",
         label="Tags",
-        emoji="🏷️",
+        emoji="ðŸ·ï¸",
         description="Reusable plain-text messages for moderators and trusted staff.",
         settings=[
             SettingSpec(
@@ -917,7 +917,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="member_commands",
         label="Member Commands",
-        emoji="👥",
+        emoji="ðŸ‘¥",
         description="Member info commands.",
         settings=[
             SettingSpec("enabled", "Enabled", "toggle", default=False),
@@ -928,7 +928,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="help",
         label="Help",
-        emoji="❓",
+        emoji="â“",
         description="Custom help command.",
         settings=[
             SettingSpec("enabled", "Enabled", "toggle", default=False),
@@ -939,7 +939,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="leveling",
         label="Leveling",
-        emoji="📈",
+        emoji="ðŸ“ˆ",
         description="XP, levels, and level-up messages.",
         settings=[
             SettingSpec("enabled", "XP earning", "toggle", default=True,
@@ -947,7 +947,7 @@ MODULES: list[ModuleSpec] = [
             SettingSpec("level_up_channel", "Level-up channel", "channel",
                         description="Where level-up messages are posted."),
             SettingSpec("level_up_message", "Level-up message", "text",
-                        default="🎉 {user} just reached level {level}!",
+                        default="ðŸŽ‰ {user} just reached level {level}!",
                         description="Use {user} and {level}."),
             SettingSpec("xp_cooldown", "XP cooldown (seconds)", "integer", default=15,
                         description="Time before XP can be earned again."),
@@ -965,7 +965,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="weather",
         label="Weather",
-        emoji="🌤️",
+        emoji="ðŸŒ¤ï¸",
         description="Weather lookups.",
         settings=[
             SettingSpec("enabled", "Enabled", "toggle", default=False),
@@ -978,9 +978,16 @@ MODULES: list[ModuleSpec] = [
         ],
     ),
     ModuleSpec(
+        key="auto_responder",
+        label="Auto Responders",
+        emoji="ðŸ’¬",
+        description="Create keyword-based automatic replies with optional variations.",
+        settings=[],
+    ),
+    ModuleSpec(
         key="setup_ui",
         label="Setup Dashboard",
-        emoji="⚙️",
+        emoji="âš™ï¸",
         description="This dashboard itself.",
         settings=[
             SettingSpec("title", "Dashboard title", "text",
@@ -1225,7 +1232,7 @@ def build_main_embed(store: SetupConfigStore, guild: discord.Guild) -> discord.E
         ),
         color=EMBED_COLOR,
     )
-    embed.set_footer(text=f"{guild.name} • Use the menu below")
+    embed.set_footer(text=f"{guild.name} â€¢ Use the menu below")
     return embed
 
 
@@ -1293,7 +1300,7 @@ def build_module_embed(
                 default=enabled_spec.default,
             )
         )
-        status = "🟢 Enabled" if enabled else "🔴 Disabled"
+        status = "ðŸŸ¢ Enabled" if enabled else "ðŸ”´ Disabled"
         description += f"\n\n**Status:** {status}"
 
     embed = discord.Embed(
@@ -1301,7 +1308,7 @@ def build_module_embed(
         description=description,
         color=EMBED_COLOR,
     )
-    embed.set_footer(text="Click a button to edit • ◀ Back returns to the dashboard")
+    embed.set_footer(text="Click a button to edit â€¢ â—€ Back returns to the dashboard")
 
     values = store.get_module(guild.id, module.key)
     settings = get_module_settings(store, guild, module)
@@ -1322,7 +1329,7 @@ def build_module_embed(
             inline=False,
         )
     embed.set_footer(
-        text=f"Settings page {page + 1}/{page_count} • Use the buttons to edit or navigate"
+        text=f"Settings page {page + 1}/{page_count} â€¢ Use the buttons to edit or navigate"
     )
     return embed
 
@@ -1333,11 +1340,11 @@ def build_select_embed(module: ModuleSpec, spec: SettingSpec) -> discord.Embed:
         "role": "Pick a role",
     }.get(spec.kind, spec.label)
     embed = discord.Embed(
-        title=f"{module.emoji} {module.label} – {spec.label}",
+        title=f"{module.emoji} {module.label} â€“ {spec.label}",
         description=f"{kind_label} for **{spec.label}**.",
         color=EMBED_COLOR,
     )
-    embed.set_footer(text="◀ Back cancels and returns to the module panel")
+    embed.set_footer(text="â—€ Back cancels and returns to the module panel")
     return embed
 
 
@@ -1461,7 +1468,7 @@ class MainView(AdminOnlyView):
             for module in MODULES[start:start + 25]
         ]
         select = discord.ui.Select(
-            placeholder="Select a feature to configure…",
+            placeholder="Select a feature to configureâ€¦",
             min_values=1,
             max_values=1,
             options=options,
@@ -1725,6 +1732,22 @@ class ModuleView(AdminOnlyView):
         for spec in settings[start : start + MODULE_SETTINGS_PER_PAGE]:
             self.add_item(self._make_button(module, spec))
 
+        if module_key == "auto_responder":
+            manage = discord.ui.Button(
+                label="Manage auto responses",
+                style=discord.ButtonStyle.primary,
+            )
+            async def open_auto_responses(interaction: discord.Interaction) -> None:
+                responder = self.cog.bot.get_cog("AutoResponder")
+                if responder is None:
+                    await interaction.response.send_message(
+                        "Auto responders are not available right now.", ephemeral=True
+                    )
+                    return
+                await responder.show_panel(interaction)
+            manage.callback = open_auto_responses
+            self.add_item(manage)
+
         if self.page_count > 1:
             previous = discord.ui.Button(
                 label="Previous",
@@ -1745,7 +1768,7 @@ class ModuleView(AdminOnlyView):
             self.add_item(previous)
             self.add_item(next_button)
 
-        back = discord.ui.Button(label="◀ Back to dashboard", style=discord.ButtonStyle.secondary)
+        back = discord.ui.Button(label="â—€ Back to dashboard", style=discord.ButtonStyle.secondary)
         back.callback = self._on_back
         self.add_item(back)
 
@@ -1807,7 +1830,7 @@ class ModuleView(AdminOnlyView):
                         cog.store.set(guild.id, module_key, paired_key, False)
                     await self._refresh(interaction)
                     await interaction.followup.send(
-                        f"✅ {spec.label} is now {'On' if new_val else 'Off'}.",
+                        f"âœ… {spec.label} is now {'On' if new_val else 'Off'}.",
                         ephemeral=True,
                     )
                 elif spec.kind in ("text", "integer"):
@@ -1861,7 +1884,7 @@ class ModuleView(AdminOnlyView):
 
 class _BackToModuleButton(discord.ui.Button):
     def __init__(self, parent: ChannelSelectView | RoleSelectView):
-        super().__init__(label="◀ Back", style=discord.ButtonStyle.secondary)
+        super().__init__(label="â—€ Back", style=discord.ButtonStyle.secondary)
         self._setup_view = parent
 
     async def callback(self, interaction: discord.Interaction) -> None:
@@ -1896,7 +1919,7 @@ class ChannelSelectView(AdminOnlyView):
         self.page = page
 
         select = discord.ui.ChannelSelect(
-            placeholder="Select a channel…",
+            placeholder="Select a channelâ€¦",
             min_values=1,
             max_values=1,
             channel_types=[discord.ChannelType.text]
@@ -1904,7 +1927,7 @@ class ChannelSelectView(AdminOnlyView):
                 ("bot", "error_channel"),
                 ("moderation", "appeal_channel"),
                 ("security", "advertising_channel"),
-                    }
+            }
             else None,
         )
         select.callback = self._on_select
@@ -1933,7 +1956,7 @@ class ChannelSelectView(AdminOnlyView):
                 self.cog, self.module_key, interaction.guild, self.page
             ),
         )
-        await interaction.followup.send("✅ Setting cleared.", ephemeral=True)
+        await interaction.followup.send("âœ… Setting cleared.", ephemeral=True)
 
     async def _on_select(self, interaction: discord.Interaction) -> None:
         try:
@@ -1943,7 +1966,7 @@ class ChannelSelectView(AdminOnlyView):
             if (self.module_key, self.setting_key) in {
                 ("bot", "error_channel"),
                 ("moderation", "appeal_channel"),
-                    }:
+            }:
                 permissions = channel.permissions_for(interaction.guild.me)
                 can_send = (
                     permissions.view_channel
@@ -1971,7 +1994,7 @@ class ChannelSelectView(AdminOnlyView):
             )
             await interaction.edit_original_response(embed=embed, view=view)
             await interaction.followup.send(
-                f"✅ Set to {channel.mention}.", ephemeral=True
+                f"âœ… Set to {channel.mention}.", ephemeral=True
             )
         except discord.NotFound:
             await interaction.followup.send("That channel is no longer available. Choose another channel.", ephemeral=True)
@@ -1996,7 +2019,7 @@ class RoleSelectView(AdminOnlyView):
         self.page = page
 
         select = discord.ui.RoleSelect(
-            placeholder="Select a role…",
+            placeholder="Select a roleâ€¦",
             min_values=1,
             max_values=1,
         )
@@ -2018,7 +2041,7 @@ class RoleSelectView(AdminOnlyView):
                 self.cog, self.module_key, interaction.guild, self.page
             ),
         )
-        await interaction.followup.send("✅ Setting cleared.", ephemeral=True)
+        await interaction.followup.send("âœ… Setting cleared.", ephemeral=True)
 
     async def _on_select(self, interaction: discord.Interaction) -> None:
         try:
@@ -2042,7 +2065,7 @@ class RoleSelectView(AdminOnlyView):
             )
             await interaction.response.edit_message(embed=embed, view=view)
             await interaction.followup.send(
-                f"✅ Set to {role.mention}.", ephemeral=True
+                f"âœ… Set to {role.mention}.", ephemeral=True
             )
         except Exception as e:  # noqa: BLE001 - UI boundary must report a user-facing error
             await handle_interaction_error(interaction, e, source="setup_ui")
@@ -2068,7 +2091,7 @@ class TextModal(ErrorHandledModal):
         self.page = page
 
         current = cog.store.get(guild.id, module_key, spec.key, spec.default)
-        placeholder = "Enter a value…" if spec.kind == "text" else "Enter a number…"
+        placeholder = "Enter a valueâ€¦" if spec.kind == "text" else "Enter a numberâ€¦"
         self.input = discord.ui.TextInput(
             label=spec.label[:45],
             placeholder=placeholder,
@@ -2091,7 +2114,7 @@ class TextModal(ErrorHandledModal):
                         value = int(raw)
                     except ValueError:
                         await interaction.response.send_message(
-                            "❌ Please enter a whole number.", ephemeral=True
+                            "âŒ Please enter a whole number.", ephemeral=True
                         )
                         return
             else:
@@ -2108,7 +2131,7 @@ class TextModal(ErrorHandledModal):
             )
             await interaction.response.edit_message(embed=embed, view=view)
             await interaction.followup.send(
-                f"✅ {self.spec.label} updated.", ephemeral=True
+                f"âœ… {self.spec.label} updated.", ephemeral=True
             )
         except Exception as e:  # noqa: BLE001 - UI boundary must report a user-facing error
             await handle_interaction_error(interaction, e, source="setup_ui")
