@@ -1,0 +1,338 @@
+PRIVACY POLICY FOR OBSERVER
+Effective Date: December 30, 2025
+Last Updated: October 7, 2026
+This Privacy Policy explains how Observer, a Discord bot developed and operated by Fedja
+Podobnik / bluerock2 ("Observer", "we", "us", or "our"), processes personal data.
+This Privacy Policy is intended to provide information required under the General Data
+Protection Regulation (EU) 2016/679 ("GDPR") and applicable Slovenian data-protection
+law.
+By using Observer, you acknowledge that your personal data may be processed as described
+in this Privacy Policy.
+1. Data Controller
+For the purposes of the GDPR, the data controller for personal data processed directly by
+Observer is:
+Data Controller: Fedja Podobnik / bluerock2
+Country: Republic of Slovenia
+Contact Email: fedja.podobnik@pm.me
+The data controller determines the purposes and means of processing personal data through
+Observer.
+Discord Inc. separately processes personal data through the Discord platform in accordance
+with Discord's own privacy terms.
+
+2. Personal Data We Process
+Observer may process personal data depending on which features are enabled and used.
+This may include:
+Discord Account Information
+● Discord user ID
+● Username
+● Display name
+● Avatar information where required by a feature
+Discord Server Information
+● Server ID
+● Channel IDs
+● Role IDs
+● Server configuration
+● Permissions relevant to Observer features
+Message and Interaction Information
+Observer may process:
+● Message IDs
+● Message content
+● Message author information
+● Channel information
+● Command interactions
+● Mentions
+● Attachments or links where necessary for a feature
+Message content is processed only where required for an Observer feature, including:
+● Message quoting
+● Message relaying
+● Scam, phishing, or malicious-link detection
+● Moderation
+● Mention protection
+● Reports
+● Tickets
+● Commands
+● Audit or moderation records
+Observer does not collect message content for advertising or behavioural profiling.
+Persistent Feature Data
+
+Depending on the features used, Observer may store information including:
+● Level and experience information
+● Moderation records
+● Ticket information
+● Reports
+● Reminders
+● Tags
+● Server-specific feature settings
+● Configuration preferences
+Technical and Security Information
+Observer may process limited technical information where necessary for:
+● Security
+● Abuse prevention
+● Error handling
+● Debugging
+● Service operation
+3. Sources of Personal Data
+Observer may obtain personal data from:
+● You directly when you interact with Observer.
+● Discord when Observer receives data through Discord's API and gateway.
+● Other users when they interact with you through features such as reports, moderation,
+tickets, mentions, or message quoting.
+● Discord server administrators who configure Observer or create moderation records.
+Where personal data is obtained indirectly, it is generally obtained through Discord as part of
+normal server activity or through an Observer feature used by another server member.
+4. Purposes and Legal Bases for Processing
+Under the GDPR, personal data must be processed using a valid legal basis.
+
+Observer may rely on the following legal bases under Article 6 GDPR.
+A. Performance of a Service — Article 6(1)(b)
+Processing may be necessary to provide features requested by a user or server administrator.
+This may include:
+● Executing bot commands.
+● Providing reminders.
+● Maintaining user-configured settings.
+● Providing tickets.
+● Processing requested message quotes.
+● Providing other explicitly requested Observer functionality.
+B. Legitimate Interests — Article 6(1)(f)
+Observer may process personal data where necessary for legitimate interests, provided those
+interests are not overridden by your rights and freedoms.
+These legitimate interests may include:
+● Operating and maintaining Observer.
+● Preventing abuse and misuse.
+● Protecting Discord communities from spam, scams, phishing, or malicious activity.
+● Providing moderation and server-management functionality.
+● Maintaining server configuration.
+● Investigating errors or security incidents.
+● Improving the reliability and security of Observer.
+Where legitimate interests are relied upon, the processing is limited to what is reasonably
+necessary for those purposes.
+C. Legal Obligation — Article 6(1)(c)
+Personal data may be processed where necessary to comply with a legal obligation under
+applicable EU or Slovenian law.
+D. Consent — Article 6(1)(a)
+Certain optional features may rely on your consent where appropriate.
+Where consent is the legal basis, you may withdraw that consent at any time.
+Withdrawal of consent does not affect the lawfulness of processing that occurred before
+consent was withdrawn.
+Observer does not rely on consent where processing is necessary for a core feature and
+consent could not genuinely be withdrawn.
+
+5. Data Minimisation
+Observer is designed to process only personal data reasonably necessary for the feature being
+used.
+Where possible:
+● Discord IDs are preferred over unnecessary personal information.
+● Data is not collected solely because it is available through Discord.
+● Message content is not permanently stored unless a feature requires persistent storage.
+● Data unrelated to Observer's operation is not intentionally collected.
+6. Storage and Data Retention
+Observer retains personal data only for as long as reasonably necessary for the purpose for
+which it was collected.
+Retention depends on the type of data and feature involved.
+Examples include:
+● Server configuration may be retained while Observer remains configured for that server.
+● Leveling data may be retained until deleted, reset, or no longer required.
+● Reminder data may be retained until the reminder is completed, cancelled, or removed.
+● Moderation records may be retained while needed for moderation history.
+● Ticket or report information may be retained while needed by the relevant server's
+moderation or support system.
+● Temporary message-processing data may be discarded once the relevant operation is
+completed.
+Where no fixed retention period is specified, retention is determined based on:
+● Whether the data remains necessary for the feature.
+● Whether the server continues to use Observer.
+● Whether the information is required for security or abuse prevention.
+● Whether retention is required by law.
+● Whether a valid deletion request has been received.
+Data that is no longer necessary should be deleted or anonymised where reasonably
+practicable.
+
+7. Hosting and Data Processors
+Observer is hosted on a virtual private server located in Poland, European Union.
+The server infrastructure is provided by a third-party hosting provider acting as a data
+processor on behalf of the Data Controller.
+Personal data stored by Observer may therefore be processed on infrastructure operated by
+the hosting provider solely for the purpose of providing hosting, storage, networking, backup,
+security, or related infrastructure services.
+Administrative access to Observer's application, databases, and stored content is restricted to
+the Data Controller, Fedja Podobnik / bluerock2, except where access by the hosting
+provider may be technically necessary for infrastructure operation, security, maintenance, legal
+compliance, or support.
+The hosting provider is not authorised by the Data Controller to use Observer's personal data
+for its own independent purposes.
+Where required by Article 28 GDPR, the relationship with the hosting provider is governed by
+appropriate data-processing terms or a Data Processing Agreement.
+Observer does not sell personal data or provide it to advertisers or data brokers.
+Personal data may otherwise be disclosed only where:
+● Required by applicable law.
+● Required in response to a valid legal request.
+● Necessary to investigate or respond to a security incident.
+● Necessary to protect Observer, its infrastructure, or its users.
+8. Location of Processing and International Transfers
+Observer's primary server and databases are hosted in Poland, within the European Union
+and European Economic Area.
+The Data Controller is located in Slovenia, also within the European Union and European
+Economic Area.
+Accordingly, the normal storage and administration of Observer's database does not involve a
+transfer of personal data to a country outside the EEA.
+
+Observer does not intentionally transfer its locally stored database or server data outside the
+EEA.
+However, Observer operates through Discord and may use other third-party services. Those
+third parties may independently process personal data outside the EEA.
+Where Observer itself uses a processor or service that requires personal data to be transferred
+outside the EEA, such a transfer will only be made where a lawful mechanism under Chapter V
+GDPR applies, such as:
+● An adequacy decision issued by the European Commission.
+● European Commission Standard Contractual Clauses.
+● Another valid transfer mechanism recognised under the GDPR.
+Third-party services that independently determine how they process personal data may have
+their own international-transfer arrangements and privacy policies.
+9. Automated Processing and Profiling
+Observer may perform automated technical actions such as:
+● Detecting suspicious links.
+● Detecting phishing patterns.
+● Applying configured moderation rules.
+● Calculating leveling or experience values.
+● Executing commands based on configured permissions.
+Observer does not intentionally perform automated decision-making that produces legal effects
+or similarly significant effects on individuals within the meaning of Article 22 GDPR.
+Server administrators remain responsible for moderation decisions and for how automated
+moderation features are configured and used.
+Observer does not use personal data for advertising profiles or commercial behavioural
+profiling.
+10. Your GDPR Rights
+Subject to the conditions and limitations of applicable law, you may have the following rights:
+Right of Access
+You may request confirmation of whether Observer processes personal data concerning you
+
+and request access to that data.
+Right to Rectification
+You may request correction of inaccurate personal data.
+Right to Erasure
+You may request deletion of personal data concerning you where the requirements of Article
+17 GDPR are met.
+This is commonly referred to as the right to be forgotten.
+Right to Restriction of Processing
+You may request that processing of your personal data be restricted in certain circumstances.
+Right to Data Portability
+Where processing is based on consent or contract and is carried out by automated means, you
+may have the right to receive relevant personal data in a structured, commonly used, and
+machine-readable format.
+Right to Object
+Where processing is based on legitimate interests, you may object to the processing of your
+personal data.
+The circumstances of the processing will then be reviewed to determine whether compelling
+legitimate grounds justify continued processing.
+Right to Withdraw Consent
+Where processing is based on consent, you may withdraw your consent at any time.
+Right Regarding Automated Decision-Making
+Where applicable, you have rights relating to decisions based solely on automated processing
+that produce legal or similarly significant effects.
+Observer is not intended to conduct such automated decision-making.
+11. Exercising Your Rights
+To exercise a data-protection right, contact:
+fedja.podobnik@pm.me
+
+Please provide enough information to identify the data relevant to your request, such as your
+Discord user ID or the relevant server ID.
+Do not provide unnecessary sensitive information.
+Identity verification may be required where reasonably necessary to prevent another person
+from accessing or deleting your information.
+Requests will be handled without undue delay and, under the GDPR, generally within one
+month of receipt.
+Where legally permitted, that period may be extended for particularly complex or numerous
+requests. If an extension is necessary, you will be informed in accordance with applicable law.
+Requests are normally handled free of charge. A reasonable fee may be charged or a request
+may be refused where permitted by the GDPR, including where requests are manifestly
+unfounded or excessive.
+12. Right to Lodge a Complaint
+If you believe your personal data has been processed in violation of the GDPR, you have the
+right to lodge a complaint with a competent supervisory authority.
+For the controller established in Slovenia, the supervisory authority is:
+Information Commissioner of the Republic of Slovenia
+Dunajska cesta 22
+SI-1000 Ljubljana
+Slovenia
+Email: gp.ip@ip-rs.si
+Telephone: +386 1 230 97 30
+You may also have the right to complain to the supervisory authority in the EU or EEA country
+
+where you live, work, or where the alleged infringement occurred.
+13. Data Security
+Reasonable technical and organisational measures are used to protect personal data
+processed by Observer.
+These measures may include:
+● Limiting access to stored data.
+● Restricting database and server access.
+● Protecting authentication credentials and bot tokens.
+● Applying software updates.
+● Monitoring for security issues.
+● Maintaining backups where necessary.
+● Limiting stored data to what is reasonably required.
+However, no internet-connected service or computer system can guarantee absolute security.
+14. Personal Data Breaches
+Where a personal data breach occurs, the situation will be assessed in accordance with the
+GDPR.
+Where required by law, the competent supervisory authority will be notified.
+Where a breach is likely to result in a high risk to the rights and freedoms of affected
+individuals, those individuals will also be informed where required by law.
+15. Children's Privacy
+Observer is intended to be used only by persons permitted to use Discord under Discord's
+applicable age requirements.
+
+Observer is not designed to intentionally collect personal data from children below the age at
+which they may lawfully use the service.
+If personal data is discovered to have been processed unlawfully in relation to a child,
+reasonable steps will be taken to delete or otherwise appropriately handle that data.
+16. Special Categories of Personal Data
+Observer does not intentionally request or require special-category personal data such as:
+● Health information
+● Religious or philosophical beliefs
+● Political opinions
+● Racial or ethnic origin
+● Biometric data used for identification
+● Sexual-orientation information
+Users should not provide such information to Observer unless strictly necessary.
+If such information appears incidentally in Discord message content processed by a feature,
+Observer does not intentionally use it for profiling or categorisation.
+17. Third-Party Services
+Observer operates through Discord and may use other third-party services.
+Those third parties may act as independent controllers or processors and may maintain their
+own privacy policies.
+Observer is not responsible for personal-data processing independently carried out by Discord
+or another third-party service outside Observer's control.
+Users should review the privacy policies of relevant third-party services.
+18. Removal of Observer From a Server
+Removing Observer from a Discord server stops future processing associated with normal
+activity in that server.
+However, previously stored information may not necessarily be deleted immediately.
+Server administrators may request deletion of server-related data by contacting the address
+listed in this Privacy Policy.
+
+Data may be retained where required for legal obligations, security, fraud prevention, or
+another valid legal reason.
+19. Changes to This Privacy Policy
+This Privacy Policy may be updated when necessary to reflect:
+● Changes to Observer's features.
+● Changes in data-processing practices.
+● Changes to third-party services.
+● Security requirements.
+● Changes in applicable law.
+Material changes may be announced through Observer's official Discord server, website,
+repository, or another appropriate channel.
+The Last Updated date at the top of this Policy identifies the most recent revision.
+Where required by law, additional notice or consent will be obtained before materially different
+processing begins.
+20. Contact
+For privacy questions, data-access requests, deletion requests, objections, or other GDPR-
+related matters, contact:
+Fedja Podobnik / bluerock2
+Email: fedja.podobnik@pm.me
+Country: Slovenia
+21. Relationship With the Terms of Service
+This Privacy Policy should be read together with Observer's Terms of Service.
+The Terms of Service govern use of Observer.
+This Privacy Policy explains how personal data is processed in connection with that use.
+
+
