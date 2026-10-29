@@ -50,22 +50,26 @@ const liveThemeUnlockedKey = "observer-live-theme-unlocked";
 const liveThemeChoiceKey = "observer-live-theme";
 const liveThemeOwnerKey = "observer-live-theme-owner";
 const liveThemeChristmasUnlockedKey = "observer-orthodox-christmas-unlocked";
+const liveThemeAllUnlockedKey = "observer-all-themes-unlocked";
 let themeMenuTimer = 0;
 let themeAccountReady = false;
 let themeAccountSignedIn = false;
 let themeAccountUserId = "";
+let accountAllThemesUnlocked = false;
 
 function readLiveTheme() {
   let unlocked = false;
   let christmasUnlocked = false;
+  let allThemesUnlocked = accountAllThemesUnlocked;
   let savedTheme = "observer";
   try {
+    allThemesUnlocked = allThemesUnlocked || localStorage.getItem(liveThemeAllUnlockedKey) === "true";
     christmasUnlocked = localStorage.getItem(liveThemeChristmasUnlockedKey) === "true";
-    unlocked = localStorage.getItem(liveThemeUnlockedKey) === "true" || christmasUnlocked;
+    unlocked = localStorage.getItem(liveThemeUnlockedKey) === "true" || christmasUnlocked || allThemesUnlocked;
     const stored = localStorage.getItem(liveThemeChoiceKey);
-    savedTheme = stored === "christmas" && christmasUnlocked ? "christmas" : ["error", "red-alert"].includes(stored) ? "error" : "observer";
+    savedTheme = stored === "christmas" && (christmasUnlocked || allThemesUnlocked) ? "christmas" : ["error", "red-alert"].includes(stored) ? "error" : stored && allThemesUnlocked ? stored : "observer";
   } catch { /* Theme preference is optional when browser storage is unavailable. */ }
-  return { unlocked, christmasUnlocked, theme: savedTheme };
+  return { unlocked, christmasUnlocked: christmasUnlocked || allThemesUnlocked, allThemesUnlocked, theme: savedTheme };
 }
 
 function isOrthodoxChristmasDate() {
@@ -100,8 +104,11 @@ function openThemeMenu() {
 }
 
 function applyLiveTheme(theme, persist = true) {
-  const { christmasUnlocked } = readLiveTheme();
-  const selected = theme === "christmas" && christmasUnlocked ? "christmas" : ["error", "red-alert"].includes(theme) ? "error" : "observer";
+  const { unlocked, christmasUnlocked, allThemesUnlocked } = readLiveTheme();
+  const selected = theme === "observer" ? "observer"
+    : theme === "christmas" && christmasUnlocked ? "christmas"
+      : ["error", "red-alert"].includes(theme) && unlocked ? "error"
+        : typeof theme === "string" && allThemesUnlocked ? theme : "observer";
   document.documentElement.dataset.observerTheme = selected;
   const siteShell = root.querySelector(".site-shell");
   if (siteShell) siteShell.dataset.theme = selected === "error" ? "red-alert" : selected;
@@ -131,12 +138,18 @@ async function syncAccountThemePreference() {
   try {
     const session = await api("/api/session");
     if (!session.signed_in || !session.user?.id) {
+      accountAllThemesUnlocked = false;
+      try { localStorage.removeItem(liveThemeAllUnlockedKey); } catch { /* Owner access is account scoped. */ }
       themeAccountReady = true;
       ensureThemeControl();
       return;
     }
     const userId = String(session.user.id);
     const preferences = await api("/api/preferences");
+    const allThemesUnlocked = preferences.all_themes_unlocked === true;
+    accountAllThemesUnlocked = allThemesUnlocked;
+    if (allThemesUnlocked) localStorage.setItem(liveThemeAllUnlockedKey, "true");
+    else localStorage.removeItem(liveThemeAllUnlockedKey);
     const local = readLiveTheme();
     themeAccountUserId = userId;
     themeAccountSignedIn = true;
@@ -144,17 +157,17 @@ async function syncAccountThemePreference() {
     const localOwner = localStorage.getItem(liveThemeOwnerKey);
     if (preferences.exists) {
       const localBelongsToAccount = !localOwner || localOwner === userId;
-      const christmasUnlocked = isOrthodoxChristmasDate() || preferences.christmas_unlocked || (localBelongsToAccount && local.christmasUnlocked);
-      const selectedTheme = isOrthodoxChristmasDate() ? "christmas" : preferences.theme === "christmas" && christmasUnlocked ? "christmas" : preferences.theme === "error" ? "error" : "observer";
+      const christmasUnlocked = allThemesUnlocked || isOrthodoxChristmasDate() || preferences.christmas_unlocked || (localBelongsToAccount && local.christmasUnlocked);
+      const selectedTheme = isOrthodoxChristmasDate() ? "christmas" : preferences.theme === "christmas" && christmasUnlocked ? "christmas" : preferences.theme === "error" ? "error" : preferences.theme && allThemesUnlocked ? preferences.theme : "observer";
       localStorage.setItem(liveThemeOwnerKey, userId);
       localStorage.setItem(liveThemeChoiceKey, selectedTheme);
-      if (preferences.theme_unlocked || christmasUnlocked) localStorage.setItem(liveThemeUnlockedKey, "true");
+      if ((preferences.theme_unlocked || christmasUnlocked) && !allThemesUnlocked) localStorage.setItem(liveThemeUnlockedKey, "true");
       else localStorage.removeItem(liveThemeUnlockedKey);
-      if (christmasUnlocked) localStorage.setItem(liveThemeChristmasUnlockedKey, "true");
+      if (christmasUnlocked && !allThemesUnlocked) localStorage.setItem(liveThemeChristmasUnlockedKey, "true");
       else localStorage.removeItem(liveThemeChristmasUnlockedKey);
       applyLiveTheme(selectedTheme, false);
       ensureThemeControl();
-      if (isOrthodoxChristmasDate() || (localBelongsToAccount && local.christmasUnlocked && !preferences.christmas_unlocked)) {
+      if (allThemesUnlocked || isOrthodoxChristmasDate() || (localBelongsToAccount && local.christmasUnlocked && !preferences.christmas_unlocked)) {
         await saveAccountThemePreference(selectedTheme, true);
       }
     } else if (!localOwner || localOwner === userId) {
@@ -166,12 +179,19 @@ async function syncAccountThemePreference() {
       ensureThemeControl();
     } else {
       localStorage.setItem(liveThemeOwnerKey, userId);
-      if (isOrthodoxChristmasDate()) {
+      if (allThemesUnlocked || isOrthodoxChristmasDate()) {
         localStorage.setItem(liveThemeChoiceKey, "christmas");
-        localStorage.setItem(liveThemeUnlockedKey, "true");
-        localStorage.setItem(liveThemeChristmasUnlockedKey, "true");
-        applyLiveTheme("christmas", false);
-        await saveAccountThemePreference("christmas", true);
+        if (isOrthodoxChristmasDate()) {
+          localStorage.setItem(liveThemeChristmasUnlockedKey, "true");
+          localStorage.setItem(liveThemeUnlockedKey, "true");
+          applyLiveTheme("christmas", false);
+          await saveAccountThemePreference("christmas", true);
+        } else {
+          localStorage.setItem(liveThemeChoiceKey, "observer");
+          localStorage.setItem(liveThemeOwnerKey, userId);
+          applyLiveTheme("observer", false);
+          await saveAccountThemePreference("observer", true);
+        }
       } else {
         localStorage.setItem(liveThemeChoiceKey, "observer");
         localStorage.removeItem(liveThemeUnlockedKey);
@@ -181,6 +201,8 @@ async function syncAccountThemePreference() {
       ensureThemeControl();
     }
   } catch {
+    accountAllThemesUnlocked = false;
+    try { localStorage.removeItem(liveThemeAllUnlockedKey); } catch { /* Account-only access requires a live session. */ }
     themeAccountReady = true;
     ensureThemeControl();
   }
@@ -195,7 +217,7 @@ function ensureThemeControl({ open = false } = {}) {
     return;
   }
   if (!control) {
-    root.insertAdjacentHTML("beforeend", `<aside class="site-theme-control" id="site-theme-control"><button type="button" class="site-theme-toggle" id="site-theme-toggle" aria-expanded="false" aria-controls="site-theme-menu">Themes <span aria-hidden="true">âœ¦</span></button><div class="site-theme-menu" id="site-theme-menu" role="group" aria-label="Choose website theme" aria-hidden="true" inert><div class="site-theme-menu-heading"><div class="eyebrow">EASTER EGG UNLOCKED</div><strong>Choose a theme</strong></div><button type="button" class="site-theme-option" data-site-theme-choice="observer" aria-pressed="false"><span>Observer theme</span><small>Black &amp; cyan</small></button><button type="button" class="site-theme-option" data-site-theme-choice="error" aria-pressed="false"><span>Error theme</span><small>Dark red, red &amp; black</small></button></div></aside>`);
+    root.insertAdjacentHTML("beforeend", `<aside class="site-theme-control" id="site-theme-control"><button type="button" class="site-theme-toggle" id="site-theme-toggle" aria-expanded="false" aria-controls="site-theme-menu">Themes <span aria-hidden="true">✦</span></button><div class="site-theme-menu" id="site-theme-menu" role="group" aria-label="Choose website theme" aria-hidden="true" inert><div class="site-theme-menu-heading"><div class="eyebrow">EASTER EGG UNLOCKED</div><strong>Choose a theme</strong></div><button type="button" class="site-theme-option" data-site-theme-choice="observer" aria-pressed="false"><span>Observer theme</span><small>Black &amp; cyan</small></button><button type="button" class="site-theme-option" data-site-theme-choice="error" aria-pressed="false"><span>Error theme</span><small>Dark red, red &amp; black</small></button></div></aside>`);
     if (christmasUnlocked) {
       root.querySelector("#site-theme-menu")?.insertAdjacentHTML("beforeend", `<button type="button" class="site-theme-option" data-site-theme-choice="christmas" aria-pressed="false"><span>Orthodox Christmas</span><small>Evergreen, cranberry &amp; gold</small></button>`);
     }
