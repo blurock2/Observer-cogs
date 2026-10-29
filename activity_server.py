@@ -203,6 +203,8 @@ class ActivityServer:
         app.router.add_get("/setup", self.index)
         app.router.add_get("/embeds", self.index)
         app.router.add_get("/moderate", self.index)
+        app.router.add_get("/privacy", self.index)
+        app.router.add_get("/terms", self.index)
         assets = ACTIVITY_DIR / "dist" / "assets"
         if assets.is_dir():
             app.router.add_static("/assets/", assets, show_index=False)
