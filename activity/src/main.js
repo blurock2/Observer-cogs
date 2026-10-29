@@ -238,6 +238,7 @@ function ensureThemeControl({ open = false } = {}) {
 }
 
 function unlockLiveThemes() {
+  if (readLiveTheme().unlocked) return;
   try { localStorage.setItem(liveThemeUnlockedKey, "true"); } catch { /* Unlock for this page view even without storage. */ }
   ensureThemeControl({ open: true });
   saveAccountThemePreference(readLiveTheme().theme, true);
