@@ -315,7 +315,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="afk",
         label="AFK",
-        emoji="ðŸ’¤",
+        emoji="💤",
         description="Per-server AFK status and optional nickname prefix.",
         settings=[
             SettingSpec("nickname_prefix", "AFK nickname prefix", "text", default="[AFK]"),
@@ -325,7 +325,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="autorole",
         label="Join Autoroles",
-        emoji="ðŸŽ­",
+        emoji="🎭",
         description="Independent roles assigned when members join.",
         settings=[
             SettingSpec("enabled", "Member autoroles", "toggle", default=False),
@@ -345,7 +345,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="verification",
         label="Verification",
-        emoji="âœ…",
+        emoji="✅",
         description="Button verification and verified/unverified role settings.",
         settings=[
             SettingSpec("enabled", "Enabled", "toggle", default=False),
@@ -369,7 +369,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="reminders",
         label="Reminders",
-        emoji="â°",
+        emoji="⏰",
         description="Persistent personal reminders and delivery fallback.",
         settings=[
             SettingSpec("fallback_enabled", "Fallback to source channel", "toggle", default=False),
@@ -378,7 +378,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="bot",
         label="Bot System",
-        emoji="ðŸ¤–",
+        emoji="🤖",
         description="Core bot behavior and logging.",
         settings=[
             SettingSpec(
@@ -413,7 +413,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="audit_log",
         label="Audit Log",
-        emoji="ðŸ§¾",
+        emoji="🧾",
         description="Configurable server event logging and permission warnings.",
         settings=[
             SettingSpec("enabled", "Enabled", "toggle", default=False),
@@ -454,7 +454,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="reaction_roles",
         label="Reaction Roles",
-        emoji="ðŸ”",
+        emoji="🔁",
         description="Self-assigned roles via emoji reactions.",
         settings=[
             SettingSpec("enabled", "Reaction roles", "toggle", default=False,
@@ -466,7 +466,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="message_quoter",
         label="Message Quoter",
-        emoji="ðŸ’¬",
+        emoji="💬",
         description="Reply-quoting of messages.",
         settings=[
             SettingSpec("enabled", "Enabled", "toggle", default=False),
@@ -500,7 +500,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="spotify",
         label="Spotify",
-        emoji="ðŸŽµ",
+        emoji="🎵",
         description=(
             "Auto-embed Spotify track links posted in chat. "
             "Also available anywhere via `/spotify`."
@@ -518,7 +518,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="acc_link",
         label="Account Linking",
-        emoji="ðŸ”—",
+        emoji="🔗",
         description="Link and display public GitHub and Steam profiles.",
         settings=[
             SettingSpec(
@@ -539,7 +539,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="utilities",
         label="Utilities",
-        emoji="ðŸ§°",
+        emoji="🧰",
         description="Misc helper commands.",
         settings=[
             SettingSpec("enabled", "Enabled", "toggle", default=False),
@@ -548,7 +548,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="report_msg",
         label="Report Message",
-        emoji="ðŸ“£",
+        emoji="📣",
         description="Let users report messages to staff and configure report notifications.",
 
         settings=[
@@ -576,7 +576,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="server_stats",
         label="Server Stats",
-        emoji="ðŸ“Š",
+        emoji="📊",
         description="Live member / channel counters.",
         settings=[
             SettingSpec("enabled", "Enabled", "toggle", default=False),
@@ -589,7 +589,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="temporary_voice",
         label="Temporary Voice",
-        emoji="ðŸ”Š",
+        emoji="🔊",
         description="Join-to-create private voice channels.",
         settings=[
             SettingSpec("enabled", "Enabled", "toggle", default=False),
@@ -605,7 +605,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="rules",
         label="Rules",
-        emoji="ðŸ“œ",
+        emoji="📜",
         description="Custom rules and rule messages. Create rules with `/rule_add`, "
         "then send them using `/rules`",
         settings=[
@@ -643,7 +643,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="tickets",
         label="Tickets",
-        emoji="ðŸŽ«",
+        emoji="🎫",
         description=(
             "Support ticket panels. Configure the settings below, "
             "then use `/ticket_panel` to post the Create Ticket button."
@@ -711,7 +711,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="message_relay",
         label="Message Relay",
-        emoji="ðŸ“¡",
+        emoji="📡",
         description=(
         "Manual cross-server message relay. Configure source and target "
         "servers with `/relay_setup`, then manage channels with relay commands."
@@ -741,7 +741,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="moderation",
         label="Moderation",
-        emoji="ðŸ›¡ï¸",
+        emoji="🛡️",
         description="Moderation commands, logs, appeals, and punishment roles that persist across rejoining.",
         settings=[
             SettingSpec("enabled", "Logging enabled", "toggle", default=True,
@@ -776,7 +776,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="mentions",
         label="Mention Protection",
-        emoji="ðŸ””",
+        emoji="🔔",
         description=(
             "Prevent users from pinging protected members or roles. "
             "Configure protected and exempt roles below."
@@ -838,7 +838,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="security",
         label="Anti-Scam and Security",
-        emoji="ðŸ›¡ï¸",
+        emoji="🛡️",
         description="Scam detection, honeypot and join-burst protection, lockdown, and channel controls.",
         settings=[
             SettingSpec("enabled", "Enabled", "toggle", default=True,
@@ -897,7 +897,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="tags",
         label="Tags",
-        emoji="ðŸ·ï¸",
+        emoji="🏷️",
         description="Reusable plain-text messages for moderators and trusted staff.",
         settings=[
             SettingSpec(
@@ -917,7 +917,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="member_commands",
         label="Member Commands",
-        emoji="ðŸ‘¥",
+        emoji="👥",
         description="Member info commands.",
         settings=[
             SettingSpec("enabled", "Enabled", "toggle", default=False),
@@ -928,7 +928,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="help",
         label="Help",
-        emoji="â“",
+        emoji="❓",
         description="Custom help command.",
         settings=[
             SettingSpec("enabled", "Enabled", "toggle", default=False),
@@ -939,7 +939,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="leveling",
         label="Leveling",
-        emoji="ðŸ“ˆ",
+        emoji="📈",
         description="XP, levels, and level-up messages.",
         settings=[
             SettingSpec("enabled", "XP earning", "toggle", default=True,
@@ -965,7 +965,7 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="weather",
         label="Weather",
-        emoji="ðŸŒ¤ï¸",
+        emoji="🌤️",
         description="Weather lookups.",
         settings=[
             SettingSpec("enabled", "Enabled", "toggle", default=False),
@@ -980,14 +980,14 @@ MODULES: list[ModuleSpec] = [
     ModuleSpec(
         key="auto_responder",
         label="Auto Responders",
-        emoji="ðŸ’¬",
+        emoji="💬",
         description="Create keyword-based automatic replies with optional variations.",
         settings=[],
     ),
     ModuleSpec(
         key="setup_ui",
         label="Setup Dashboard",
-        emoji="âš™ï¸",
+        emoji="⚙️",
         description="This dashboard itself.",
         settings=[
             SettingSpec("title", "Dashboard title", "text",
