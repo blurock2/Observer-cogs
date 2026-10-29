@@ -38,6 +38,7 @@ SESSION_TTL = 7 * 24 * 60 * 60
 CUSTOM_EMBED_IMAGE_MAX_BYTES = 8 * 1024 * 1024
 CUSTOM_EMBED_IMAGE_TOTAL_MAX_BYTES = 25 * 1024 * 1024
 CUSTOM_EMBED_IMAGE_MAX_COUNT = 10
+ALL_THEME_OWNER_IDS = frozenset({"805687087784394773", "1445292939789078571"})
 
 
 def _report_user_id(value: str) -> str | None:
@@ -460,6 +461,7 @@ class ActivityServer:
     async def get_user_preferences(self, request: web.Request) -> web.Response:
         session = self._get_session(request)
         user_id = str(session["user"].get("id", ""))
+        all_themes_unlocked = user_id in ALL_THEME_OWNER_IDS
         with connect_sqlite(DB_PATH) as db:
             row = db.execute(
                 "SELECT theme, theme_unlocked, christmas_unlocked FROM website_user_preferences WHERE discord_user_id = ?",
@@ -468,9 +470,10 @@ class ActivityServer:
         return web.json_response(
             {
                 "exists": row is not None,
-                "theme": row["theme"] if row and row["theme"] in {"observer", "error", "christmas"} else "observer",
+                "theme": row["theme"] if row and isinstance(row["theme"], str) and re.fullmatch(r"[a-z][a-z0-9-]{0,31}", row["theme"]) else "observer",
                 "theme_unlocked": bool(row["theme_unlocked"]) if row else False,
                 "christmas_unlocked": bool(row["christmas_unlocked"]) if row else False,
+                "all_themes_unlocked": all_themes_unlocked,
             },
             headers={"Cache-Control": "no-store"},
         )
@@ -484,8 +487,8 @@ class ActivityServer:
         if not isinstance(payload, dict):
             raise web.HTTPBadRequest(text="Theme preferences must be an object")
         theme = payload.get("theme", "observer")
-        if theme not in {"observer", "error", "christmas"}:
-            raise web.HTTPBadRequest(text="Choose Observer, Error, or Orthodox Christmas theme")
+        if not isinstance(theme, str) or not re.fullmatch(r"[a-z][a-z0-9-]{0,31}", theme):
+            raise web.HTTPBadRequest(text="Choose a valid theme")
         unlocked = payload.get("theme_unlocked") is True
         christmas_unlocked = payload.get("christmas_unlocked") is True
         user_id = str(session["user"].get("id", ""))
