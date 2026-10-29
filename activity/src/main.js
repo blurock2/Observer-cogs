@@ -292,6 +292,10 @@ function activateWebsiteBreak() {
   site._websiteBreakDebrisArea = null;
   site._websiteBreakTray?.remove();
   site._websiteBreakTray = null;
+  if (site._websiteBreakOriginalPosition !== undefined) {
+    site.style.position = site._websiteBreakOriginalPosition;
+    delete site._websiteBreakOriginalPosition;
+  }
 
   const reset = document.createElement("button");
   reset.className = "website-break-reset";
@@ -299,6 +303,8 @@ function activateWebsiteBreak() {
   reset.textContent = "Reset website";
   reset.setAttribute("aria-label", "Reset the website after the simulated break");
   site.classList.add("is-website-broken", "is-break-shaking");
+  site._websiteBreakOriginalPosition = site.style.position;
+  site.style.position = "relative";
   site.prepend(reset);
   window.setTimeout(() => site.classList.remove("is-break-shaking"), 620);
   document.querySelectorAll(".break-warning-vignette").forEach((warning) => warning.remove());
@@ -360,6 +366,12 @@ function activateWebsiteBreak() {
     }, { signal: controller.signal });
     const finishDrag = (event) => {
       if (!drag || (event && event.pointerId !== drag.pointerId)) return;
+      const rect = card.getBoundingClientRect();
+      const siteRect = site.getBoundingClientRect();
+      site.append(card);
+      card.style.position = "absolute";
+      card.style.left = `${rect.left - siteRect.left + site.scrollLeft}px`;
+      card.style.top = `${rect.top - siteRect.top + site.scrollTop}px`;
       drag = null;
       card.classList.remove("is-dragging");
     };
@@ -498,6 +510,8 @@ function activateWebsiteBreak() {
     debrisArea.remove();
     site._websiteBreakDebrisArea = null;
     site._websiteBreakTray = null;
+    site.style.position = site._websiteBreakOriginalPosition ?? "";
+    delete site._websiteBreakOriginalPosition;
   };
   reset.addEventListener("click", resetWebsite, { once: true });
   site._websiteBreakClickSparks = clickSparks;
