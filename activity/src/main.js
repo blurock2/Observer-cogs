@@ -20,6 +20,7 @@ function sharedFooter() {
   return `<footer class="site-footer shared-site-footer"><div class="footer-brand">${brand()}<small>&#169; ${new Date().getFullYear()} Blurock2 / Fedja Podobnik.</small></div><div class="shared-footer-main"><nav class="footer-links" aria-label="Footer links"><a href="https://github.com/blurock2/Observer-cogs" target="_blank" rel="noreferrer">Source code</a><a href="https://my-website.rockus26.workers.dev/#projects" target="_blank" rel="noreferrer">Creator portfolio</a><a href="https://discord.gg/tccYb2XSxR" target="_blank" rel="noreferrer">Support server</a><a href="/privacy">Privacy Policy</a><a href="/terms">Terms of Service</a></nav><div class="footer-meta"><span class="footer-disclaimer">Not affiliated with Discord Inc.</span><a class="footer-top" href="#top" onclick="window.scrollTo({top:0,behavior:'smooth'});return false">BACK TO TOP &#8593;</a></div></div></footer>`;
 }
 function ensureSiteFooter() {
+  ensureThemeControl();
   if (!root.firstElementChild || root.querySelector(".shared-site-footer")) return;
   const oldFooter = root.querySelector(".site-footer, .site-policy-footer");
   if (oldFooter) oldFooter.outerHTML = sharedFooter();
@@ -47,39 +48,83 @@ const liveStatusClickTimes = new WeakMap();
 
 const liveThemeUnlockedKey = "observer-live-theme-unlocked";
 const liveThemeChoiceKey = "observer-live-theme";
+let themeMenuTimer = 0;
 
-function initLiveThemePicker() {
-  const shell = root.querySelector(".site-shell");
-  const stats = root.querySelector(".live-stats-section");
-  if (!shell || !stats) return;
-  stats.insertAdjacentHTML("beforeend", `<div class="live-theme-picker" id="live-theme-picker" hidden aria-labelledby="live-theme-heading"><div class="live-theme-copy"><div class="eyebrow">EASTER EGG UNLOCKED</div><h3 id="live-theme-heading">Choose a theme.</h3><p>Your choice is saved in this browser.</p></div><div class="live-theme-choices" role="group" aria-label="Choose website theme"><button type="button" data-site-theme-choice="observer" aria-pressed="true">Observer theme<span>Black &amp; cyan</span></button><button type="button" data-site-theme-choice="red-alert" aria-pressed="false">Error theme<span>Dark red, red &amp; black</span></button></div></div>`);
-  const panel = root.querySelector("#live-theme-picker");
-  if (!panel) return;
+function readLiveTheme() {
   let unlocked = false;
   let savedTheme = "observer";
   try {
     unlocked = localStorage.getItem(liveThemeUnlockedKey) === "true";
-    savedTheme = localStorage.getItem(liveThemeChoiceKey) === "red-alert" ? "red-alert" : "observer";
+    savedTheme = ["error", "red-alert"].includes(localStorage.getItem(liveThemeChoiceKey)) ? "error" : "observer";
   } catch { /* Theme preference is optional when browser storage is unavailable. */ }
-  shell.dataset.theme = savedTheme;
-  panel.hidden = !unlocked;
-  panel.querySelectorAll("[data-site-theme-choice]").forEach((button) => {
-    button.setAttribute("aria-pressed", String(button.dataset.siteThemeChoice === savedTheme));
-    button.addEventListener("click", () => {
-      const theme = button.dataset.siteThemeChoice === "red-alert" ? "red-alert" : "observer";
-      shell.dataset.theme = theme;
-      panel.querySelectorAll("[data-site-theme-choice]").forEach((choice) => {
-        choice.setAttribute("aria-pressed", String(choice === button));
-      });
-      try { localStorage.setItem(liveThemeChoiceKey, theme); } catch { /* Keep the selection for this page view. */ }
-    });
+  return { unlocked, theme: savedTheme };
+}
+
+function closeThemeMenu() {
+  window.clearTimeout(themeMenuTimer);
+  const control = root.querySelector("#site-theme-control");
+  const toggle = root.querySelector("#site-theme-toggle");
+  const menu = root.querySelector("#site-theme-menu");
+  control?.classList.remove("is-open");
+  toggle?.setAttribute("aria-expanded", "false");
+  if (menu) {
+    menu.setAttribute("aria-hidden", "true");
+    menu.inert = true;
+  }
+}
+
+function openThemeMenu() {
+  const control = root.querySelector("#site-theme-control");
+  const toggle = root.querySelector("#site-theme-toggle");
+  const menu = root.querySelector("#site-theme-menu");
+  if (!control || !toggle || !menu) return;
+  control.classList.add("is-open");
+  toggle.setAttribute("aria-expanded", "true");
+  menu.setAttribute("aria-hidden", "false");
+  menu.inert = false;
+  window.clearTimeout(themeMenuTimer);
+  themeMenuTimer = window.setTimeout(closeThemeMenu, 10_000);
+}
+
+function applyLiveTheme(theme) {
+  const selected = ["error", "red-alert"].includes(theme) ? "error" : "observer";
+  document.documentElement.dataset.observerTheme = selected;
+  const siteShell = root.querySelector(".site-shell");
+  if (siteShell) siteShell.dataset.theme = selected === "error" ? "red-alert" : "observer";
+  root.querySelectorAll("[data-site-theme-choice]").forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.siteThemeChoice === selected));
   });
+  try { localStorage.setItem(liveThemeChoiceKey, selected); } catch { /* Keep the selection for this page view. */ }
+}
+
+function ensureThemeControl({ open = false } = {}) {
+  const { unlocked, theme } = readLiveTheme();
+  document.documentElement.dataset.observerTheme = theme;
+  let control = root.querySelector("#site-theme-control");
+  if (!unlocked) {
+    control?.remove();
+    return;
+  }
+  if (!control) {
+    root.insertAdjacentHTML("beforeend", `<aside class="site-theme-control" id="site-theme-control"><button type="button" class="site-theme-toggle" id="site-theme-toggle" aria-expanded="false" aria-controls="site-theme-menu">Themes <span aria-hidden="true">✦</span></button><div class="site-theme-menu" id="site-theme-menu" role="group" aria-label="Choose website theme" aria-hidden="true" inert><div class="site-theme-menu-heading"><div class="eyebrow">EASTER EGG UNLOCKED</div><strong>Choose a theme</strong></div><button type="button" class="site-theme-option" data-site-theme-choice="observer" aria-pressed="false"><span>Observer theme</span><small>Black &amp; cyan</small></button><button type="button" class="site-theme-option" data-site-theme-choice="error" aria-pressed="false"><span>Error theme</span><small>Dark red, red &amp; black</small></button></div></aside>`);
+    control = root.querySelector("#site-theme-control");
+    const toggle = root.querySelector("#site-theme-toggle");
+    toggle?.addEventListener("click", () => control.classList.contains("is-open") ? closeThemeMenu() : openThemeMenu());
+    control?.querySelectorAll("[data-site-theme-choice]").forEach((button) => button.addEventListener("click", () => {
+      applyLiveTheme(button.dataset.siteThemeChoice);
+      closeThemeMenu();
+    }));
+    control?.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") { closeThemeMenu(); root.querySelector("#site-theme-toggle")?.focus(); }
+    });
+  }
+  applyLiveTheme(theme);
+  if (open) openThemeMenu();
 }
 
 function unlockLiveThemes() {
   try { localStorage.setItem(liveThemeUnlockedKey, "true"); } catch { /* Unlock for this page view even without storage. */ }
-  const picker = root.querySelector("#live-theme-picker");
-  if (picker) picker.hidden = false;
+  ensureThemeControl({ open: true });
 }
 
 function playLiveStatusEasterEgg(card) {
@@ -220,7 +265,6 @@ async function loadLanding() {
     </main><footer class="site-footer"><div class="footer-brand">${brand()}<small>© ${new Date().getFullYear()} Observer. Independent community software.</small></div><div class="footer-links"><a href="${esc(publicInfo.source_url)}" target="_blank" rel="noreferrer">Source code</a><a href="${esc(publicInfo.portfolio_url)}" target="_blank" rel="noreferrer">Creator portfolio</a><a href="${esc(publicInfo.support_url)}" target="_blank" rel="noreferrer">Support</a><details class="footer-legal"><summary>Privacy &amp; terms</summary><div class="legal-copy"><section><h3>Privacy</h3><p>Sign-in uses Discord OAuth to identify you and list servers where you are an owner or have moderation permissions. Observer stores a protected sign-in session, your basic Discord profile, and that manageable-server list for up to seven days. Discord access tokens are not stored. Server configuration changes are saved in Observer&#8217;s database for the bot to use.</p><p>You can end your sign-in session with “Sign out”. Contact the creator through the support server for questions about stored information.</p></section><section><h3>Terms</h3><p>Use Observer only in servers you own or are authorized to manage. Dashboard changes apply to the connected server and may affect its members. You are responsible for reviewing settings, permissions, and applicable laws before enabling features.</p><p>Observer is provided as an independent community project and is not affiliated with or endorsed by Discord Inc. Service availability and features may change.</p></section></div></details></div><span class="footer-disclaimer">Not affiliated with Discord Inc.</span><a class="footer-top" href="#top" onclick="window.scrollTo({top:0,behavior:'smooth'});return false">BACK TO TOP ↑</a></footer>
   </div>`;
   initLandingScrollReveal();
-  initLiveThemePicker();
   root.querySelector("#live-stat-card")?.addEventListener("click", (event) => trackLiveStatusClick(event.currentTarget));
   document.querySelectorAll("#open-dashboard, #open-dashboard-hero, #open-dashboard-workflow").forEach((button) => button.addEventListener("click", openDashboard));
   void loadPublicUpdates();
