@@ -694,3 +694,16 @@ body.modal-open { overflow: hidden; }
   .shared-site-footer .footer-links > a { font-size: 12px; }
   .shared-site-footer .footer-meta { align-items: flex-start; flex-direction: column; gap: 8px; }
 }
+
+
+/* Live portfolio stats */
+.live-stats-section { width: min(1172px, calc(100% - 68px)); margin: 0 auto; padding: 68px 0 62px; border-bottom: 1px solid #ffffff0c; }
+.live-stats-head .eyebrow { color: #91aeb2; }
+.live-stats-head h2 { margin: 12px 0 26px; color: #f0f8f9; font: 600 clamp(30px, 4vw, 40px)/1.12 system-ui, sans-serif; letter-spacing: -1.4px; }
+.live-stats-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.live-stat { display: grid; align-content: center; gap: 7px; min-width: 0; min-height: 88px; padding: 17px 19px; border: 1px solid #29292e; border-radius: 9px; background: linear-gradient(145deg, #141518, #101113); }
+.live-stat strong { overflow: hidden; color: #42d7e8; font: 650 18px/1.25 system-ui, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
+.live-stat span { color: #94a2a4; font-size: 11px; }
+.live-stats-note { margin: 17px 0 0; color: #849295; font-size: 11px; }
+@media (max-width: 780px) { .live-stats-section { width: calc(100% - 40px); padding: 56px 0; } .live-stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } }
+@media (max-width: 420px) { .live-stats-grid { grid-template-columns: 1fr; } .live-stat { min-height: 76px; } }
