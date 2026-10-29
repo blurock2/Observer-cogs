@@ -58,7 +58,7 @@ function playLiveStatusEasterEgg(card) {
     card.classList.remove("is-glitching");
     card.querySelectorAll(".live-stat-alert").forEach((alert) => alert.remove());
     delete card.dataset.glitching;
-  }, 2500);
+  }, 2700);
 }
 
 async function loadLanding() {
