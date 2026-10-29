@@ -197,6 +197,7 @@ class ActivityServer:
         app.router.add_get("/auth/callback", self.oauth_callback)
         app.router.add_post("/auth/logout", self.logout)
         app.router.add_get("/api/session", self.session_info)
+        app.router.add_get("/api/diary", self.diary_data)
         app.router.add_get("/api/preferences", self.get_user_preferences)
         app.router.add_post("/api/preferences", self.save_user_preferences)
         app.router.add_get("/api/servers", self.servers)
@@ -235,6 +236,7 @@ class ActivityServer:
         app.router.add_get("/moderate", self.index)
         app.router.add_get("/privacy", self.index)
         app.router.add_get("/terms", self.index)
+        app.router.add_get("/diary", self.index)
         assets = ACTIVITY_DIR / "dist" / "assets"
         if assets.is_dir():
             app.router.add_static("/assets/", assets, show_index=False)
@@ -466,6 +468,34 @@ class ActivityServer:
             "signed_in": True,
             "user": {"id": user.get("id"), "username": user.get("global_name") or user.get("username"), "avatar": user.get("avatar")},
         }, headers={"Cache-Control": "no-store"})
+
+    async def diary_data(self, request: web.Request) -> web.Response:
+        """Return only the signed-in user's private bookmarks and reminders."""
+        session = self._get_session(request)
+        try:
+            user_id = int(session["user"].get("id", 0))
+        except (TypeError, ValueError):
+            raise web.HTTPUnauthorized(text="Sign in through Discord to continue")
+        if user_id <= 0:
+            raise web.HTTPUnauthorized(text="Sign in through Discord to continue")
+
+        with connect_sqlite(DB_PATH) as db:
+            bookmark_rows = db.execute(
+                "SELECT id, content, attachment_urls, message_url, bookmarked_at, original_timestamp "
+                "FROM bookmarks WHERE user_id = ? ORDER BY bookmarked_at DESC LIMIT 100",
+                (user_id,),
+            ).fetchall()
+            reminder_rows = db.execute(
+                "SELECT id, content, next_send_at, created_at, source_url "
+                "FROM reminders WHERE user_id = ? AND acknowledged = 0 ORDER BY next_send_at ASC LIMIT 100",
+                (user_id,),
+            ).fetchall()
+        bookmarks = [dict(row) for row in bookmark_rows]
+        reminders = [dict(row) for row in reminder_rows]
+        return web.json_response(
+            {"bookmarks": bookmarks, "reminders": reminders},
+            headers={"Cache-Control": "no-store", "Vary": "Cookie"},
+        )
 
     async def get_user_preferences(self, request: web.Request) -> web.Response:
         session = self._get_session(request)
