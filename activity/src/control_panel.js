@@ -6,13 +6,13 @@ let activityData;
 let selectedModule = null;
 const dirtySettings = new Set();
 const MODULE_EMOJIS = Object.freeze({
-  afk: "\\u{1F4A4}", autorole: "\\u{1F3AD}", verification: "\\u2705", reminders: "\\u23F0", bot: "\\u{1F916}",
-  audit_log: "\\u{1F9FE}", reaction_roles: "\\u{1F501}", message_quoter: "\\u{1F4AC}", spotify: "\\u{1F3B5}",
-  acc_link: "\\u{1F517}", utilities: "\\u{1F9F0}", report_msg: "\\u{1F4E3}", server_stats: "\\u{1F4CA}",
-  temporary_voice: "\\u{1F50A}", rules: "\\u{1F4DC}", tickets: "\\u{1F3AB}", message_relay: "\\u{1F4E1}",
-  moderation: "\\u{1F6E1}\\uFE0F", mentions: "\\u{1F514}", security: "\\u{1F6E1}\\uFE0F", tags: "\\u{1F3F7}\\uFE0F",
-  member_commands: "\\u{1F465}", help: "\\u2753", leveling: "\\u{1F4C8}", weather: "\\u{1F324}\\uFE0F",
-  auto_responder: "\\u{1F4AC}", setup_ui: "\\u2699\\uFE0F",
+  afk: "\u{1F4A4}", autorole: "\u{1F3AD}", verification: "\u2705", reminders: "\u23F0", bot: "\u{1F916}",
+  audit_log: "\u{1F9FE}", reaction_roles: "\u{1F501}", message_quoter: "\u{1F4AC}", spotify: "\u{1F3B5}",
+  acc_link: "\u{1F517}", utilities: "\u{1F9F0}", report_msg: "\u{1F4E3}", server_stats: "\u{1F4CA}",
+  temporary_voice: "\u{1F50A}", rules: "\u{1F4DC}", tickets: "\u{1F3AB}", message_relay: "\u{1F4E1}",
+  moderation: "\u{1F6E1}\uFE0F", mentions: "\u{1F514}", security: "\u{1F6E1}\uFE0F", tags: "\u{1F3F7}\uFE0F",
+  member_commands: "\u{1F465}", help: "\u2753", leveling: "\u{1F4C8}", weather: "\u{1F324}\uFE0F",
+  auto_responder: "\u{1F4AC}", setup_ui: "\u2699\uFE0F",
 });
 const moduleEmoji = (module) => MODULE_EMOJIS[module.key] || module.emoji || "";
 
