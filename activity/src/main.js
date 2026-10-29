@@ -67,12 +67,12 @@ function playLiveStatusEasterEgg(card) {
     effect.setAttribute("aria-hidden", "true");
     const logMessages = [
       "ERROR: status daemon exceeded its fun quota",
-      "WARN: confetti service started unexpectedly",
+      "WARN: spark service started unexpectedly",
       "TRACE: observer.exe is still very much online",
       "ERROR: seriousness.dll not found",
       "NOTICE: no actual errors detected",
       "WARN: vibes are outside normal parameters",
-      "TRACE: confetti.exe initialized successfully",
+      "TRACE: spark.exe initialized successfully",
       "STATUS: just kidding - all systems are online",
     ];
     for (let index = 0; index < 16; index += 1) {
@@ -86,20 +86,23 @@ function playLiveStatusEasterEgg(card) {
       log.style.setProperty("--rain-drift", `${Math.round(Math.random() * 80 - 40)}px`);
       effect.append(log);
     }
-    const confettiColors = ["#42d7e8", "#ff596b", "#ffd166", "#a78bfa", "#67e8a5", "#ffffff"];
-    for (let index = 0; index < 42; index += 1) {
-      const piece = document.createElement("span");
-      piece.className = "live-status-confetti";
-      piece.style.left = `${46 + Math.random() * 8}%`;
-      piece.style.top = `${32 + Math.random() * 36}%`;
-      piece.style.setProperty("--confetti-color", confettiColors[index % confettiColors.length]);
-      piece.style.setProperty("--confetti-x", `${Math.round(Math.random() * 560 - 280)}px`);
-      piece.style.setProperty("--confetti-y", `${Math.round(Math.random() * 300 - 150)}px`);
-      piece.style.setProperty("--confetti-rotation", `${Math.round(Math.random() * 900 - 450)}deg`);
-      piece.style.setProperty("--confetti-delay", `${Math.random() * 0.2}s`);
-      effect.append(piece);
+    const sparkColors = ["#ff334f", "#f0442e", "#d94b16", "#ff6b35"];
+    for (let index = 0; index < 48; index += 1) {
+      const spark = document.createElement("span");
+      const angle = Math.random() * Math.PI * 2;
+      const distance = 75 + Math.random() * 205;
+      spark.className = "live-status-spark";
+      // Start across the face of the Online button, then burst away from it.
+      spark.style.left = `${18 + Math.random() * 64}%`;
+      spark.style.top = `${28 + Math.random() * 44}%`;
+      spark.style.setProperty("--spark-color", sparkColors[index % sparkColors.length]);
+      spark.style.setProperty("--spark-x", `${Math.round(Math.cos(angle) * distance)}px`);
+      spark.style.setProperty("--spark-y", `${Math.round(Math.sin(angle) * distance)}px`);
+      spark.style.setProperty("--spark-rotation", `${Math.round(angle * 180 / Math.PI)}deg`);
+      spark.style.setProperty("--spark-delay", `${Math.random() * 0.2}s`);
+      effect.append(spark);
     }
-    section.append(effect);
+    card.append(effect);
   }
 
   window.setTimeout(() => {
