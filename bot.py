@@ -60,6 +60,7 @@ class RestrictedCommandTree(app_commands.CommandTree):
 class MyBot(commands.Bot):
     EXTENSIONS = (
         "cogs.setup_ui",
+        "cogs.auto_responder",
         "cogs.todo",
         "cogs.afk",
         "cogs.autoroles",
@@ -161,7 +162,7 @@ class MyBot(commands.Bot):
             await context.send(
                 embed=discord.Embed(
                     description=(
-                        "⚠️ This bot's commands are limited to configured "
+                        "âš ï¸ This bot's commands are limited to configured "
                         "staff and tester roles."
                     ),
                     color=0x96EDF1,
@@ -236,6 +237,18 @@ async def reload_cogs(ctx: commands.Context) -> None:
     # Extensions import shared code with ``from ... import ...``. Reload these
     # non-extension modules before refreshing cogs so their current definitions
     # are available to every extension during this pass.
+    config_module = sys.modules.get("cogs.config")
+    if config_module is not None:
+        try:
+            importlib.reload(config_module)
+        except Exception as error:
+            logger.exception("Failed to reload shared bot configuration")
+            await ctx.send(
+                "âŒ `cogs.config` failed to reload: "
+                f"`{type(error).__name__}: {error}`"
+            )
+            return
+
     database_module = sys.modules.get("database")
     if database_module is not None:
         try:
@@ -243,7 +256,7 @@ async def reload_cogs(ctx: commands.Context) -> None:
         except Exception as error:
             logger.exception("Failed to reload shared database module")
             await ctx.send(
-                "❌ `database` failed to reload: "
+                "âŒ `database` failed to reload: "
                 f"`{type(error).__name__}: {error}`"
             )
             return
@@ -255,7 +268,7 @@ async def reload_cogs(ctx: commands.Context) -> None:
         except Exception as error:
             logger.exception("Failed to reload shared moderation stats module")
             await ctx.send(
-                "❌ `cogs.mod_stats` failed to reload: "
+                "âŒ `cogs.mod_stats` failed to reload: "
                 f"`{type(error).__name__}: {error}`"
             )
             return
@@ -270,7 +283,7 @@ async def reload_cogs(ctx: commands.Context) -> None:
     )
 
     if not extensions:
-        await ctx.send("❌ No cogs are configured or currently loaded.")
+        await ctx.send("âŒ No cogs are configured or currently loaded.")
         return
 
     results: list[str] = []
@@ -280,12 +293,12 @@ async def reload_cogs(ctx: commands.Context) -> None:
             try:
                 await bot.load_extension(extension)
 
-                results.append(f"✅ `{extension}` loaded (was not loaded).")
+                results.append(f"âœ… `{extension}` loaded (was not loaded).")
                 logger.info("Loaded extension during reload: %s", extension)
 
             except Exception as error:
                 results.append(
-                    f"❌ `{extension}` failed to load: "
+                    f"âŒ `{extension}` failed to load: "
                     f"`{type(error).__name__}: {error}`"
                 )
 
@@ -299,12 +312,12 @@ async def reload_cogs(ctx: commands.Context) -> None:
         try:
             await bot.reload_extension(extension)
 
-            results.append(f"✅ `{extension}` reloaded.")
+            results.append(f"âœ… `{extension}` reloaded.")
             logger.info("Reloaded extension %s from %s", extension, module_path)
 
         except Exception as error:
             results.append(
-                f"❌ `{extension}` failed to reload: "
+                f"âŒ `{extension}` failed to reload: "
                 f"`{type(error).__name__}: {error}`"
             )
 
@@ -314,10 +327,10 @@ async def reload_cogs(ctx: commands.Context) -> None:
 
     try:
         synced_commands = await bot.tree.sync()
-        response += f"\n✅ Synchronized {len(synced_commands)} application command(s)."
+        response += f"\nâœ… Synchronized {len(synced_commands)} application command(s)."
         logger.info("Synchronized %d application command(s) after cog reload", len(synced_commands))
     except Exception as error:
-        response += f"\n❌ Application command sync failed: `{type(error).__name__}: {error}`"
+        response += f"\nâŒ Application command sync failed: `{type(error).__name__}: {error}`"
         logger.exception("Failed to synchronize application commands after cog reload")
 
     if len(response) <= 2000:
@@ -337,13 +350,13 @@ async def sync_commands(ctx: commands.Context) -> None:
     try:
         synced_commands = await bot.tree.sync()
         await ctx.send(
-            f"🔄 Globally synced {len(synced_commands)} application command(s)."
+            f"ðŸ”„ Globally synced {len(synced_commands)} application command(s)."
         )
         logger.info("Globally synced %d application command(s)", len(synced_commands))
     except Exception as error:
         logger.exception("Failed to synchronize application commands")
         await ctx.send(
-            "❌ Slash commands did not sync: "
+            "âŒ Slash commands did not sync: "
             f"`{type(error).__name__}: {error}`"
         )
 
@@ -380,7 +393,7 @@ async def restart_bot(ctx: commands.Context) -> None:
 
         try:
             await channel.send(
-                "🔄 Bot is restarting… Please wait a moment."
+                "ðŸ”„ Bot is restartingâ€¦ Please wait a moment."
             )
             notified += 1
 
@@ -389,7 +402,7 @@ async def restart_bot(ctx: commands.Context) -> None:
 
     await ctx.send(
         f"Sent restart notice to {notified} log channel(s) "
-        f"({failed} failed). Restarting now…"
+        f"({failed} failed). Restarting nowâ€¦"
     )
 
     await asyncio.sleep(1.5)
@@ -509,3 +522,4 @@ if __name__ == "__main__":
 
     except KeyboardInterrupt:
         logger.info("Bot stopped cleanly")
+

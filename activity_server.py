@@ -181,6 +181,8 @@ class ActivityServer:
         app.router.add_get("/api/servers", self.servers)
         app.router.add_get("/api/control-panel/{guild_id}", self.control_panel)
         app.router.add_post("/api/control-panel/{guild_id}/setting", self.save_control_panel_setting)
+        app.router.add_post("/api/control-panel/{guild_id}/auto-responses", self.save_auto_response)
+        app.router.add_delete("/api/control-panel/{guild_id}/auto-responses/{response_id}", self.delete_auto_response)
         app.router.add_post("/api/control-panel/{guild_id}/ticket-panel", self.send_ticket_panel)
         app.router.add_get("/api/public-updates", self.public_updates)
         app.router.add_get("/api/custom-embed/{guild_id}", self.custom_embed_info)
@@ -489,7 +491,6 @@ class ActivityServer:
             can_send_embeds = bool(bot_guild and (
                 user_id == BOT_OWNER_ID
                 or guild.get("owner") is True
-                or await self._has_custom_embed_role(bot_guild, user_id)
             ))
             if not can_moderate and not can_send_embeds:
                 continue
@@ -505,19 +506,6 @@ class ActivityServer:
         items.sort(key=lambda item: (not item["bot_present"], item["name"].casefold()))
         return web.json_response({"servers": items, "invite_url": self._bot_invite_url()}, headers={"Cache-Control": "no-store"})
 
-    async def _has_custom_embed_role(self, guild: discord.Guild, user_id: int) -> bool:
-        try:
-            role_id = int(self.bot.setup_store.get(guild.id, "bot", "custom_embed_role"))
-        except (TypeError, ValueError):
-            return False
-        member = guild.get_member(user_id)
-        if member is None:
-            try:
-                member = await guild.fetch_member(user_id)
-            except (discord.HTTPException, ValueError):
-                return False
-        return any(role.id == role_id for role in member.roles)
-
     async def _require_custom_embed_access(
         self, request: web.Request, guild_id: int | None = None
     ) -> tuple[dict, discord.Guild]:
@@ -530,8 +518,8 @@ class ActivityServer:
         if guild is None:
             raise web.HTTPNotFound(text="Observer is not in that server")
         user_id = int(session["user"].get("id", 0))
-        if user_id not in (BOT_OWNER_ID, guild.owner_id) and not await self._has_custom_embed_role(guild, user_id):
-            raise web.HTTPForbidden(text="Only the configured custom embed role, server owner, or Observer bot owner can send embeds")
+        if user_id not in (BOT_OWNER_ID, guild.owner_id):
+            raise web.HTTPForbidden(text="Only the server owner or Observer bot owner can send custom messages")
         return session, guild
 
     async def custom_embed_info(self, request: web.Request) -> web.Response:
@@ -586,7 +574,7 @@ class ActivityServer:
                 (guild.id, channel_id, message_id),
             ).fetchone()
         if row is None:
-            raise web.HTTPNotFound(text="That message is not saved by Observer’s custom sender")
+            raise web.HTTPNotFound(text="That message is not saved by Observerâ€™s custom sender")
         channel = guild.get_channel(channel_id)
         if not isinstance(channel, discord.TextChannel):
             raise web.HTTPNotFound(text="The message channel is no longer available")
@@ -856,7 +844,7 @@ class ActivityServer:
                         (guild.id, channel.id, edit_message_id),
                     ).fetchone()
                 if saved is None:
-                    raise web.HTTPNotFound(text="That message is not saved by Observer’s custom sender")
+                    raise web.HTTPNotFound(text="That message is not saved by Observerâ€™s custom sender")
                 if saved["style"] != style:
                     raise web.HTTPBadRequest(text="Discord does not allow switching the format of an existing message")
                 message = await channel.fetch_message(edit_message_id)
@@ -1387,7 +1375,7 @@ class ActivityServer:
             reporter_id, newly_accepted = report_cog.reports.accept(message.id, guild.id)
             embed.add_field(
                 name="Accepted by staff",
-                value=f"<@{user_id}> · <t:{int(datetime.now(timezone.utc).timestamp())}:f>",
+                value=f"<@{user_id}> Â· <t:{int(datetime.now(timezone.utc).timestamp())}:f>",
                 inline=False,
             )
             if reporter_id is not None and newly_accepted:
@@ -1430,7 +1418,7 @@ class ActivityServer:
             target_label = target.mention if target else f"User {target_id}"
             embed.add_field(
                 name="Moderation action",
-                value=f"{action.title()} on {target_label} · Case #{action_result['case_number']} by <@{user_id}>",
+                value=f"{action.title()} on {target_label} Â· Case #{action_result['case_number']} by <@{user_id}>",
                 inline=False,
             )
         from cogs.report_msg import ClaimReportView
@@ -1576,6 +1564,7 @@ class ActivityServer:
                 "emoji": module.emoji,
                 "description": module.description,
                 "settings": settings,
+                **({"responses": self._auto_responses(guild.id)} if module.key == "auto_responder" else {}),
             })
 
         channel_items = [{
@@ -1596,6 +1585,75 @@ class ActivityServer:
             "channels": channel_items,
             "roles": role_items,
         }, headers={"Cache-Control": "no-store"})
+
+    def _auto_responses(self, guild_id: int) -> list[dict]:
+        cog = self.bot.get_cog("AutoResponder")
+        if cog is None:
+            return []
+        return [dict(row) for row in cog.store.list(guild_id)]
+
+    async def save_auto_response(self, request: web.Request) -> web.Response:
+        _, guild = self._dashboard_guild(request)
+        cog = self.bot.get_cog("AutoResponder")
+        if cog is None:
+            raise web.HTTPServiceUnavailable(text="Auto responders are not loaded")
+        try:
+            payload = await request.json()
+        except (ValueError, web.HTTPException):
+            raise web.HTTPBadRequest(text="Invalid auto response")
+        if not isinstance(payload, dict):
+            raise web.HTTPBadRequest(text="Invalid auto response")
+
+        name = payload.get("responder_name")
+        triggers = payload.get("triggers")
+        variants = payload.get("sub_triggers", [])
+        reply = payload.get("reply")
+        style = payload.get("style", "text")
+        cooldown = payload.get("cooldown_seconds", 0)
+        if not isinstance(name, str) or not 1 <= len(name.strip()) <= 50:
+            raise web.HTTPBadRequest(text="Responder name must be 1â€“50 characters")
+        if (not isinstance(triggers, list) or not 1 <= len(triggers) <= 5
+                or any(not isinstance(term, str) or not term.strip() or len(term.split()) != 1 or len(term) > 50 for term in triggers)):
+            raise web.HTTPBadRequest(text="Add 1â€“5 one-word triggers, each up to 50 characters")
+        if (not isinstance(variants, list) or len(variants) > 20
+                or any(not isinstance(term, str) or not term.strip() or len(term.split()) != 1 or len(term) > 50 for term in variants)):
+            raise web.HTTPBadRequest(text="Add up to 20 one-word trigger variations")
+        if not isinstance(reply, str) or not 1 <= len(reply.strip()) <= 1800:
+            raise web.HTTPBadRequest(text="Reply text must be 1â€“1,800 characters")
+        if not isinstance(style, str) or style not in {"text", "embed", "card"}:
+            raise web.HTTPBadRequest(text="Choose text, embed, or card style")
+        if type(cooldown) is not int or not 0 <= cooldown <= 3600:
+            raise web.HTTPBadRequest(text="Cooldown must be between 0 and 3,600 seconds")
+
+        triggers = list(dict.fromkeys(term.strip() for term in triggers))
+        variants = list(dict.fromkeys(term.strip() for term in variants))
+        response_id = payload.get("id")
+        if response_id is not None:
+            try:
+                response_id = int(response_id)
+            except (TypeError, ValueError):
+                raise web.HTTPBadRequest(text="Invalid response ID")
+            saved = cog.store.update(guild.id, response_id, triggers, variants, reply.strip(), style, name.strip(), cooldown)
+            if not saved:
+                raise web.HTTPNotFound(text="Auto response not found")
+        else:
+            saved = cog.store.add(guild.id, triggers, variants, reply.strip(), style, name.strip(), cooldown)
+            if not saved:
+                raise web.HTTPBadRequest(text="This server already has 30 auto responses")
+        return web.json_response({"ok": True, "responses": self._auto_responses(guild.id)}, headers={"Cache-Control": "no-store"})
+
+    async def delete_auto_response(self, request: web.Request) -> web.Response:
+        _, guild = self._dashboard_guild(request)
+        cog = self.bot.get_cog("AutoResponder")
+        if cog is None:
+            raise web.HTTPServiceUnavailable(text="Auto responders are not loaded")
+        try:
+            response_id = int(request.match_info["response_id"])
+        except (KeyError, TypeError, ValueError):
+            raise web.HTTPBadRequest(text="Invalid response ID")
+        if not cog.store.delete(guild.id, response_id):
+            raise web.HTTPNotFound(text="Auto response not found")
+        return web.json_response({"ok": True, "responses": self._auto_responses(guild.id)}, headers={"Cache-Control": "no-store"})
 
     async def save_control_panel_setting(self, request: web.Request) -> web.Response:
         _, guild = self._dashboard_guild(request)
@@ -1629,14 +1687,14 @@ class ActivityServer:
             footer = value.get("panel_footer")
             reasons = value.get("reason_options")
             if not isinstance(title, str) or not title.strip() or len(title) > 256:
-                raise web.HTTPBadRequest(text="Panel title must be 1–256 characters")
+                raise web.HTTPBadRequest(text="Panel title must be 1â€“256 characters")
             if not isinstance(description, str) or len(description) > 2048:
                 raise web.HTTPBadRequest(text="Panel description must be at most 2048 characters")
             if not isinstance(footer, str) or len(footer) > 2048:
                 raise web.HTTPBadRequest(text="Panel footer must be at most 2048 characters")
             if (not isinstance(reasons, list) or not 1 <= len(reasons) <= MAX_TICKET_REASON_OPTIONS
                     or any(not isinstance(reason, str) or not reason.strip() or len(reason) > 100 for reason in reasons)):
-                raise web.HTTPBadRequest(text=f"Add 1–{MAX_TICKET_REASON_OPTIONS} ticket reasons of up to 100 characters each")
+                raise web.HTTPBadRequest(text=f"Add 1â€“{MAX_TICKET_REASON_OPTIONS} ticket reasons of up to 100 characters each")
             for field, field_value in (("panel_title", title.strip()), ("panel_description", description), ("panel_footer", footer), ("reason_options", [reason.strip() for reason in reasons])):
                 store.set(guild.id, module.key, field, field_value)
             return web.json_response({"ok": True, "value": value}, headers={"Cache-Control": "no-store"})
@@ -1888,3 +1946,4 @@ class ActivityServer:
             },
             headers=headers,
         )
+
