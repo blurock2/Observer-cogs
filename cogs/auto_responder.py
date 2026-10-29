@@ -326,7 +326,10 @@ class AutoResponder(ObserverCog):
                     await message.reply(embed=discord.Embed(title=response["responder_name"], description=content), mention_author=False, allowed_mentions=mentions)
                 elif response["style"] == "card":
                     view = discord.ui.LayoutView(timeout=None)
-                    view.add_item(discord.ui.TextDisplay(f'**{response["responder_name"]}**\n{content}'))
+                    card = discord.ui.Container(
+                        discord.ui.TextDisplay(f'## {response["responder_name"]}\n\n{content}')
+                    )
+                    view.add_item(card)
                     await message.reply(view=view, mention_author=False, allowed_mentions=mentions)
                 else:
                     await message.reply(content, mention_author=False, allowed_mentions=mentions)
