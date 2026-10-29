@@ -13,6 +13,7 @@
       <feGaussianBlur stdDeviation="2.2"/>
     </filter>
   </defs>
+  <g transform="translate(220 0) scale(-1 1)">
 
   <!-- Full evergreen bough with warm bulbs -->
   <path d="M10 31C48 52 82 49 112 38s62-28 98-17" stroke="#315032" stroke-width="8" stroke-linecap="round" opacity=".6"/>
@@ -80,4 +81,5 @@
     <path d="m133 673 4 8 9 1-7 6 2 9-8-5-8 5 2-9-7-6 9-1 4-8Z" fill="#d6af5420"/>
   </g>
   <circle cx="187" cy="686" r="3" fill="#d6af54"/>
+</g>
 </svg>
