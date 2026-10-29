@@ -23,12 +23,20 @@ class HelpView(ErrorHandledView):
         cog: HelpCog,
         pages: list[tuple[str, str]],
         *,
+        navigation: bool = True,
         timeout: float | None = 300.0,
     ):
         super().__init__(timeout=timeout)
         self.cog = cog
         self.pages = pages
         self.current_page = 0
+        if not navigation:
+            # Keep the support button, but omit page controls on a
+            # category-only result so it cannot browse unrelated pages.
+            children = list(self.children)
+            if len(children) >= 3:
+                self.remove_item(children[2])
+                self.remove_item(children[0])
 
     def _build_embed(self) -> discord.Embed:
         title, description = self.pages[self.current_page]
@@ -42,7 +50,7 @@ class HelpView(ErrorHandledView):
         embed.set_footer(
             text=(
                 f"Page {self.current_page + 1} of {len(self.pages)} "
-                "• Use the buttons to navigate."
+                "â€¢ Use the buttons to navigate."
             )
         )
         return embed
@@ -55,7 +63,7 @@ class HelpView(ErrorHandledView):
         return True
 
     @discord.ui.button(
-        label="◀️",
+        label="â—€ï¸",
         style=discord.ButtonStyle.secondary,
     )
     async def previous_page(
@@ -79,7 +87,7 @@ class HelpView(ErrorHandledView):
     @discord.ui.button(
         label="Support Server",
         style=discord.ButtonStyle.blurple,
-        emoji="🛟",
+        emoji="ðŸ›Ÿ",
     )
     async def support_server(
         self,
@@ -87,7 +95,7 @@ class HelpView(ErrorHandledView):
         button: discord.ui.Button,
     ) -> None:
         embed = discord.Embed(
-            title="🛟 Support Server",
+            title="ðŸ›Ÿ Support Server",
             description=(
                 f"[Click here to join the support server]({self.cog.support_url})"
             ),
@@ -100,7 +108,7 @@ class HelpView(ErrorHandledView):
         )
 
     @discord.ui.button(
-        label="▶️",
+        label="â–¶ï¸",
         style=discord.ButtonStyle.secondary,
     )
     async def next_page(
@@ -246,8 +254,8 @@ class HelpCog(ObserverCog):
         intro = (
             "**Welcome!**\n"
             "This bot supports both prefix and slash commands.\n\n"
-            f"• Prefix commands use `{self.prefix}{COMMAND_NAME_PREFIX}`\n"
-            "• Slash commands use `/`\n\n"
+            f"â€¢ Prefix commands use `{self.prefix}{COMMAND_NAME_PREFIX}`\n"
+            "â€¢ Slash commands use `/`\n\n"
             f"Use `{self.prefix}{COMMAND_NAME_PREFIX}help <command>` or "
             "`/help command:<name>` "
             "for prefix-command details."
@@ -255,15 +263,15 @@ class HelpCog(ObserverCog):
 
         pages: list[tuple[str, str]] = [
             (
-                "🤖 Bot Help • Overview",
+                "ðŸ¤– Bot Help â€¢ Overview",
                 intro,
             ),
             (
-                "💬 Bot Help • Prefix Commands",
+                "ðŸ’¬ Bot Help â€¢ Prefix Commands",
                 self._format_commands(self._prefix_command_names()),
             ),
             (
-                "⚙️ Bot Help • Slash Commands",
+                "âš™ï¸ Bot Help â€¢ Slash Commands",
                 self._format_commands(self._slash_command_names()),
             ),
         ]
@@ -273,12 +281,24 @@ class HelpCog(ObserverCog):
         for cog_name, command_names in grouped.items():
             pages.append(
                 (
-                    f"📚 Bot Help • {cog_name}"[:256],
+                    f"ðŸ“š Bot Help â€¢ {cog_name}"[:256],
                     self._format_commands(command_names, per_line=2),
                 )
             )
 
         return pages
+
+    def _category_page_index(self, category: str, pages: list[tuple[str, str]]) -> int | None:
+        normalize = lambda value: "".join(char for char in value.casefold() if char.isalnum())
+        key = normalize(category)
+        if key.startswith("prefix"):
+            return 1
+        if key.startswith("slash") or key.startswith("applicationcommand"):
+            return 2
+        for index, cog_name in enumerate(self._commands_by_cog(), start=3):
+            if normalize(cog_name) == key:
+                return index if index < len(pages) else None
+        return None
 
     # ============================================================ Command detail
 
@@ -293,7 +313,7 @@ class HelpCog(ObserverCog):
             usage += f" {signature}"
 
         embed = discord.Embed(
-            title=f"📖 Command: `{command.name}`",
+            title=f"ðŸ“– Command: `{command.name}`",
             description=f"**Usage**\n`{usage}`",
             color=HELP_COLOR,
             timestamp=discord.utils.utcnow(),
@@ -301,14 +321,14 @@ class HelpCog(ObserverCog):
 
         if command.help:
             embed.add_field(
-                name="📝 Description",
+                name="ðŸ“ Description",
                 value=command.help,
                 inline=False,
             )
 
         if command.aliases:
             embed.add_field(
-                name="🔁 Aliases",
+                name="ðŸ” Aliases",
                 value=", ".join(
                     f"`{alias}`"
                     for alias in command.aliases
@@ -407,12 +427,27 @@ class HelpCog(ObserverCog):
 
         if command:
             command_name = command.lower().lstrip("/!")
+            pages = self._build_pages()
+            category_page = self._category_page_index(command_name, pages)
+            if category_page is not None:
+                view = HelpView(self, [pages[category_page]], navigation=False)
+                if self._dm_help(ctx.guild.id):
+                    try:
+                        await ctx.author.send(embed=view._build_embed(), view=view)
+                    except discord.Forbidden:
+                        await ctx.send("I could not DM you. Please enable DMs from server members.")
+                        return
+                    await ctx.send("I sent the help menu to your DMs.")
+                else:
+                    await ctx.send(embed=view._build_embed(), view=view)
+                return
+
             found_command = self.bot.get_command(command_name)
 
             if found_command is None:
                 await ctx.send(
                     embed=discord.Embed(
-                        title="❌ Command Not Found",
+                        title="âŒ Command Not Found",
                         description=(
                             f"I could not find the prefix command "
                             f"`{command_name}`."
@@ -480,7 +515,7 @@ class HelpCog(ObserverCog):
             if found_command is None:
                 await interaction.response.send_message(
                     embed=discord.Embed(
-                        title="❌ Command Not Found",
+                        title="âŒ Command Not Found",
                         description=(
                             f"I could not find the prefix command "
                             f"`{command_name}`."
@@ -509,3 +544,4 @@ class HelpCog(ObserverCog):
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(HelpCog(bot))
+
