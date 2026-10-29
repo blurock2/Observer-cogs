@@ -913,3 +913,147 @@ html[data-observer-theme="christmas"] .site-shell .feature-card:focus-within::af
 
 
 
+
+
+/* Preserve supporter tier colors in the Orthodox Christmas theme. */
+html[data-observer-theme="christmas"] .site-shell .support-section {
+  border-top-color: #ffffff0b;
+  background: linear-gradient(180deg, #0c0d0f, #0b0b0d);
+}
+html[data-observer-theme="christmas"] .site-shell .support-card {
+  --support-accent: #25b9f6;
+  --support-glow: #25b9f629;
+  --support-hover-bg: linear-gradient(145deg, #12202a, #111215);
+  border-color: #29292e;
+  background: linear-gradient(145deg, #151518, #101012);
+}
+html[data-observer-theme="christmas"] .site-shell .support-card-one-time {
+  --support-accent: #25b9f6;
+  --support-glow: #25b9f629;
+  --support-hover-bg: linear-gradient(145deg, #12202a, #111215);
+}
+html[data-observer-theme="christmas"] .site-shell .support-card-tier-1 {
+  --support-accent: #a080ff;
+  --support-glow: #a080ff30;
+  --support-hover-bg: linear-gradient(145deg, #1b1529, #111215);
+}
+html[data-observer-theme="christmas"] .site-shell .support-card-tier-2 {
+  --support-accent: #ff6e91;
+  --support-glow: #ff6e9130;
+  --support-hover-bg: linear-gradient(145deg, #25141b, #111215);
+}
+html[data-observer-theme="christmas"] .site-shell .support-card-tier-3 {
+  --support-accent: #ffb62e;
+  --support-glow: #ffb62e30;
+  --support-hover-bg: linear-gradient(145deg, #241d10, #111215);
+}
+html[data-observer-theme="christmas"] .site-shell .support-card:hover {
+  border-color: var(--support-accent);
+  background: var(--support-hover-bg);
+  box-shadow: 0 12px 38px var(--support-glow);
+}
+
+/* Carry the seasonal garlands and ornaments onto the other content cards. */
+html[data-observer-theme="christmas"] .site-shell .project-engineering-item,
+html[data-observer-theme="christmas"] .site-shell .workflow-steps > article,
+html[data-observer-theme="christmas"] .site-shell .review-card,
+html[data-observer-theme="christmas"] .site-shell .support-card {
+  position: relative;
+  overflow: visible;
+}
+html[data-observer-theme="christmas"] .site-shell .project-engineering-item::before,
+html[data-observer-theme="christmas"] .site-shell .workflow-steps > article::before,
+html[data-observer-theme="christmas"] .site-shell .review-card::before,
+html[data-observer-theme="christmas"] .site-shell .support-card::before {
+  content: "";
+  position: absolute;
+  z-index: 3;
+  top: -17px;
+  left: 8px;
+  right: 8px;
+  height: 36px;
+  background: url("./assets/christmas-garland-01.svg") center / 100% 100% no-repeat;
+  pointer-events: none;
+  transition: filter .22s ease;
+}
+html[data-observer-theme="christmas"] .site-shell .project-engineering-item:nth-child(3n + 2)::before,
+html[data-observer-theme="christmas"] .site-shell .workflow-steps > article:nth-child(3n + 2)::before,
+html[data-observer-theme="christmas"] .site-shell .support-card:nth-child(3n + 2)::before {
+  background-image: url("./assets/christmas-garland-02.svg");
+}
+html[data-observer-theme="christmas"] .site-shell .project-engineering-item:nth-child(3n)::before,
+html[data-observer-theme="christmas"] .site-shell .workflow-steps > article:nth-child(3n)::before,
+html[data-observer-theme="christmas"] .site-shell .support-card:nth-child(3n)::before {
+  background-image: url("./assets/christmas-garland-03.svg");
+}
+html[data-observer-theme="christmas"] .site-shell .project-engineering-item::after,
+html[data-observer-theme="christmas"] .site-shell .workflow-steps > article::after,
+html[data-observer-theme="christmas"] .site-shell .review-card::after,
+html[data-observer-theme="christmas"] .site-shell .support-card::after {
+  content: "✦";
+  position: absolute;
+  z-index: 4;
+  top: -29px;
+  right: 24px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 26px;
+  border: 1px solid #b28b3b;
+  border-radius: 48% 48% 52% 52%;
+  background: #261e11;
+  color: #ffdf83;
+  font-size: 10px;
+  line-height: 1;
+  box-shadow: 0 2px 8px #e8c45f33;
+  transition: border-color .22s ease, box-shadow .22s ease, filter .22s ease;
+}
+html[data-observer-theme="christmas"] .site-shell .project-engineering-item:nth-child(3n + 2)::after,
+html[data-observer-theme="christmas"] .site-shell .workflow-steps > article:nth-child(3n + 2)::after,
+html[data-observer-theme="christmas"] .site-shell .support-card:nth-child(3n + 2)::after {
+  content: "✧";
+  right: 31px;
+  border-color: #e2bb59;
+  background: #20231a;
+  color: #f6d984;
+}
+html[data-observer-theme="christmas"] .site-shell .project-engineering-item:nth-child(3n)::after,
+html[data-observer-theme="christmas"] .site-shell .workflow-steps > article:nth-child(3n)::after,
+html[data-observer-theme="christmas"] .site-shell .support-card:nth-child(3n)::after {
+  content: "❄";
+  right: 19px;
+  border-color: #b28b3b;
+  color: #f3d77c;
+}
+html[data-observer-theme="christmas"] .site-shell .project-engineering-item:hover::before,
+html[data-observer-theme="christmas"] .site-shell .project-engineering-item:focus-within::before,
+html[data-observer-theme="christmas"] .site-shell .workflow-steps > article:hover::before,
+html[data-observer-theme="christmas"] .site-shell .workflow-steps > article:focus-within::before,
+html[data-observer-theme="christmas"] .site-shell .review-card:hover::before,
+html[data-observer-theme="christmas"] .site-shell .review-card:focus-within::before,
+html[data-observer-theme="christmas"] .site-shell .support-card:hover::before,
+html[data-observer-theme="christmas"] .site-shell .support-card:focus-within::before {
+  filter: drop-shadow(0 0 3px #f1d378b0) drop-shadow(0 0 8px #e2bb5966);
+}
+html[data-observer-theme="christmas"] .site-shell .project-engineering-item:hover::after,
+html[data-observer-theme="christmas"] .site-shell .project-engineering-item:focus-within::after,
+html[data-observer-theme="christmas"] .site-shell .workflow-steps > article:hover::after,
+html[data-observer-theme="christmas"] .site-shell .workflow-steps > article:focus-within::after,
+html[data-observer-theme="christmas"] .site-shell .review-card:hover::after,
+html[data-observer-theme="christmas"] .site-shell .review-card:focus-within::after,
+html[data-observer-theme="christmas"] .site-shell .support-card:hover::after,
+html[data-observer-theme="christmas"] .site-shell .support-card:focus-within::after {
+  border-color: #ffdf83;
+  box-shadow: 0 0 14px #f1d378b0;
+  filter: drop-shadow(0 0 4px #e2bb5999);
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-observer-theme="christmas"] .site-shell .project-engineering-item::before,
+  html[data-observer-theme="christmas"] .site-shell .workflow-steps > article::before,
+  html[data-observer-theme="christmas"] .site-shell .review-card::before,
+  html[data-observer-theme="christmas"] .site-shell .support-card::before,
+  html[data-observer-theme="christmas"] .site-shell .project-engineering-item::after,
+  html[data-observer-theme="christmas"] .site-shell .workflow-steps > article::after,
+  html[data-observer-theme="christmas"] .site-shell .review-card::after,
+  html[data-observer-theme="christmas"] .site-shell .support-card::after { transition: none; }
+}
