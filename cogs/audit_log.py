@@ -49,6 +49,42 @@ def _truncate(text: str, limit: int = FIELD_LIMIT) -> str:
     return text[: limit - 1] + "…"
 
 
+def _permission_delta(
+    before: discord.Permissions | discord.PermissionOverwrite | None,
+    after: discord.Permissions | discord.PermissionOverwrite | None,
+    *,
+    inherited: bool = False,
+) -> tuple[str, str]:
+    """Describe only changed permissions, including overwrite inherit states."""
+    before_lines: list[str] = []
+    after_lines: list[str] = []
+    for permission in discord.Permissions.VALID_FLAGS:
+        old = getattr(before, permission, None) if before is not None else None
+        new = getattr(after, permission, None) if after is not None else None
+        if old == new:
+            continue
+
+        def describe(value: bool | None) -> str:
+            if inherited:
+                return "Allow" if value is True else "Deny" if value is False else "Inherit"
+            return "Enabled" if value else "Disabled"
+
+        label = permission.replace("_", " ")
+        before_lines.append(f"{label}: {describe(old)}")
+        after_lines.append(f"{label}: {describe(new)}")
+    return "\n".join(before_lines), "\n".join(after_lines)
+
+
+def _overwrite_target_label(target: object) -> str:
+    target_id = getattr(target, "id", "unknown")
+    if isinstance(target, discord.Role):
+        name = "@everyone" if target.is_default() else target.name
+        return f"Role {name} ({target_id})"
+    if isinstance(target, discord.Member):
+        return f"Member {target.display_name} ({target_id})"
+    return f"Target {target_id}"
+
+
 class AuditLogCog(ObserverCog):
     """
     Passive server-event audit logging, separate from ModerationCog.
@@ -364,7 +400,12 @@ class AuditLogCog(ObserverCog):
     async def on_message(self, message: discord.Message) -> None:
         if message.guild is None or message.author.bot:
             return
-        if not await self._is_enabled(message.guild, "log_message_deletes"):
+        if not await self._is_enabled(message.guild):
+            return
+        if not (
+            await self._is_enabled(message.guild, "log_message_deletes")
+            or await self._is_enabled(message.guild, "log_message_edits")
+        ):
             return
         if self._is_ignored(message.guild.id, channel=message.channel, member=message.author):
             return
@@ -387,6 +428,7 @@ class AuditLogCog(ObserverCog):
         cached = payload.cached_message
         after_content = payload.data.get("content")
         author_id = payload.data.get("author", {}).get("id")
+        snapshot = None
 
         if cached is not None:
             if cached.author.bot:
@@ -395,16 +437,50 @@ class AuditLogCog(ObserverCog):
                 return  # embed-only update, no real content change
             author = cached.author
             before_text = cached.content or "*(no text content)*"
+            author_id = cached.author.id
         else:
+            snapshot = self._get_message_snapshot(payload.message_id)
+            if snapshot is not None:
+                author_id = author_id or str(snapshot["author_id"])
+                before_text = snapshot["content"] or "*(no text content)*"
+            else:
+                before_text = "*(uncached — content unavailable)*"
             author = guild.get_member(int(author_id)) if author_id else None
             if author is not None and author.bot:
                 return
-            before_text = "*(uncached — content unavailable)*"
+
+        if author_id:
+            try:
+                if self._is_ignored(guild.id, channel=channel, user_id=int(author_id)):
+                    return
+            except (TypeError, ValueError):
+                pass
+
+        # Raw edit payloads can omit content for embed-only changes. When there
+        # is no cached message, only log events that actually include content.
+        if cached is None and after_content is None:
+            return
 
         after_text = after_content if after_content is not None else "*(uncached — content unavailable)*"
 
+        with closing(connect_sqlite(DB_PATH)) as connection:
+            connection.execute(
+                "UPDATE audit_message_snapshots SET content = ?, created_at = ? "
+                "WHERE message_id = ?",
+                (after_content or "", discord.utils.utcnow().isoformat(), payload.message_id),
+            )
+            connection.commit()
+
         jump_url = f"https://discord.com/channels/{guild.id}/{payload.channel_id}/{payload.message_id}"
-        reply_context = self._reply_context(cached, guild.id, channel.id)
+        reply_context = self._reply_context(
+            cached,
+            guild.id,
+            channel.id,
+            reply_message_id=snapshot["reply_message_id"] if snapshot else None,
+            reply_channel_id=snapshot["reply_channel_id"] if snapshot else None,
+            reply_guild_id=snapshot["reply_guild_id"] if snapshot else None,
+            reply_author_id=snapshot["reply_author_id"] if snapshot else None,
+        )
         embed = self._build_audit_embed(
             "✏️ Message Edited",
             COLOR_AMBER,
@@ -481,7 +557,7 @@ class AuditLogCog(ObserverCog):
             if isinstance(item, dict)
             and isinstance(item.get("url"), str)
             and (
-                (item.get("content_type") or "").lower().startswith("image/")
+                (str(item.get("content_type") or "")).lower().startswith("image/")
                 or str(item.get("filename") or "").lower().endswith(
                     (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tif", ".tiff")
                 )
@@ -585,7 +661,11 @@ class AuditLogCog(ObserverCog):
 
         gained_perms = self._gained_dangerous_permissions(before.permissions, after.permissions)
         if before.permissions != after.permissions:
-            changes.append(("Permissions", str(before.permissions.value), str(after.permissions.value)))
+            before_permissions, after_permissions = _permission_delta(
+                before.permissions,
+                after.permissions,
+            )
+            changes.append(("Permission changes", before_permissions, after_permissions))
 
         if not changes:
             return
@@ -670,7 +750,27 @@ class AuditLogCog(ObserverCog):
                 after.category.name if after.category else "None",
             ))
         if before.overwrites != after.overwrites:
-            changes.append(("Permission overwrites", "(see audit log)", "(changed)"))
+            before_overwrites = {target.id: (target, overwrite) for target, overwrite in before.overwrites.items()}
+            after_overwrites = {target.id: (target, overwrite) for target, overwrite in after.overwrites.items()}
+            before_lines: list[str] = []
+            after_lines: list[str] = []
+            for target_id in sorted(before_overwrites.keys() | after_overwrites.keys()):
+                old_target, old_overwrite = before_overwrites.get(target_id, (None, None))
+                new_target, new_overwrite = after_overwrites.get(target_id, (None, None))
+                old_overwrite = old_overwrite or discord.PermissionOverwrite()
+                new_overwrite = new_overwrite or discord.PermissionOverwrite()
+                old_values, new_values = _permission_delta(old_overwrite, new_overwrite, inherited=True)
+                if not old_values and not new_values:
+                    continue
+                target_label = _overwrite_target_label(new_target or old_target)
+                before_lines.append(f"{target_label}:\n{old_values}")
+                after_lines.append(f"{target_label}:\n{new_values}")
+            if before_lines or after_lines:
+                changes.append((
+                    "Permission overwrites",
+                    "\n\n".join(before_lines) or "No explicit overwrites",
+                    "\n\n".join(after_lines) or "No explicit overwrites",
+                ))
 
         if not changes:
             return
@@ -1003,3 +1103,4 @@ class AuditLogCog(ObserverCog):
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(AuditLogCog(bot))
+
