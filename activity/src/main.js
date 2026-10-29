@@ -48,7 +48,11 @@ const liveStatusClickTimes = new WeakMap();
 
 const liveThemeUnlockedKey = "observer-live-theme-unlocked";
 const liveThemeChoiceKey = "observer-live-theme";
+const liveThemeOwnerKey = "observer-live-theme-owner";
 let themeMenuTimer = 0;
+let themeAccountReady = false;
+let themeAccountSignedIn = false;
+let themeAccountUserId = "";
 
 function readLiveTheme() {
   let unlocked = false;
@@ -86,7 +90,7 @@ function openThemeMenu() {
   themeMenuTimer = window.setTimeout(closeThemeMenu, 10_000);
 }
 
-function applyLiveTheme(theme) {
+function applyLiveTheme(theme, persist = true) {
   const selected = ["error", "red-alert"].includes(theme) ? "error" : "observer";
   document.documentElement.dataset.observerTheme = selected;
   const siteShell = root.querySelector(".site-shell");
@@ -95,6 +99,63 @@ function applyLiveTheme(theme) {
     button.setAttribute("aria-pressed", String(button.dataset.siteThemeChoice === selected));
   });
   try { localStorage.setItem(liveThemeChoiceKey, selected); } catch { /* Keep the selection for this page view. */ }
+  if (persist) saveAccountThemePreference(selected, readLiveTheme().unlocked);
+}
+
+async function saveAccountThemePreference(theme, unlocked) {
+  if (!themeAccountReady || !themeAccountSignedIn || !unlocked) return;
+  try {
+    if (!themeAccountUserId) return;
+    localStorage.setItem(liveThemeOwnerKey, themeAccountUserId);
+    await api("/api/preferences", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ theme, theme_unlocked: true }),
+    });
+  } catch { /* The local choice remains available if account sync is temporarily offline. */ }
+}
+
+async function syncAccountThemePreference() {
+  document.documentElement.dataset.observerTheme = readLiveTheme().theme;
+  try {
+    const session = await api("/api/session");
+    if (!session.signed_in || !session.user?.id) {
+      themeAccountReady = true;
+      ensureThemeControl();
+      return;
+    }
+    const userId = String(session.user.id);
+    const preferences = await api("/api/preferences");
+    const local = readLiveTheme();
+    themeAccountUserId = userId;
+    themeAccountSignedIn = true;
+    themeAccountReady = true;
+    const localOwner = localStorage.getItem(liveThemeOwnerKey);
+    if (preferences.exists) {
+      localStorage.setItem(liveThemeOwnerKey, userId);
+      localStorage.setItem(liveThemeChoiceKey, preferences.theme === "error" ? "error" : "observer");
+      if (preferences.theme_unlocked) localStorage.setItem(liveThemeUnlockedKey, "true");
+      else localStorage.removeItem(liveThemeUnlockedKey);
+      applyLiveTheme(preferences.theme, false);
+      ensureThemeControl();
+    } else if (!localOwner || localOwner === userId) {
+      if (local.unlocked) {
+        localStorage.setItem(liveThemeOwnerKey, userId);
+        await saveAccountThemePreference(local.theme, true);
+      }
+      applyLiveTheme(local.theme, false);
+      ensureThemeControl();
+    } else {
+      localStorage.setItem(liveThemeOwnerKey, userId);
+      localStorage.setItem(liveThemeChoiceKey, "observer");
+      localStorage.removeItem(liveThemeUnlockedKey);
+      applyLiveTheme("observer", false);
+      ensureThemeControl();
+    }
+  } catch {
+    themeAccountReady = true;
+    ensureThemeControl();
+  }
 }
 
 function ensureThemeControl({ open = false } = {}) {
@@ -118,13 +179,14 @@ function ensureThemeControl({ open = false } = {}) {
       if (event.key === "Escape") { closeThemeMenu(); root.querySelector("#site-theme-toggle")?.focus(); }
     });
   }
-  applyLiveTheme(theme);
+  applyLiveTheme(theme, false);
   if (open) openThemeMenu();
 }
 
 function unlockLiveThemes() {
   try { localStorage.setItem(liveThemeUnlockedKey, "true"); } catch { /* Unlock for this page view even without storage. */ }
   ensureThemeControl({ open: true });
+  saveAccountThemePreference(readLiveTheme().theme, true);
 }
 
 function playLiveStatusEasterEgg(card) {
@@ -381,6 +443,7 @@ async function start() {
   }
 }
 
+void syncAccountThemePreference();
 start();
 
 
