@@ -255,6 +255,85 @@ function unlockOrthodoxChristmasTheme() {
   saveAccountThemePreference("christmas", true);
 }
 
+function activateWebsiteBreak() {
+  const site = root.querySelector(".site-shell");
+  if (!site) return;
+  site.querySelector(".website-break-backend")?.remove();
+  site.querySelector(".website-break-reset")?.remove();
+  site.querySelectorAll(".easter-egg-fallen").forEach((card) => card.classList.remove("easter-egg-fallen"));
+
+  const backend = document.createElement("div");
+  backend.className = "website-break-backend";
+  backend.setAttribute("aria-hidden", "true");
+  backend.innerHTML = `<svg class="break-circuit-art" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice"><g><path d="M0 120h190v110h140v-70h190v170h170V90h140v180h180v-90h190M0 570h150V430h150v120h190V420h180v180h170V450h140v120h220M460 0v110m370 360v160m-210-70v220m330-510v-100m-650 300v-95"/><path d="M190 230v80h80m240 20v80h-90m340-150v100h90m350-130v100h-80M300 550v100h-120m570-50v100h100m310-130v80h100"/></g><g class="break-circuit-nodes"><circle cx="190" cy="230" r="5"/><circle cx="520" cy="330" r="5"/><circle cx="860" cy="90" r="5"/><circle cx="1010" cy="180" r="5"/><circle cx="300" cy="550" r="5"/><circle cx="670" cy="600" r="5"/><circle cx="990" cy="570" r="5"/></g></svg><div class="break-binary-field"></div><div class="break-terminal">OBSERVER // FRONTEND DETACHED // BACKEND SIGNAL VISIBLE</div>`;
+  const binary = backend.querySelector(".break-binary-field");
+  for (let index = 0; index < 28; index += 1) {
+    const row = document.createElement("span");
+    row.className = "break-binary-row";
+    row.textContent = Array.from({ length: 52 }, () => Math.random() < 0.5 ? "0" : "1").join("");
+    row.style.setProperty("--row-delay", `${Math.random() * -12}s`);
+    row.style.setProperty("--row-speed", `${9 + Math.random() * 12}s`);
+    binary.append(row);
+  }
+
+  const reset = document.createElement("button");
+  reset.className = "website-break-reset";
+  reset.type = "button";
+  reset.textContent = "Reset website";
+  reset.setAttribute("aria-label", "Reset the website after the simulated break");
+  site.classList.add("is-website-broken");
+  site.prepend(backend, reset);
+
+  const candidates = [...site.querySelectorAll(".feature-card, .workflow-steps > article, .project-engineering-item, .support-card, .review-card")];
+  for (let index = candidates.length - 1; index > 0; index -= 1) {
+    const swap = Math.floor(Math.random() * (index + 1));
+    [candidates[index], candidates[swap]] = [candidates[swap], candidates[index]];
+  }
+  const maxDrops = Math.max(1, Math.min(5, candidates.length - 1));
+  const dropCount = 1 + Math.floor(Math.random() * maxDrops);
+  candidates.slice(0, dropCount).forEach((card, index) => {
+    card.style.setProperty("--break-rotation", `${Math.round(Math.random() * 24 - 12)}deg`);
+    card.style.setProperty("--break-delay", `${index * 110 + Math.random() * 180}ms`);
+    card.classList.add("easter-egg-fallen");
+  });
+
+  const sparkAt = (x, y) => {
+    const burst = document.createElement("span");
+    burst.className = "website-break-spark-burst";
+    burst.style.left = `${x}px`;
+    burst.style.top = `${y}px`;
+    for (let index = 0; index < 18; index += 1) {
+      const spark = document.createElement("i");
+      const angle = Math.random() * Math.PI * 2;
+      const distance = 18 + Math.random() * 82;
+      spark.style.setProperty("--spark-x", `${Math.cos(angle) * distance}px`);
+      spark.style.setProperty("--spark-y", `${Math.sin(angle) * distance}px`);
+      spark.style.setProperty("--spark-turn", `${Math.round(Math.random() * 240 - 120)}deg`);
+      spark.style.setProperty("--spark-delay", `${Math.random() * 120}ms`);
+      burst.append(spark);
+    }
+    document.body.append(burst);
+    window.setTimeout(() => burst.remove(), 950);
+  };
+  const clickSparks = (event) => {
+    if (event.target.closest(".website-break-reset, .site-theme-control")) return;
+    sparkAt(event.clientX, event.clientY);
+  };
+  const resetWebsite = () => {
+    site.removeEventListener("click", clickSparks, true);
+    site.classList.remove("is-website-broken");
+    site.querySelector(".website-break-backend")?.remove();
+    reset.remove();
+    site.querySelectorAll(".easter-egg-fallen").forEach((card) => {
+      card.classList.remove("easter-egg-fallen");
+      card.style.removeProperty("--break-rotation");
+      card.style.removeProperty("--break-delay");
+    });
+  };
+  reset.addEventListener("click", resetWebsite, { once: true });
+  site.addEventListener("click", clickSparks, true);
+}
+
 function playLiveStatusEasterEgg(card) {
   if (card.dataset.glitching) return;
   const section = card.closest(".live-stats-section");
@@ -321,6 +400,7 @@ function playLiveStatusEasterEgg(card) {
     effect?.remove();
     reducedNote?.remove();
     unlockLiveThemes();
+    activateWebsiteBreak();
   }, 4700);
 }
 
