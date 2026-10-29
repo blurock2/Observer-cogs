@@ -268,7 +268,7 @@ function activateWebsiteBreak() {
       window.clearTimeout(card._websiteBreakLandTimer);
       if (card._websiteBreakLandHandler) card.removeEventListener("animationend", card._websiteBreakLandHandler);
       card._websiteBreakLandHandler = null;
-      card.classList.remove("easter-egg-fallen", "website-break-debris-card", "is-dragging");
+      card.classList.remove("easter-egg-fallen", "website-break-debris-card", "website-break-workflow-card", "is-dragging");
       card.style.removeProperty("--break-rotation");
       card.style.removeProperty("--break-delay");
       card.style.removeProperty("--break-fall-x");
@@ -370,6 +370,7 @@ function activateWebsiteBreak() {
   const selectedCards = candidates.slice(0, dropCount);
   const pendingFalls = [];
   selectedCards.forEach((card, index) => {
+    if (card.matches(".workflow-steps > article")) card.classList.add("website-break-workflow-card");
     const cardHeight = card.getBoundingClientRect().height;
     const slot = document.createElement("div");
     slot.className = "website-break-slot";
@@ -472,7 +473,7 @@ function activateWebsiteBreak() {
         window.clearTimeout(card._websiteBreakLandTimer);
         if (card._websiteBreakLandHandler) card.removeEventListener("animationend", card._websiteBreakLandHandler);
         card._websiteBreakLandHandler = null;
-        card.classList.remove("easter-egg-fallen", "website-break-debris-card", "is-dragging");
+        card.classList.remove("easter-egg-fallen", "website-break-debris-card", "website-break-workflow-card", "is-dragging");
         card.style.removeProperty("--break-rotation");
         card.style.removeProperty("--break-delay");
         card.style.removeProperty("--break-fall-x");
