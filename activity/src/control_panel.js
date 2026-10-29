@@ -18,11 +18,50 @@ const moduleEmoji = (module) => MODULE_EMOJIS[module.key] || module.emoji || "";
 
 async function api(url, options = {}) {
   const response = await fetch(url, { credentials: "same-origin", ...options });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || data.message || `Request failed (${response.status})`);
+  const body = await response.text();
+  let data = {};
+  try { data = body ? JSON.parse(body) : {}; }
+  catch { data = { message: body }; }
+  if (!response.ok) {
+    const error = new Error(data.error || data.message || `Request failed (${response.status})`);
+    error.status = response.status;
+    throw error;
+  }
   return data;
 }
 
+function explainError(error) {
+  const raw = String(error?.message || "").trim();
+  if (/one-word trigger variations/i.test(raw)) return "Each trigger variation must be a single word. Put phrases on separate lines as individual words, and use no more than 20 variations.";
+  if (/one-word triggers/i.test(raw)) return "Add between 1 and 5 triggers. Each trigger must be one word and no longer than 50 characters.";
+  if (/already has 30 auto responses/i.test(raw)) return "This server has reached its 30-response limit. Delete a response before adding another.";
+  if (/cooldown/i.test(raw)) return "Set the cooldown to a whole number between 0 and 3,600 seconds.";
+  if (/responder name/i.test(raw)) return "Enter a responder name between 1 and 50 characters.";
+  if (/reply text/i.test(raw)) return "Enter reply text between 1 and 1,800 characters.";
+  if (/choose text, embed, or card/i.test(raw)) return "Choose Normal text, Embed, or Card V2 for the response style.";
+  if (/auto response not found/i.test(raw)) return "That response could not be found. Refresh the page and try again.";
+  if (/not loaded/i.test(raw)) return "Auto Responders are temporarily unavailable. Try again in a moment.";
+  if (error?.status === 401 || error?.status === 403) return "Your account does not have permission to make this change. Sign in with the server owner account and try again.";
+  if (error?.status >= 500) return "Observer could not complete that request right now. Please try again in a moment.";
+  if (error?.status === 400) return "Some of the information was not accepted. Check the fields and try again.";
+  if (!error?.status) return "The website could not reach Observer. Check your connection and try again.";
+  return "Observer could not complete that request. Please try again.";
+}
+
+function showError(error) {
+  let notice = document.querySelector("#dashboard-error-toast");
+  if (!notice) {
+    notice = document.createElement("aside");
+    notice.id = "dashboard-error-toast";
+    notice.className = "dashboard-error-toast";
+    notice.setAttribute("role", "alert");
+    notice.setAttribute("aria-live", "assertive");
+    document.body.append(notice);
+  }
+  notice.innerHTML = `<div><strong>We could not complete that</strong><p>${esc(explainError(error))}</p><small>If you are still stuck, <a href="https://discord.gg/tccYb2XSxR" target="_blank" rel="noreferrer">ask in the Observer Support server</a>.</small></div><button type="button" aria-label="Dismiss error">×</button>`;
+  notice.querySelector("button").addEventListener("click", () => { notice.hidden = true; });
+  notice.hidden = false;
+}
 function brand() { return `<a class="brand" href="/" aria-label="Observer home"><span class="brand-mark"><img src="/observer.png?v=3" alt=""></span><span>OBSERVER</span></a>`; }
 
 function renderCards() {
@@ -75,7 +114,7 @@ function controlFor(module, setting) {
 function autoResponseEditor(module) {
   const responses = module.responses || [];
   const rows = responses.map((response) => `<article class="auto-response-row"><div><strong>${esc(response.responder_name)}</strong><small>Triggers: ${esc((response.triggers || "").split("\n").join(", "))} &#183; ${esc(response.style)} &#183; ${Number(response.cooldown_seconds)}s cooldown</small></div><div><button class="save-setting" type="button" data-edit-response="${esc(response.id)}">Edit</button><button class="save-setting response-delete" type="button" data-delete-response="${esc(response.id)}">Delete</button></div></article>`).join("");
-  return `<div class="auto-responder-editor"><div class="auto-responder-list-head"><div><h3>Saved responses</h3><p>${responses.length}/30 responses. A response sends when two or more distinct triggers or variations match one message.</p></div><button class="save-setting" type="button" data-new-response>New response</button></div><div class="auto-response-list">${rows || `<p class="empty-settings">No auto responses configured yet.</p>`}</div><form id="auto-response-form" class="auto-response-form"><input type="hidden" name="id"><h3 id="auto-response-form-title">Create auto response</h3><label>Responder name<input name="responder_name" maxlength="50" required placeholder="e.g. Greeting"></label><label>Triggers <small>1&#8211;5 words, one per line</small><textarea name="triggers" rows="3" required placeholder="hi&#10;hello"></textarea></label><label>Trigger variations <small>Up to 20 words, one per line</small><textarea name="sub_triggers" rows="3" placeholder="hiya&#10;hey"></textarea></label><label>Response text<textarea name="reply" rows="4" maxlength="1800" required placeholder="Write the response&#8230;"></textarea></label><div class="auto-response-form-grid"><label>Style<select name="style"><option value="text">Normal text</option><option value="embed">Embed</option><option value="card">Card V2</option></select></label><label>Cooldown in seconds<input name="cooldown_seconds" type="number" min="0" max="3600" step="1" value="0" required></label></div><div class="auto-response-form-actions"><button class="save-setting" type="submit">Save response</button><button class="save-setting" type="button" data-cancel-response hidden>Cancel edit</button></div></form></div>`;
+  return `<div class="auto-responder-editor"><div class="auto-responder-list-head"><div><h3>Saved responses</h3><p>${responses.length}/30 responses. A response sends when two or more distinct triggers or variations match one message.</p></div><button class="save-setting" type="button" data-new-response>New response</button></div><div class="auto-response-list">${rows || `<p class="empty-settings">No auto responses configured yet.</p>`}</div><form id="auto-response-form" class="auto-response-form"><input type="hidden" name="id"><h3 id="auto-response-form-title">Create auto response</h3><label>Responder name<input name="responder_name" maxlength="50" required placeholder="e.g. Greeting"></label><label>Triggers <small>1&#8211;5 words, one per line</small><textarea name="triggers" rows="3" required placeholder="hi&#10;hello"></textarea></label><label>Trigger variations <small>Up to 20 one-word variations, one per line</small><textarea name="sub_triggers" rows="3" placeholder="hiya&#10;hey"></textarea></label><label>Response text<textarea name="reply" rows="4" maxlength="1800" required placeholder="Write the response&#8230;"></textarea></label><div class="auto-response-form-grid"><label>Style<select name="style"><option value="text">Normal text</option><option value="embed">Embed</option><option value="card">Card V2</option></select></label><label>Cooldown in seconds<input name="cooldown_seconds" type="number" min="0" max="3600" step="1" value="0" required></label></div><div class="auto-response-form-actions"><button class="save-setting" type="submit">Save response</button><button class="save-setting" type="button" data-cancel-response hidden>Cancel edit</button></div></form></div>`;
 }
 
 function renderEditor(key, animate = true, force = false) {
@@ -214,7 +253,7 @@ function render() {
         panel.modules.find((item) => item.key === "auto_responder").responses = result.responses;
         renderCards();
         renderEditor("auto_responder", false, true);
-      } catch (error) { alert(error.message); }
+      } catch (error) { showError(error); }
       return;
     }
     if (event.target.closest("#close-module-editor") || event.target.id === "module-editor") { closeEditor(); return; }
@@ -224,7 +263,7 @@ function render() {
         const [moduleKey, key] = item.split("|");
         const setting = panel.modules.find((entry) => entry.key === moduleKey)?.settings.find((entry) => entry.key === key);
         if (setting?.kind === "ticket_panel") {
-          try { await save(moduleKey, key, readTicketPanelFields()); } catch (error) { alert(error.message); break; }
+          try { await save(moduleKey, key, readTicketPanelFields()); } catch (error) { showError(error); break; }
           continue;
         }
         const input = document.querySelector(`[data-setting-value="${moduleKey}|${key}"]`);
@@ -232,7 +271,7 @@ function render() {
         if (!setting || !input) continue;
         if (pickerSave?.disabled) { alert("Choose a valid role or channel before saving."); break; }
         const value = setting.kind === "integer" ? Number(input.value) : input.value;
-        try { await save(moduleKey, key, value); } catch (error) { alert(error.message); break; }
+        try { await save(moduleKey, key, value); } catch (error) { showError(error); break; }
       }
       return;
     }
@@ -243,14 +282,14 @@ function render() {
       const setting = panel.modules.find((item) => item.key === moduleKey).settings.find((item) => item.key === key);
       const value = setting.kind === "integer" ? Number(input.value) : input.value;
       saveButton.disabled = true;
-      try { await save(moduleKey, key, value); } catch (error) { alert(error.message); saveButton.disabled = false; }
+      try { await save(moduleKey, key, value); } catch (error) { showError(error); saveButton.disabled = false; }
       return;
     }
     const ticket = event.target.closest("[data-save-ticket]");
     if (ticket) {
       const [moduleKey, key] = ticket.dataset.saveTicket.split("|");
       const value = readTicketPanelFields();
-      try { await save(moduleKey, key, value); } catch (error) { alert(error.message); }
+      try { await save(moduleKey, key, value); } catch (error) { showError(error); }
       return;
     }
     const sendTicketPanel = event.target.closest("[data-send-ticket-panel]");
@@ -265,7 +304,7 @@ function render() {
         notice.classList.add("is-visible");
         setTimeout(() => notice.classList.remove("is-visible"), 2600);
       } catch (error) {
-        alert(error.message);
+        showError(error);
       } finally {
         const currentButton = document.querySelector("[data-send-ticket-panel]");
         if (currentButton) currentButton.disabled = false;
@@ -299,7 +338,7 @@ function render() {
       current.elements.namedItem("id").value = "";
       document.querySelector("#auto-response-form-title").textContent = "Create auto response";
       document.querySelector("[data-cancel-response]").hidden = true;
-    } catch (error) { alert(error.message); }
+    } catch (error) { showError(error); }
     finally { const currentButton = document.querySelector('#auto-response-form [type="submit"]'); if (currentButton) currentButton.disabled = false; }
   });
   root.addEventListener("change", async (event) => {
@@ -307,7 +346,7 @@ function render() {
     if (toggle) {
       const [moduleKey, key] = toggle.dataset.toggleSetting.split("|");
       toggle.disabled = true;
-      try { await save(moduleKey, key, toggle.checked); } catch (error) { toggle.checked = !toggle.checked; alert(error.message); toggle.disabled = false; }
+      try { await save(moduleKey, key, toggle.checked); } catch (error) { toggle.checked = !toggle.checked; showError(error); toggle.disabled = false; }
       const label = toggle.closest(".web-toggle")?.querySelector("b");
       if (label) label.textContent = key === "enabled" ? (toggle.checked ? "Enabled" : "Disabled") : (toggle.checked ? "On" : "Off");
       return;
