@@ -1284,3 +1284,40 @@ html[data-observer-theme="christmas"] .site-shell .update-item:focus-within::aft
     transition: none;
   }
 }
+
+
+/* Orthodox Christmas ambient page ornaments: evergreen, Bethlehem star, and cross. */
+html[data-observer-theme="christmas"] .site-shell {
+  background-image:
+    url("./assets/christmas-page-decor.svg"),
+    url("./assets/christmas-page-decor-right.svg"),
+    radial-gradient(ellipse 58% 46% at 76% 3%, #403018 0%, transparent 72%),
+    radial-gradient(ellipse 40% 32% at 12% 90%, #261d10 0%, transparent 76%);
+  background-size:
+    clamp(20px, calc((100vw - 1240px) / 2 + 24px), 132px) 720px,
+    clamp(20px, calc((100vw - 1240px) / 2 + 24px), 132px) 720px,
+    auto,
+    auto;
+  background-repeat: repeat-y, repeat-y, no-repeat, no-repeat;
+  background-position: left top, right top, center top, left bottom;
+}
+html[data-observer-theme="christmas"] .dashboard-shell {
+  background-image:
+    url("./assets/christmas-page-decor.svg"),
+    url("./assets/christmas-page-decor-right.svg"),
+    radial-gradient(ellipse 58% 46% at 76% 3%, #403018 0%, transparent 72%),
+    radial-gradient(ellipse 40% 32% at 12% 90%, #261d10 0%, transparent 76%);
+  background-size:
+    clamp(20px, calc((100vw - 1520px) / 2 + 24px), 132px) 720px,
+    clamp(20px, calc((100vw - 1520px) / 2 + 24px), 132px) 720px,
+    auto,
+    auto;
+  background-repeat: repeat-y, repeat-y, no-repeat, no-repeat;
+  background-position: left top, right top, center top, left bottom;
+}
+@media (max-width: 600px) {
+  html[data-observer-theme="christmas"] .site-shell,
+  html[data-observer-theme="christmas"] .dashboard-shell {
+    background-size: 18px 560px, 18px 560px, auto, auto;
+  }
+}
