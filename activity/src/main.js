@@ -129,8 +129,8 @@ async function loadPublicUpdates() {
 function initLandingScrollReveal() {
   const revealGroups = [
     [".project-facts", 0],
-    [".impact-section-head", 0],
-    [".impact-stat", 90],
+    [".live-stats-head", 0],
+    [".live-stat", 90],
     [".feature-section .section-intro", 0],
     [".feature-card", 90],
     [".updates-intro", 0],
