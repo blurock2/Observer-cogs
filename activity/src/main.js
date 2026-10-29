@@ -52,7 +52,7 @@ function initLiveThemePicker() {
   const shell = root.querySelector(".site-shell");
   const stats = root.querySelector(".live-stats-section");
   if (!shell || !stats) return;
-  stats.insertAdjacentHTML("beforeend", `<div class="live-theme-picker" id="live-theme-picker" hidden aria-labelledby="live-theme-heading"><div class="live-theme-copy"><div class="eyebrow">EASTER EGG UNLOCKED</div><h3 id="live-theme-heading">Choose a theme.</h3><p>Your choice is saved in this browser.</p></div><div class="live-theme-choices" role="group" aria-label="Choose website theme"><button type="button" data-site-theme-choice="observer" aria-pressed="true">Black &amp; cyan<span>Observer</span></button><button type="button" data-site-theme-choice="red-alert" aria-pressed="false">Dark red, red &amp; black<span>Red alert</span></button></div></div>`);
+  stats.insertAdjacentHTML("beforeend", `<div class="live-theme-picker" id="live-theme-picker" hidden aria-labelledby="live-theme-heading"><div class="live-theme-copy"><div class="eyebrow">EASTER EGG UNLOCKED</div><h3 id="live-theme-heading">Choose a theme.</h3><p>Your choice is saved in this browser.</p></div><div class="live-theme-choices" role="group" aria-label="Choose website theme"><button type="button" data-site-theme-choice="observer" aria-pressed="true">Observer theme<span>Black &amp; cyan</span></button><button type="button" data-site-theme-choice="red-alert" aria-pressed="false">Error theme<span>Dark red, red &amp; black</span></button></div></div>`);
   const panel = root.querySelector("#live-theme-picker");
   if (!panel) return;
   let unlocked = false;
