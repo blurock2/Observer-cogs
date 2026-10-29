@@ -1387,31 +1387,34 @@ html[data-observer-theme="christmas"] .dashboard-shell .diary-entry { border-col
 html[data-observer-theme="christmas"] .dashboard-shell .diary-entry-kind, html[data-observer-theme="christmas"] .dashboard-shell .diary-section-head h2 span, html[data-observer-theme="christmas"] .dashboard-shell .diary-open-link { color: #e8c45f; }
 @media (max-width: 700px) { .diary-page { padding: 42px 18px 72px; } .diary-entry { padding: 14px; } .diary-entry-top { align-items: flex-start; } .diary-entry time { max-width: 58%; } }
 
-/* Playful broken-site effect unlocked by the live status easter egg. */
-body:has(.site-shell.is-website-broken) { background: #03070a; }
-.site-shell.is-website-broken { position: relative; isolation: isolate; overflow: visible; background: transparent !important; }
-.site-shell.is-website-broken > :not(.website-break-backend):not(.website-break-reset) { position: relative; z-index: 2; }
-.website-break-backend { position: fixed; z-index: 0; inset: 0; overflow: hidden; pointer-events: none; background: radial-gradient(ellipse at 50% 42%, #0b2930ad, transparent 58%), repeating-linear-gradient(0deg, #52dae509 0 1px, transparent 1px 38px), repeating-linear-gradient(90deg, #52dae509 0 1px, transparent 1px 38px), #03070a; }
-.break-circuit-art { position: absolute; inset: 0; width: 100%; height: 100%; opacity: .48; }
+/* Keep the circuit and binary effect inside each card-shaped reveal. */
+.website-break-slot { position: relative; z-index: 1; display: flex; width: 100%; min-width: 0; overflow: visible; isolation: isolate; }
+.website-break-slot > .website-break-reveal { position: absolute; z-index: 0; inset: 0; overflow: hidden; border: 1px solid #287780; border-radius: 10px; background: radial-gradient(ellipse at 50% 50%,#0b2930ad,transparent 70%),repeating-linear-gradient(0deg,#52dae50b 0 1px,transparent 1px 24px),repeating-linear-gradient(90deg,#52dae50b 0 1px,transparent 1px 24px),#03070a; opacity: 0; pointer-events: auto; }
+.website-break-slot.is-revealing > .website-break-reveal { animation: break-reveal-show .5s ease var(--break-delay) both; }
+.website-break-slot > .easter-egg-fallen { position: relative; z-index: 2; flex: 1 1 auto; width: 100%; }
+.break-circuit-art { position: absolute; inset: 0; width: 100%; height: 100%; opacity: .65; }
 .break-circuit-art path { fill: none; stroke: #34c9d5; stroke-width: 1.4; stroke-dasharray: 7 10; animation: break-circuit-flow 4s linear infinite; }
-.break-circuit-art path:nth-child(2) { stroke: #f04b43; opacity: .48; animation-direction: reverse; animation-duration: 6s; }
+.break-circuit-art path:nth-child(2) { stroke: #f04b43; opacity: .55; animation-direction: reverse; animation-duration: 6s; }
 .break-circuit-nodes circle { fill: #ff6949; filter: drop-shadow(0 0 7px #ff6949); animation: break-node-pulse 1.4s ease-in-out infinite alternate; }
 .break-circuit-nodes circle:nth-child(even) { fill: #53e7f2; filter: drop-shadow(0 0 7px #53e7f2); animation-delay: .5s; }
-.break-binary-field { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-around; overflow: hidden; padding: 5vh 0; opacity: .34; mask-image: linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent); }
-.break-binary-row { display: block; flex: 0 0 18px; color: #64f0d0; font: 10px/18px ui-monospace,monospace; letter-spacing: 5px; white-space: nowrap; animation: break-binary-scroll var(--row-speed) linear var(--row-delay) infinite; }
+.break-binary-field { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-around; overflow: hidden; padding: 8px 0; opacity: .42; mask-image: linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent); }
+.break-binary-row { display: block; flex: 0 0 15px; color: #64f0d0; font: 8px/15px ui-monospace,monospace; letter-spacing: 3px; white-space: nowrap; animation: break-binary-scroll var(--row-speed) linear var(--row-delay) infinite; }
 .break-binary-row:nth-child(3n) { color: #ff7254; }
-.break-terminal { position: absolute; right: 22px; bottom: 18px; color: #6c979a; font: 9px/1.5 ui-monospace,monospace; letter-spacing: 1.3px; text-align: right; text-shadow: 0 0 9px #31d7e533; }
+.break-terminal { position: absolute; right: 9px; bottom: 7px; color: #82b6b9; font: 7px/1.4 ui-monospace,monospace; letter-spacing: .8px; text-shadow: 0 0 9px #31d7e533; }
 .website-break-reset { position: fixed; z-index: 10001; top: 14px; left: 20px; padding: 9px 13px; border: 1px solid #ff7254aa; border-radius: 7px; background: #110d0df2; color: #ffd3c5; box-shadow: 0 0 22px #ff493626; font: 650 11px Inter,"DM Sans",system-ui,sans-serif; cursor: pointer; backdrop-filter: blur(12px); transition: border-color .2s, box-shadow .2s, transform .2s; }
 .website-break-reset:hover,.website-break-reset:focus-visible { border-color: #ff7254; box-shadow: 0 0 20px #ff493655; transform: translateY(-1px); outline: none; }
 .easter-egg-fallen { animation: easter-egg-card-drop 1.15s cubic-bezier(.58,.02,.82,.54) var(--break-delay) both; transform-origin: 50% 5%; }
+.site-shell.is-break-shaking { animation: break-screen-shake .52s ease-in-out both; }
 .website-break-spark-burst { position: fixed; z-index: 11000; width: 1px; height: 1px; pointer-events: none; }
 .website-break-spark-burst i { position: absolute; display: block; width: 3px; height: 13px; border-radius: 4px; background: var(--spark-color,#ff6845); box-shadow: 0 0 10px currentColor; color: #ff6845; animation: website-break-spark .72s cubic-bezier(.1,.7,.2,1) var(--spark-delay) both; }
 .website-break-spark-burst i:nth-child(3n) { --spark-color: #ff3f3d; color: #ff3f3d; }
 .website-break-spark-burst i:nth-child(3n + 1) { --spark-color: #ff8a32; color: #ff8a32; }
 @keyframes easter-egg-card-drop { 0% { opacity: 1; transform: translateY(0) rotate(0); } 12% { transform: translateY(-18px) rotate(calc(var(--break-rotation) * -.25)); } 100% { opacity: 0; transform: translateY(125vh) rotate(var(--break-rotation)); } }
+@keyframes break-screen-shake { 0%,100% { transform: translate3d(0,0,0); } 18% { transform: translate3d(-6px,2px,0) rotate(-.12deg); } 36% { transform: translate3d(5px,-2px,0) rotate(.12deg); } 54% { transform: translate3d(-4px,1px,0); } 72% { transform: translate3d(3px,-1px,0); } }
+@keyframes break-reveal-show { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: scale(1); } }
 @keyframes break-circuit-flow { to { stroke-dashoffset: -68; } }
 @keyframes break-node-pulse { to { opacity: .35; } }
 @keyframes break-binary-scroll { from { transform: translateX(-18%); } to { transform: translateX(18%); } }
 @keyframes website-break-spark { 0% { opacity: 1; transform: translate(-50%,-50%) rotate(var(--spark-turn)) scale(.3); } 100% { opacity: 0; transform: translate(calc(-50% + var(--spark-x)),calc(-50% + var(--spark-y))) rotate(var(--spark-turn)) scale(.75); } }
-@media (max-width: 600px) { .website-break-reset { top: 10px; left: 12px; } .break-terminal { max-width: 78vw; font-size: 7px; } }
-@media (prefers-reduced-motion: reduce) { .break-circuit-art path,.break-circuit-nodes circle,.break-binary-row,.easter-egg-fallen,.website-break-spark-burst i { animation: none !important; } .easter-egg-fallen { opacity: 0; transform: translateY(125vh); } }
+@media (max-width: 600px) { .website-break-reset { top: 10px; left: 12px; } .break-terminal { max-width: 78%; font-size: 6px; } }
+@media (prefers-reduced-motion: reduce) { .break-circuit-art path,.break-circuit-nodes circle,.break-binary-row,.site-shell.is-break-shaking,.easter-egg-fallen,.website-break-spark-burst i { animation: none !important; } .website-break-slot.is-revealing > .website-break-reveal { opacity: 1; } .easter-egg-fallen { opacity: 0; transform: translateY(125vh); } }
