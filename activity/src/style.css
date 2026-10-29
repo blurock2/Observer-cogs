@@ -1332,3 +1332,30 @@ html[data-observer-theme="christmas"] .dashboard-shell .saved-message-item::afte
   filter: none;
   box-shadow: none;
 }
+
+
+/* Keep the Open Reports shortcut clear and on one line. */
+.mod-report-trigger-hint {
+  display: inline-flex;
+  align-items: center;
+  width: max-content;
+  max-width: 100%;
+  margin-top: 10px;
+  color: var(--site-palette-62d8e4);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .07em;
+  line-height: 1.4;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.mod-report-trigger-hint:hover {
+  color: var(--site-palette-eaf3f4);
+  text-decoration: underline;
+}
+.mod-report-trigger-hint:focus-visible {
+  border-radius: 2px;
+  outline: 2px solid var(--site-palette-42d7e8);
+  outline-offset: 3px;
+}
+#recent-reports { scroll-margin-top: 24px; }
