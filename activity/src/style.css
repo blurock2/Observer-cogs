@@ -1408,7 +1408,7 @@ html[data-observer-theme="christmas"] .dashboard-shell .diary-entry-kind, html[d
 .website-break-debris-heading .eyebrow { color: #91aeb2; }
 .website-break-debris-heading h2 { margin: 9px 0 5px; color: #eaf1f2; font-size: 19px; }
 .website-break-debris-heading p { margin: 0; color: #94a2a4; font-size: 11px; line-height: 1.6; }
-.website-break-debris-tray { position: relative; display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,270px),1fr)); align-items: start; gap: 16px; min-height: 70px; margin-top: 22px; }
+.website-break-debris-tray { position: relative; display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,350px),1fr)); align-items: start; gap: 16px; min-height: 70px; margin-top: 22px; }
 .website-break-landing-slot { min-width: 0; min-height: 100px; border: 1px dashed #344649; border-radius: 10px; background: linear-gradient(145deg,#101619,#0b0f10); transition: border-color .25s, background .25s; }
 .website-break-landing-slot.has-card { border-color: transparent; background: transparent; }
 .website-break-debris-card { position: relative; z-index: 2; margin: 0 !important; cursor: grab; touch-action: none; user-select: none; transform: rotate(var(--debris-rotation)); transition: box-shadow .18s, transform .18s; animation: break-card-land .28s ease both; }
