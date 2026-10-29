@@ -279,6 +279,12 @@ function activateWebsiteBreak() {
   site.classList.add("is-website-broken", "is-break-shaking");
   site.prepend(reset);
   window.setTimeout(() => site.classList.remove("is-break-shaking"), 620);
+  document.querySelectorAll(".break-warning-vignette").forEach((warning) => warning.remove());
+  const warning = document.createElement("div");
+  warning.className = "break-warning-vignette";
+  warning.setAttribute("aria-hidden", "true");
+  document.body.append(warning);
+  window.setTimeout(() => warning.remove(), 1450);
 
   const candidates = [...site.querySelectorAll(".feature-card, .workflow-steps > article, .project-engineering-item, .support-card, .review-card")];
   for (let index = candidates.length - 1; index > 0; index -= 1) {
