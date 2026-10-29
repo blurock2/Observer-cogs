@@ -258,31 +258,27 @@ function unlockOrthodoxChristmasTheme() {
 function activateWebsiteBreak() {
   const site = root.querySelector(".site-shell");
   if (!site) return;
-  site.querySelector(".website-break-backend")?.remove();
+  if (site._websiteBreakClickSparks) site.removeEventListener("click", site._websiteBreakClickSparks, true);
   site.querySelector(".website-break-reset")?.remove();
-  site.querySelectorAll(".easter-egg-fallen").forEach((card) => card.classList.remove("easter-egg-fallen"));
-
-  const backend = document.createElement("div");
-  backend.className = "website-break-backend";
-  backend.setAttribute("aria-hidden", "true");
-  backend.innerHTML = `<svg class="break-circuit-art" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice"><g><path d="M0 120h190v110h140v-70h190v170h170V90h140v180h180v-90h190M0 570h150V430h150v120h190V420h180v180h170V450h140v120h220M460 0v110m370 360v160m-210-70v220m330-510v-100m-650 300v-95"/><path d="M190 230v80h80m240 20v80h-90m340-150v100h90m350-130v100h-80M300 550v100h-120m570-50v100h100m310-130v80h100"/></g><g class="break-circuit-nodes"><circle cx="190" cy="230" r="5"/><circle cx="520" cy="330" r="5"/><circle cx="860" cy="90" r="5"/><circle cx="1010" cy="180" r="5"/><circle cx="300" cy="550" r="5"/><circle cx="670" cy="600" r="5"/><circle cx="990" cy="570" r="5"/></g></svg><div class="break-binary-field"></div><div class="break-terminal">OBSERVER // FRONTEND DETACHED // BACKEND SIGNAL VISIBLE</div>`;
-  const binary = backend.querySelector(".break-binary-field");
-  for (let index = 0; index < 28; index += 1) {
-    const row = document.createElement("span");
-    row.className = "break-binary-row";
-    row.textContent = Array.from({ length: 52 }, () => Math.random() < 0.5 ? "0" : "1").join("");
-    row.style.setProperty("--row-delay", `${Math.random() * -12}s`);
-    row.style.setProperty("--row-speed", `${9 + Math.random() * 12}s`);
-    binary.append(row);
-  }
+  site.querySelectorAll(".website-break-slot").forEach((slot) => {
+    const card = slot.querySelector(".easter-egg-fallen");
+    if (card) {
+      card.classList.remove("easter-egg-fallen");
+      card.style.removeProperty("--break-rotation");
+      card.style.removeProperty("--break-delay");
+      slot.before(card);
+    }
+    slot.remove();
+  });
 
   const reset = document.createElement("button");
   reset.className = "website-break-reset";
   reset.type = "button";
   reset.textContent = "Reset website";
   reset.setAttribute("aria-label", "Reset the website after the simulated break");
-  site.classList.add("is-website-broken");
-  site.prepend(backend, reset);
+  site.classList.add("is-website-broken", "is-break-shaking");
+  site.prepend(reset);
+  window.setTimeout(() => site.classList.remove("is-break-shaking"), 620);
 
   const candidates = [...site.querySelectorAll(".feature-card, .workflow-steps > article, .project-engineering-item, .support-card, .review-card")];
   for (let index = candidates.length - 1; index > 0; index -= 1) {
@@ -292,8 +288,30 @@ function activateWebsiteBreak() {
   const maxDrops = Math.max(1, Math.min(5, candidates.length - 1));
   const dropCount = 1 + Math.floor(Math.random() * maxDrops);
   candidates.slice(0, dropCount).forEach((card, index) => {
+    const slot = document.createElement("div");
+    slot.className = "website-break-slot";
+    const cardLayout = window.getComputedStyle(card);
+    if (cardLayout.gridColumn !== "auto") slot.style.gridColumn = cardLayout.gridColumn;
+    if (cardLayout.gridRow !== "auto") slot.style.gridRow = cardLayout.gridRow;
+    card.parentElement.insertBefore(slot, card);
+    const reveal = document.createElement("div");
+    reveal.className = "website-break-reveal";
+    reveal.setAttribute("aria-hidden", "true");
+    reveal.innerHTML = `<svg class="break-circuit-art" viewBox="0 0 420 280" preserveAspectRatio="xMidYMid slice"><g><path d="M-20 45h90v70h75V65h100v75h85V35h110M-20 225h80v-80h100v55h70v-85h90v95h115M110 -10v45m140 105v45m80-105v-50m-155 85v65m105 10v70"/><path d="M70 115v45h-45m175-95v45h-50m180-75v55h50m-220 110v35h-50m140-55v65h45"/></g><g class="break-circuit-nodes"><circle cx="70" cy="115" r="4"/><circle cx="245" cy="140" r="4"/><circle cx="330" cy="35" r="4"/><circle cx="135" cy="200" r="4"/></g></svg><div class="break-binary-field"></div><span class="break-terminal">CACHE // ${String(index + 1).padStart(2, "0")} // 01001111</span>`;
+    const binary = reveal.querySelector(".break-binary-field");
+    for (let rowIndex = 0; rowIndex < 8; rowIndex += 1) {
+      const row = document.createElement("span");
+      row.className = "break-binary-row";
+      row.textContent = Array.from({ length: 34 }, () => Math.random() < 0.5 ? "0" : "1").join("");
+      row.style.setProperty("--row-delay", `${Math.random() * -8}s`);
+      row.style.setProperty("--row-speed", `${8 + Math.random() * 9}s`);
+      binary.append(row);
+    }
+    slot.append(reveal, card);
+    slot.classList.add("is-revealing");
     card.style.setProperty("--break-rotation", `${Math.round(Math.random() * 24 - 12)}deg`);
     card.style.setProperty("--break-delay", `${index * 110 + Math.random() * 180}ms`);
+    slot.style.setProperty("--break-delay", card.style.getPropertyValue("--break-delay"));
     card.classList.add("easter-egg-fallen");
   });
 
@@ -316,14 +334,19 @@ function activateWebsiteBreak() {
     window.setTimeout(() => burst.remove(), 950);
   };
   const clickSparks = (event) => {
-    if (event.target.closest(".website-break-reset, .site-theme-control")) return;
+    if (!event.target.closest(".website-break-reveal")) return;
     sparkAt(event.clientX, event.clientY);
   };
   const resetWebsite = () => {
     site.removeEventListener("click", clickSparks, true);
+    site._websiteBreakClickSparks = null;
     site.classList.remove("is-website-broken");
-    site.querySelector(".website-break-backend")?.remove();
     reset.remove();
+    site.querySelectorAll(".website-break-slot").forEach((slot) => {
+      const card = slot.querySelector(".easter-egg-fallen");
+      if (card) slot.before(card);
+      slot.remove();
+    });
     site.querySelectorAll(".easter-egg-fallen").forEach((card) => {
       card.classList.remove("easter-egg-fallen");
       card.style.removeProperty("--break-rotation");
@@ -331,6 +354,7 @@ function activateWebsiteBreak() {
     });
   };
   reset.addEventListener("click", resetWebsite, { once: true });
+  site._websiteBreakClickSparks = clickSparks;
   site.addEventListener("click", clickSparks, true);
 }
 
