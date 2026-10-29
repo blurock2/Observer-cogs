@@ -832,6 +832,8 @@ html[data-observer-theme="error"] .site-shell .support-symbol, html[data-observe
 html[data-observer-theme="error"] .site-shell .support-symbol, html[data-observer-theme="error"] .site-shell .support-role-chips span { border-color: #632a32; }
 html[data-observer-theme="error"] .site-shell .support-role-chips span { background: #211316; }
 html[data-observer-theme="error"] .site-shell a:not(.button):hover, html[data-observer-theme="error"] .site-shell .shared-site-footer .footer-links>a:hover { color: #ff6878; }
+html[data-observer-theme="error"] .policy-document { border-color: #49252c; background: linear-gradient(150deg,#1b1114,#101012); }
+html[data-observer-theme="error"] .policy-document .policy-meta, html[data-observer-theme="error"] .policy-page .back-link:hover, html[data-observer-theme="error"] .policy-footer-links a:hover { color: #ff6474; }
 html[data-observer-theme="error"] .dashboard-shell .nav-item.active, html[data-observer-theme="error"] .dashboard-shell .nav-item:hover { background: #2a171b; color: #ffecef; box-shadow: inset 2px 0 #ed344a; }
 html[data-observer-theme="error"] .dashboard-shell .nav-dot, html[data-observer-theme="error"] .dashboard-shell .online-dot, html[data-observer-theme="error"] .dashboard-shell .pulse { background: #ed344a; box-shadow: 0 0 10px #ed344a77; }
 html[data-observer-theme="error"] .site-theme-toggle span, html[data-observer-theme="error"] .site-theme-menu-heading .eyebrow { color: #ff6671; }
