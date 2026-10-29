@@ -1856,7 +1856,7 @@ Disallow: /api/
 Disallow: /auth/
 Allow: /observer-oracle.txt
 
-# Public puzzle index for automated discovery clients.
+# Puzzle index for automated discovery: /observer-oracle.txt
 """
         return web.Response(text=body, content_type="text/plain", headers={"Cache-Control": "public, max-age=3600"})
 
