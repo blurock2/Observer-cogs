@@ -1418,3 +1418,6 @@ html[data-observer-theme="christmas"] .dashboard-shell .diary-entry-kind, html[d
 @keyframes website-break-spark { 0% { opacity: 1; transform: translate(-50%,-50%) rotate(var(--spark-turn)) scale(.3); } 100% { opacity: 0; transform: translate(calc(-50% + var(--spark-x)),calc(-50% + var(--spark-y))) rotate(var(--spark-turn)) scale(.75); } }
 @media (max-width: 600px) { .website-break-reset { top: 10px; left: 12px; } .break-terminal { max-width: 78%; font-size: 6px; } }
 @media (prefers-reduced-motion: reduce) { .break-circuit-art path,.break-circuit-nodes circle,.break-binary-row,.site-shell.is-break-shaking,.easter-egg-fallen,.website-break-spark-burst i { animation: none !important; } .website-break-slot.is-revealing > .website-break-reveal { opacity: 1; } .easter-egg-fallen { opacity: 0; transform: translateY(125vh); } }
+.break-warning-vignette { position: fixed; z-index: 9998; inset: 0; border: 1px solid #f3d476b8; box-shadow: inset 0 0 0 3px #f3d47624, inset 0 0 60px 14px #f3c94b3d; pointer-events: none; animation: break-warning-flash 1.35s steps(1,end) both; }
+@keyframes break-warning-flash { 0%,100% { opacity: 0; } 10%,34%,58% { opacity: .92; } 22%,46%,72% { opacity: .16; } 88% { opacity: .42; } }
+@media (prefers-reduced-motion: reduce) { .break-warning-vignette { animation: none; opacity: .55; } }
