@@ -264,16 +264,23 @@ function activateWebsiteBreak() {
     const card = slot._websiteBreakCard;
     if (card) {
       card._websiteBreakDrag?.abort();
+      card._websiteBreakDrag = null;
       window.clearTimeout(card._websiteBreakLandTimer);
+      if (card._websiteBreakLandHandler) card.removeEventListener("animationend", card._websiteBreakLandHandler);
+      card._websiteBreakLandHandler = null;
       card.classList.remove("easter-egg-fallen", "website-break-debris-card", "is-dragging");
       card.style.removeProperty("--break-rotation");
       card.style.removeProperty("--break-delay");
-      card.style.removeProperty("--debris-rotation");
+      card.style.removeProperty("--break-fall-x");
+      card.style.removeProperty("--break-fall-distance");
       card.style.removeProperty("position");
       card.style.removeProperty("left");
       card.style.removeProperty("top");
       card.style.removeProperty("z-index");
       card.style.removeProperty("margin");
+      card.style.removeProperty("width");
+      card.style.removeProperty("height");
+      card.style.removeProperty("--debris-rotation");
       card.style.removeProperty("transform");
       card.removeAttribute("tabindex");
       card.removeAttribute("aria-label");
@@ -281,6 +288,8 @@ function activateWebsiteBreak() {
     }
     slot.remove();
   });
+  site._websiteBreakDebrisArea?.remove();
+  site._websiteBreakDebrisArea = null;
   site._websiteBreakTray?.remove();
   site._websiteBreakTray = null;
 
@@ -306,15 +315,18 @@ function activateWebsiteBreak() {
   }
   const maxDrops = Math.max(1, Math.min(5, candidates.length - 1));
   const dropCount = 1 + Math.floor(Math.random() * maxDrops);
+  const debrisArea = document.createElement("section");
+  debrisArea.className = "website-break-debris-area";
+  debrisArea.innerHTML = `<div class="website-break-debris-heading"><div class="eyebrow">RECOVERED COMPONENTS</div><h2>Cards at rest.</h2><p>They fell to the bottom of the page. Hold and drag a card to rearrange it.</p></div>`;
   const tray = document.createElement("div");
   tray.className = "website-break-debris-tray";
   tray.setAttribute("role", "group");
   tray.setAttribute("aria-label", "Fallen cards. Hold and drag a card to move it.");
-  const trayLabel = document.createElement("span");
-  trayLabel.className = "website-break-debris-label";
-  trayLabel.textContent = "FALLEN CARDS · DRAG TO MOVE";
-  tray.append(trayLabel);
-  document.body.append(tray);
+  debrisArea.append(tray);
+  const siteFooter = site.querySelector(".site-footer");
+  if (siteFooter) siteFooter.before(debrisArea);
+  else site.append(debrisArea);
+  site._websiteBreakDebrisArea = debrisArea;
   site._websiteBreakTray = tray;
 
   const enableDrag = (card) => {
@@ -325,19 +337,26 @@ function activateWebsiteBreak() {
       if (event.button !== 0 || drag) return;
       event.preventDefault();
       const rect = card.getBoundingClientRect();
-      drag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, left: rect.left, top: rect.top };
+      const trayRect = tray.getBoundingClientRect();
+      drag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, left: rect.left - trayRect.left, top: rect.top - trayRect.top };
       card.classList.add("is-dragging");
-      card.style.position = "fixed";
-      card.style.left = `${rect.left}px`;
-      card.style.top = `${rect.top}px`;
+      card.style.position = "absolute";
+      card.style.left = `${drag.left}px`;
+      card.style.top = `${drag.top}px`;
       card.style.zIndex = "10000";
       card.style.margin = "0";
+      card.style.width = `${rect.width}px`;
+      card.style.height = `${rect.height}px`;
       card.setPointerCapture(event.pointerId);
     }, { signal: controller.signal });
     card.addEventListener("pointermove", (event) => {
       if (!drag || event.pointerId !== drag.pointerId) return;
-      card.style.left = `${drag.left + event.clientX - drag.startX}px`;
-      card.style.top = `${drag.top + event.clientY - drag.startY}px`;
+      const maxLeft = Math.max(0, tray.clientWidth - card.offsetWidth);
+      const maxTop = Math.max(0, tray.clientHeight - card.offsetHeight);
+      const left = Math.min(maxLeft, Math.max(0, drag.left + event.clientX - drag.startX));
+      const top = Math.min(maxTop, Math.max(0, drag.top + event.clientY - drag.startY));
+      card.style.left = `${left}px`;
+      card.style.top = `${top}px`;
     }, { signal: controller.signal });
     const finishDrag = (event) => {
       if (!drag || (event && event.pointerId !== drag.pointerId)) return;
@@ -348,10 +367,13 @@ function activateWebsiteBreak() {
     card.addEventListener("pointercancel", finishDrag, { signal: controller.signal });
   };
 
-  candidates.slice(0, dropCount).forEach((card, index) => {
+  const selectedCards = candidates.slice(0, dropCount);
+  const pendingFalls = [];
+  selectedCards.forEach((card, index) => {
+    const cardHeight = card.getBoundingClientRect().height;
     const slot = document.createElement("div");
     slot.className = "website-break-slot";
-    slot.style.height = `${card.getBoundingClientRect().height}px`;
+    slot.style.height = `${cardHeight}px`;
     slot._websiteBreakCard = card;
     const cardLayout = window.getComputedStyle(card);
     if (cardLayout.gridColumn !== "auto") slot.style.gridColumn = cardLayout.gridColumn;
@@ -372,9 +394,22 @@ function activateWebsiteBreak() {
     }
     slot.append(reveal, card);
     slot.classList.add("is-revealing");
-    card.style.setProperty("--break-rotation", `${Math.round(Math.random() * 24 - 12)}deg`);
-    card.style.setProperty("--break-delay", `${index * 110 + Math.random() * 180}ms`);
-    slot.style.setProperty("--break-delay", card.style.getPropertyValue("--break-delay"));
+    const landingSlot = document.createElement("div");
+    landingSlot.className = "website-break-landing-slot";
+    landingSlot.style.height = `${cardHeight}px`;
+    tray.append(landingSlot);
+    pendingFalls.push({ card, slot, landingSlot, index });
+  });
+
+  pendingFalls.forEach(({ card, slot, landingSlot, index }) => {
+    const from = card.getBoundingClientRect();
+    const destination = landingSlot.getBoundingClientRect();
+    const delayMs = index * 110 + Math.random() * 180;
+    card.style.setProperty("--break-fall-x", `${destination.left - from.left}px`);
+    card.style.setProperty("--break-fall-distance", `${destination.top - from.top}px`);
+    card.style.setProperty("--break-rotation", `${Math.round(Math.random() * 16 - 8)}deg`);
+    card.style.setProperty("--break-delay", `${delayMs}ms`);
+    slot.style.setProperty("--break-delay", `${delayMs}ms`);
     card.classList.add("easter-egg-fallen");
 
     let landed = false;
@@ -384,16 +419,21 @@ function activateWebsiteBreak() {
       landed = true;
       window.clearTimeout(card._websiteBreakLandTimer);
       card.removeEventListener("animationend", landCard);
+      card._websiteBreakLandHandler = null;
       card.classList.remove("easter-egg-fallen");
       card.classList.add("website-break-debris-card");
-      card.style.setProperty("--debris-rotation", `${Math.round(Math.random() * 10 - 5)}deg`);
+      card.style.setProperty("--debris-rotation", "0deg");
+      card.style.removeProperty("--break-fall-x");
+      card.style.removeProperty("--break-fall-distance");
+      card.style.removeProperty("--break-delay");
       card.setAttribute("tabindex", "0");
       card.setAttribute("aria-label", "Fallen card. Hold and drag to move it.");
-      tray.append(card);
+      landingSlot.append(card);
+      landingSlot.classList.add("has-card");
       enableDrag(card);
     };
+    card._websiteBreakLandHandler = landCard;
     card.addEventListener("animationend", landCard);
-    const delayMs = Number.parseFloat(card.style.getPropertyValue("--break-delay")) || 0;
     card._websiteBreakLandTimer = window.setTimeout(landCard, delayMs + 1300);
   });
 
@@ -428,16 +468,23 @@ function activateWebsiteBreak() {
       const card = slot._websiteBreakCard;
       if (card) {
         card._websiteBreakDrag?.abort();
+        card._websiteBreakDrag = null;
         window.clearTimeout(card._websiteBreakLandTimer);
+        if (card._websiteBreakLandHandler) card.removeEventListener("animationend", card._websiteBreakLandHandler);
+        card._websiteBreakLandHandler = null;
         card.classList.remove("easter-egg-fallen", "website-break-debris-card", "is-dragging");
         card.style.removeProperty("--break-rotation");
         card.style.removeProperty("--break-delay");
+        card.style.removeProperty("--break-fall-x");
+        card.style.removeProperty("--break-fall-distance");
         card.style.removeProperty("--debris-rotation");
         card.style.removeProperty("position");
         card.style.removeProperty("left");
         card.style.removeProperty("top");
         card.style.removeProperty("z-index");
         card.style.removeProperty("margin");
+        card.style.removeProperty("width");
+        card.style.removeProperty("height");
         card.style.removeProperty("transform");
         card.removeAttribute("tabindex");
         card.removeAttribute("aria-label");
@@ -447,7 +494,8 @@ function activateWebsiteBreak() {
       slot.style.removeProperty("--break-delay");
       slot.remove();
     });
-    tray.remove();
+    debrisArea.remove();
+    site._websiteBreakDebrisArea = null;
     site._websiteBreakTray = null;
   };
   reset.addEventListener("click", resetWebsite, { once: true });
