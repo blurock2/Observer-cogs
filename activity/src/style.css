@@ -1057,3 +1057,25 @@ html[data-observer-theme="christmas"] .site-shell .support-card:focus-within::af
   html[data-observer-theme="christmas"] .site-shell .review-card::after,
   html[data-observer-theme="christmas"] .site-shell .support-card::after { transition: none; }
 }
+
+
+/* Match supporter decoration glows to each tier's existing accent color. */
+html[data-observer-theme="christmas"] .site-shell .support-card::before {
+  filter: drop-shadow(0 0 3px var(--support-glow)) drop-shadow(0 0 7px var(--support-glow));
+}
+html[data-observer-theme="christmas"] .site-shell .support-card::after {
+  border-color: var(--support-accent);
+  color: var(--support-accent);
+  box-shadow: 0 2px 8px var(--support-glow);
+}
+html[data-observer-theme="christmas"] .site-shell .support-card:hover::before,
+html[data-observer-theme="christmas"] .site-shell .support-card:focus-within::before {
+  filter: drop-shadow(0 0 4px var(--support-accent)) drop-shadow(0 0 10px var(--support-glow));
+}
+html[data-observer-theme="christmas"] .site-shell .support-card:hover::after,
+html[data-observer-theme="christmas"] .site-shell .support-card:focus-within::after {
+  border-color: var(--support-accent);
+  color: var(--support-accent);
+  box-shadow: 0 0 14px var(--support-glow);
+  filter: drop-shadow(0 0 4px var(--support-accent));
+}
