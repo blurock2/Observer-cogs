@@ -43,22 +43,71 @@ async function refreshLiveStats() {
 }
 setInterval(refreshLiveStats, 60_000);
 
+const liveStatusClickTimes = new WeakMap();
+
 function playLiveStatusEasterEgg(card) {
   if (card.dataset.glitching) return;
+  const section = card.closest(".live-stats-section");
+  if (!section) return;
   card.dataset.glitching = "true";
   card.classList.add("is-glitching");
-  ["ERROR 503: VIBE OVERLOAD", "CRITICAL: TOO MUCH AWESOME", "STATUS: JUST KIDDING"].forEach((message, index) => {
-    const alert = document.createElement("span");
-    alert.className = `live-stat-alert live-stat-alert-${index + 1}`;
-    alert.textContent = message;
-    alert.setAttribute("aria-hidden", "true");
-    card.append(alert);
-  });
+
+  const effect = document.createElement("div");
+  effect.className = "live-status-chaos";
+  effect.setAttribute("aria-hidden", "true");
+  const logMessages = [
+    "ERROR: status daemon exceeded its fun quota",
+    "WARN: confetti service started unexpectedly",
+    "TRACE: observer.exe is still very much online",
+    "ERROR: seriousness.dll not found",
+    "NOTICE: no actual errors detected",
+    "WARN: vibes are outside normal parameters",
+    "TRACE: confetti.exe initialized successfully",
+    "STATUS: just kidding - all systems are online",
+  ];
+  for (let index = 0; index < 16; index += 1) {
+    const log = document.createElement("span");
+    const code = Math.floor(10_000_000 + Math.random() * 90_000_000);
+    log.className = `live-status-rain-log live-status-rain-log-${index % 3}`;
+    log.textContent = `OBS-${code}  ${logMessages[index % logMessages.length]}`;
+    log.style.left = `${Math.random() * 92}%`;
+    log.style.setProperty("--rain-delay", `${Math.random() * 1.1}s`);
+    log.style.setProperty("--rain-duration", `${2.2 + Math.random() * 1.1}s`);
+    log.style.setProperty("--rain-drift", `${Math.round(Math.random() * 80 - 40)}px`);
+    effect.append(log);
+  }
+  const confettiColors = ["#42d7e8", "#ff596b", "#ffd166", "#a78bfa", "#67e8a5", "#ffffff"];
+  for (let index = 0; index < 42; index += 1) {
+    const piece = document.createElement("span");
+    piece.className = "live-status-confetti";
+    piece.style.left = `${46 + Math.random() * 8}%`;
+    piece.style.top = `${32 + Math.random() * 36}%`;
+    piece.style.setProperty("--confetti-color", confettiColors[index % confettiColors.length]);
+    piece.style.setProperty("--confetti-x", `${Math.round(Math.random() * 560 - 280)}px`);
+    piece.style.setProperty("--confetti-y", `${Math.round(Math.random() * 300 - 150)}px`);
+    piece.style.setProperty("--confetti-rotation", `${Math.round(Math.random() * 900 - 450)}deg`);
+    piece.style.setProperty("--confetti-delay", `${Math.random() * 0.2}s`);
+    effect.append(piece);
+  }
+  section.append(effect);
+
   window.setTimeout(() => {
     card.classList.remove("is-glitching");
-    card.querySelectorAll(".live-stat-alert").forEach((alert) => alert.remove());
     delete card.dataset.glitching;
-  }, 2700);
+    effect.remove();
+  }, 3900);
+}
+
+function trackLiveStatusClick(card) {
+  if (card.dataset.glitching) return;
+  const now = performance.now();
+  const recent = (liveStatusClickTimes.get(card) || []).filter((time) => now - time <= 2000);
+  recent.push(now);
+  liveStatusClickTimes.set(card, recent);
+  if (recent.length >= 5) {
+    liveStatusClickTimes.set(card, []);
+    playLiveStatusEasterEgg(card);
+  }
 }
 
 async function loadLanding() {
@@ -99,7 +148,7 @@ async function loadLanding() {
         <div class="hero-foot"><span>MODERATION · SECURITY · COMMUNITY</span><span>SCROLL TO DISCOVER <b>↓</b></span></div>
       </section>
       <section class="project-facts" aria-label="Observer project details"><span>BUILT WITH</span><b>Python</b><i></i><b>discord.py</b><i></i><b>SQLite</b><i></i><b>Modular cogs</b><span class="facts-status">IN ACTIVE DEVELOPMENT</span></section>
-      <section class="live-stats-section" aria-labelledby="live-stats-heading"><div class="live-stats-head"><div class="eyebrow">03 / LIVE STATS</div><h2 id="live-stats-heading">Current numbers.</h2></div><div class="live-stats-grid"><button type="button" class="live-stat live-stat-clickable" id="live-stat-card" aria-label="Play the hidden status animation"><strong id="live-stat-status">${liveStats.status || "Unavailable"}</strong><span>Bot status</span></button><article class="live-stat"><strong id="live-stat-servers">${formatCount(liveStats.servers)}</strong><span>Servers</span></article><article class="live-stat"><strong id="live-stat-users">${formatCount(liveStats.users)}</strong><span>Users</span></article><article class="live-stat"><strong id="live-stat-commands">${formatCount(liveStats.commands_run)}</strong><span>Commands run</span></article></div><p class="live-stats-note">Live counts from Observer.</p></section>
+      <section class="live-stats-section" aria-labelledby="live-stats-heading"><div class="live-stats-head"><div class="eyebrow">03 / LIVE STATS</div><h2 id="live-stats-heading">Current numbers.</h2></div><div class="live-stats-grid"><button type="button" class="live-stat live-stat-clickable" id="live-stat-card" aria-label="Observer bot status. Rapid clicking triggers a playful effect."><strong id="live-stat-status">${liveStats.status || "Unavailable"}</strong><span>Bot status</span></button><article class="live-stat"><strong id="live-stat-servers">${formatCount(liveStats.servers)}</strong><span>Servers</span></article><article class="live-stat"><strong id="live-stat-users">${formatCount(liveStats.users)}</strong><span>Users</span></article><article class="live-stat"><strong id="live-stat-commands">${formatCount(liveStats.commands_run)}</strong><span>Commands run</span></article></div><p class="live-stats-note">Live counts from Observer.</p></section>
       <section class="feature-section" id="features"><div class="section-intro"><div><div class="eyebrow">A LITTLE MORE PEACE OF MIND</div><h2>One bot. A calmer server.</h2></div><p>Useful tools for the everyday work of keeping a community welcoming, safe, and running smoothly.</p></div>
         <div class="feature-grid"><article class="feature-card feature-featured"><div class="feature-icon icon-shield">⬡</div><span class="feature-index">01 / PROTECT</span><h3>See trouble sooner.</h3><p>Scam detection, raid safeguards, and audit logs help your moderators spot issues before they spread.</p><span class="feature-decoration">◈</span></article><article class="feature-card"><div class="feature-icon icon-gavel">⚖</div><span class="feature-index">02 / MODERATE</span><h3>Keep actions clear.</h3><p>Manage reports and moderation cases with a record your staff can follow.</p><span class="feature-decoration">↗</span></article><article class="feature-card"><div class="feature-icon icon-spark">✦</div><span class="feature-index">03 / RUN YOUR SERVER</span><h3>Make room for community.</h3><p>Configure helpful tools for tickets, roles, leveling, reminders, and more.</p><span class="feature-decoration">✦</span></article></div>
       </section>
@@ -118,7 +167,7 @@ async function loadLanding() {
     </main><footer class="site-footer"><div class="footer-brand">${brand()}<small>© ${new Date().getFullYear()} Observer. Independent community software.</small></div><div class="footer-links"><a href="${esc(publicInfo.source_url)}" target="_blank" rel="noreferrer">Source code</a><a href="${esc(publicInfo.portfolio_url)}" target="_blank" rel="noreferrer">Creator portfolio</a><a href="${esc(publicInfo.support_url)}" target="_blank" rel="noreferrer">Support</a><details class="footer-legal"><summary>Privacy &amp; terms</summary><div class="legal-copy"><section><h3>Privacy</h3><p>Sign-in uses Discord OAuth to identify you and list servers where you are an owner or have moderation permissions. Observer stores a protected sign-in session, your basic Discord profile, and that manageable-server list for up to seven days. Discord access tokens are not stored. Server configuration changes are saved in Observer&#8217;s database for the bot to use.</p><p>You can end your sign-in session with “Sign out”. Contact the creator through the support server for questions about stored information.</p></section><section><h3>Terms</h3><p>Use Observer only in servers you own or are authorized to manage. Dashboard changes apply to the connected server and may affect its members. You are responsible for reviewing settings, permissions, and applicable laws before enabling features.</p><p>Observer is provided as an independent community project and is not affiliated with or endorsed by Discord Inc. Service availability and features may change.</p></section></div></details></div><span class="footer-disclaimer">Not affiliated with Discord Inc.</span><a class="footer-top" href="#top" onclick="window.scrollTo({top:0,behavior:'smooth'});return false">BACK TO TOP ↑</a></footer>
   </div>`;
   initLandingScrollReveal();
-  root.querySelector("#live-stat-card")?.addEventListener("click", (event) => playLiveStatusEasterEgg(event.currentTarget));
+  root.querySelector("#live-stat-card")?.addEventListener("click", (event) => trackLiveStatusClick(event.currentTarget));
   document.querySelectorAll("#open-dashboard, #open-dashboard-hero, #open-dashboard-workflow").forEach((button) => button.addEventListener("click", openDashboard));
   void loadPublicUpdates();
 }
