@@ -16,6 +16,17 @@ function discordIcon() {
 }
 
 function brand() { return `<a class="brand" href="/" aria-label="Observer home"><span class="brand-mark"><img src="/observer.png?v=3" alt=""></span><span>OBSERVER</span></a>`; }
+function ensurePolicyFooter() {
+  if (!root.firstElementChild) return;
+  const links = '<nav class="policy-footer-links" aria-label="Legal links"><a href="/privacy">Privacy Policy</a><a href="/terms">Terms of Service</a></nav>';
+  const siteFooter = root.querySelector(".site-footer");
+  if (siteFooter) {
+    if (!siteFooter.querySelector(".policy-footer-links")) (siteFooter.querySelector(".footer-links") || siteFooter).insertAdjacentHTML("beforeend", links);
+  } else if (!root.querySelector(".site-policy-footer")) {
+    root.insertAdjacentHTML("beforeend", '<footer class="site-policy-footer"><span>Observer</span>' + links + '</footer>');
+  }
+}
+new MutationObserver(ensurePolicyFooter).observe(root, { childList: true });
 
 async function loadLanding() {
   const session = await api("/api/session");
@@ -175,6 +186,7 @@ async function openDashboard() {
 
 async function start() {
   try {
+    if (location.pathname === "/privacy" || location.pathname === "/terms") { const { renderLegalPage } = await import("./legal_pages.js"); renderLegalPage(location.pathname === "/privacy" ? "privacy" : "terms"); return; }
     if (location.pathname === "/staff") { await import("./staff.js"); return; }
     if (location.pathname === "/setup") { await import("./control_panel.js"); return; }
     if (location.pathname === "/embeds") { await import("./embed_sender.js"); return; }
