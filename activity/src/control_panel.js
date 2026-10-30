@@ -89,7 +89,7 @@ function controlFor(module, setting) {
     const displayOption = (option) => {
       const prefix = isChannel && option.type !== "category" ? "#" : "";
       const kind = isChannel ? option.type.replaceAll("_", " ") : (option.is_default ? "default role" : "role");
-      return `${prefix}${option.name} &#183; ${kind}`;
+      return `${prefix}${option.name} · ${kind}`;
     };
     const selected = options.find((option) => String(option.id) === chosen);
     const optionHtml = options.map((option) => `<option value="${esc(displayOption(option))}" data-id="${esc(option.id)}"></option>`).join("");
