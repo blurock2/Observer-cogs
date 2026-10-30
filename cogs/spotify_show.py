@@ -349,7 +349,7 @@ class SpotifyShow(ObserverCog):
 
         if artist:
             embed.set_author(
-                name=f"Spotify â€¢ {artist}",
+                name=f"Spotify • {artist}",
                 icon_url=SPOTIFY_LOGO_URL,
             )
         else:
