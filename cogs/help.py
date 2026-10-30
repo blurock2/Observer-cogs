@@ -50,7 +50,7 @@ class HelpView(ErrorHandledView):
         embed.set_footer(
             text=(
                 f"Page {self.current_page + 1} of {len(self.pages)} "
-                "â€¢ Use the buttons to navigate."
+                "• Use the buttons to navigate."
             )
         )
         return embed
@@ -63,7 +63,7 @@ class HelpView(ErrorHandledView):
         return True
 
     @discord.ui.button(
-        label="â—€ï¸",
+        label="◀️",
         style=discord.ButtonStyle.secondary,
     )
     async def previous_page(
@@ -87,7 +87,7 @@ class HelpView(ErrorHandledView):
     @discord.ui.button(
         label="Support Server",
         style=discord.ButtonStyle.blurple,
-        emoji="ðŸ›Ÿ",
+        emoji="🛟",
     )
     async def support_server(
         self,
@@ -95,7 +95,7 @@ class HelpView(ErrorHandledView):
         button: discord.ui.Button,
     ) -> None:
         embed = discord.Embed(
-            title="ðŸ›Ÿ Support Server",
+            title="🛟 Support Server",
             description=(
                 f"[Click here to join the support server]({self.cog.support_url})"
             ),
@@ -108,7 +108,7 @@ class HelpView(ErrorHandledView):
         )
 
     @discord.ui.button(
-        label="â–¶ï¸",
+        label="▶️",
         style=discord.ButtonStyle.secondary,
     )
     async def next_page(
@@ -254,8 +254,8 @@ class HelpCog(ObserverCog):
         intro = (
             "**Welcome!**\n"
             "This bot supports both prefix and slash commands.\n\n"
-            f"â€¢ Prefix commands use `{self.prefix}{COMMAND_NAME_PREFIX}`\n"
-            "â€¢ Slash commands use `/`\n\n"
+            f"• Prefix commands use `{self.prefix}{COMMAND_NAME_PREFIX}`\n"
+            "• Slash commands use `/`\n\n"
             f"Use `{self.prefix}{COMMAND_NAME_PREFIX}help <command>` or "
             "`/help command:<name>` "
             "for prefix-command details."
@@ -263,15 +263,15 @@ class HelpCog(ObserverCog):
 
         pages: list[tuple[str, str]] = [
             (
-                "ðŸ¤– Bot Help â€¢ Overview",
+                "🤖 Bot Help • Overview",
                 intro,
             ),
             (
-                "ðŸ’¬ Bot Help â€¢ Prefix Commands",
+                "💬 Bot Help • Prefix Commands",
                 self._format_commands(self._prefix_command_names()),
             ),
             (
-                "âš™ï¸ Bot Help â€¢ Slash Commands",
+                "⚙️ Bot Help • Slash Commands",
                 self._format_commands(self._slash_command_names()),
             ),
         ]
@@ -281,7 +281,7 @@ class HelpCog(ObserverCog):
         for cog_name, command_names in grouped.items():
             pages.append(
                 (
-                    f"ðŸ“š Bot Help â€¢ {cog_name}"[:256],
+                    f"📚 Bot Help • {cog_name}"[:256],
                     self._format_commands(command_names, per_line=2),
                 )
             )
@@ -313,7 +313,7 @@ class HelpCog(ObserverCog):
             usage += f" {signature}"
 
         embed = discord.Embed(
-            title=f"ðŸ“– Command: `{command.name}`",
+            title=f"📖 Command: `{command.name}`",
             description=f"**Usage**\n`{usage}`",
             color=HELP_COLOR,
             timestamp=discord.utils.utcnow(),
@@ -321,14 +321,14 @@ class HelpCog(ObserverCog):
 
         if command.help:
             embed.add_field(
-                name="ðŸ“ Description",
+                name="📝 Description",
                 value=command.help,
                 inline=False,
             )
 
         if command.aliases:
             embed.add_field(
-                name="ðŸ” Aliases",
+                name="🔁 Aliases",
                 value=", ".join(
                     f"`{alias}`"
                     for alias in command.aliases
@@ -447,7 +447,7 @@ class HelpCog(ObserverCog):
             if found_command is None:
                 await ctx.send(
                     embed=discord.Embed(
-                        title="âŒ Command Not Found",
+                        title="❌ Command Not Found",
                         description=(
                             f"I could not find the prefix command "
                             f"`{command_name}`."
@@ -515,7 +515,7 @@ class HelpCog(ObserverCog):
             if found_command is None:
                 await interaction.response.send_message(
                     embed=discord.Embed(
-                        title="âŒ Command Not Found",
+                        title="❌ Command Not Found",
                         description=(
                             f"I could not find the prefix command "
                             f"`{command_name}`."
