@@ -683,7 +683,7 @@ class ActivityServer:
                 (guild.id, channel_id, message_id),
             ).fetchone()
         if row is None:
-            raise web.HTTPNotFound(text="That message is not saved by Observerâ€™s custom sender")
+            raise web.HTTPNotFound(text="That message is not saved by Observer’s custom sender")
         channel = guild.get_channel(channel_id)
         if not isinstance(channel, discord.TextChannel):
             raise web.HTTPNotFound(text="The message channel is no longer available")
@@ -953,7 +953,7 @@ class ActivityServer:
                         (guild.id, channel.id, edit_message_id),
                     ).fetchone()
                 if saved is None:
-                    raise web.HTTPNotFound(text="That message is not saved by Observerâ€™s custom sender")
+                    raise web.HTTPNotFound(text="That message is not saved by Observer’s custom sender")
                 if saved["style"] != style:
                     raise web.HTTPBadRequest(text="Discord does not allow switching the format of an existing message")
                 message = await channel.fetch_message(edit_message_id)
@@ -1720,15 +1720,15 @@ class ActivityServer:
         style = payload.get("style", "text")
         cooldown = payload.get("cooldown_seconds", 0)
         if not isinstance(name, str) or not 1 <= len(name.strip()) <= 50:
-            raise web.HTTPBadRequest(text="Responder name must be 1â€“50 characters")
+            raise web.HTTPBadRequest(text="Responder name must be 1–50 characters")
         if (not isinstance(triggers, list) or not 1 <= len(triggers) <= 5
                 or any(not isinstance(term, str) or not term.strip() or len(term.split()) != 1 or len(term) > 50 for term in triggers)):
-            raise web.HTTPBadRequest(text="Add 1â€“5 one-word triggers, each up to 50 characters")
+            raise web.HTTPBadRequest(text="Add 1–5 one-word triggers, each up to 50 characters")
         if (not isinstance(variants, list) or len(variants) > 20
                 or any(not isinstance(term, str) or not term.strip() or len(term.split()) != 1 or len(term) > 50 for term in variants)):
             raise web.HTTPBadRequest(text="Add up to 20 one-word trigger variations")
         if not isinstance(reply, str) or not 1 <= len(reply.strip()) <= 1800:
-            raise web.HTTPBadRequest(text="Reply text must be 1â€“1,800 characters")
+            raise web.HTTPBadRequest(text="Reply text must be 1–1,800 characters")
         if not isinstance(style, str) or style not in {"text", "embed", "card"}:
             raise web.HTTPBadRequest(text="Choose text, embed, or card style")
         if type(cooldown) is not int or not 0 <= cooldown <= 3600:
@@ -1796,14 +1796,14 @@ class ActivityServer:
             footer = value.get("panel_footer")
             reasons = value.get("reason_options")
             if not isinstance(title, str) or not title.strip() or len(title) > 256:
-                raise web.HTTPBadRequest(text="Panel title must be 1â€“256 characters")
+                raise web.HTTPBadRequest(text="Panel title must be 1–256 characters")
             if not isinstance(description, str) or len(description) > 2048:
                 raise web.HTTPBadRequest(text="Panel description must be at most 2048 characters")
             if not isinstance(footer, str) or len(footer) > 2048:
                 raise web.HTTPBadRequest(text="Panel footer must be at most 2048 characters")
             if (not isinstance(reasons, list) or not 1 <= len(reasons) <= MAX_TICKET_REASON_OPTIONS
                     or any(not isinstance(reason, str) or not reason.strip() or len(reason) > 100 for reason in reasons)):
-                raise web.HTTPBadRequest(text=f"Add 1â€“{MAX_TICKET_REASON_OPTIONS} ticket reasons of up to 100 characters each")
+                raise web.HTTPBadRequest(text=f"Add 1–{MAX_TICKET_REASON_OPTIONS} ticket reasons of up to 100 characters each")
             for field, field_value in (("panel_title", title.strip()), ("panel_description", description), ("panel_footer", footer), ("reason_options", [reason.strip() for reason in reasons])):
                 store.set(guild.id, module.key, field, field_value)
             return web.json_response({"ok": True, "value": value}, headers={"Cache-Control": "no-store"})
