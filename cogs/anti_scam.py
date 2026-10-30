@@ -291,7 +291,7 @@ def detect_scam_giveaway_signals(text: str) -> list[str]:
     """Detect Nitro prize claims that require adding a bot or waiting for a DM."""
     lowered = re.sub(r"\s+", " ", text.lower())
     claims_prize = bool(re.search(
-        r"\b(?:you\s+(?:have\s+)?won|you['â€™]ve\s+won|congratulations|you['â€™]ve\s+been\s+selected)\b",
+        r"\b(?:you\s+(?:have\s+)?won|you['’]ve\s+won|congratulations|you['’]ve\s+been\s+selected)\b",
         lowered,
     ))
     mentions_nitro = "nitro" in lowered and any(
@@ -340,7 +340,7 @@ def detect_nitro_gift_image_signals(text: str) -> list[str]:
     """Catch fake gift-card screenshots that imitate Discord's Nitro claim UI."""
     normalized = re.sub(r"\s+", " ", text.lower())
     gifted = bool(re.search(
-        r"you['â€™]?ve\s+been\s+gifted.{0,60}(?:nitro|subscription)|"
+        r"you['’]?ve\s+been\s+gifted.{0,60}(?:nitro|subscription)|"
         r"gifted\s+nitro.{0,40}(?:month|subscription)",
         normalized,
     ))
