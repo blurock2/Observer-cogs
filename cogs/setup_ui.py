@@ -306,7 +306,7 @@ class ModuleSpec:
 
     key: str                          # e.g. "leveling"
     label: str                         # e.g. "Leveling"
-    emoji: str                         # e.g. "ðŸ“ˆ"
+    emoji: str                         # e.g. "📈"
     description: str                   # one-line summary
     settings: list[SettingSpec] = field(default_factory=list)
 
@@ -947,7 +947,7 @@ MODULES: list[ModuleSpec] = [
             SettingSpec("level_up_channel", "Level-up channel", "channel",
                         description="Where level-up messages are posted."),
             SettingSpec("level_up_message", "Level-up message", "text",
-                        default="ðŸŽ‰ {user} just reached level {level}!",
+                        default="🎉 {user} just reached level {level}!",
                         description="Use {user} and {level}."),
             SettingSpec("xp_cooldown", "XP cooldown (seconds)", "integer", default=15,
                         description="Time before XP can be earned again."),
@@ -1300,7 +1300,7 @@ def build_module_embed(
                 default=enabled_spec.default,
             )
         )
-        status = "ðŸŸ¢ Enabled" if enabled else "ðŸ”´ Disabled"
+        status = "🟢 Enabled" if enabled else "🔴 Disabled"
         description += f"\n\n**Status:** {status}"
 
     embed = discord.Embed(
