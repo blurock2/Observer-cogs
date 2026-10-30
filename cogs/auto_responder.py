@@ -80,7 +80,7 @@ class ResponseDetailsModal(ErrorHandledModal):
         self.subs = discord.ui.TextInput(label="Variation words (one per line)", default=response["sub_triggers"] if response else None, max_length=500, required=False, style=discord.TextStyle.paragraph)
         self.reply = discord.ui.TextInput(label="Reply text", default=response["reply"] if response else None, max_length=1800, required=True, style=discord.TextStyle.paragraph)
         self.style = discord.ui.TextInput(label="Style: text, embed, or card", default=response["style"] if response else "text", max_length=10, required=True)
-        self.cooldown = discord.ui.TextInput(label="Cooldown (seconds, 0â€“3600)", default=str(response["cooldown_seconds"]) if response else "0", max_length=4, required=True)
+        self.cooldown = discord.ui.TextInput(label="Cooldown (seconds, 0–3600)", default=str(response["cooldown_seconds"]) if response else "0", max_length=4, required=True)
         for item in (self.name, self.subs, self.reply, self.style, self.cooldown):
             self.add_item(item)
 
@@ -135,7 +135,7 @@ class TriggerWordsModal(ErrorHandledModal):
     async def on_submit(self, interaction: discord.Interaction) -> None:
         triggers = list(dict.fromkeys(field.value.strip() for field in self.trigger_inputs if field.value.strip()))
         if not 1 <= len(triggers) <= MAX_TRIGGERS or any(len(term.split()) != 1 for term in triggers):
-            await interaction.response.send_message("Enter 1â€“5 triggers, with exactly one word in each field.", ephemeral=True)
+            await interaction.response.send_message("Enter 1–5 triggers, with exactly one word in each field.", ephemeral=True)
             return
         await interaction.response.send_message(
             "Trigger words saved for this response. Continue to set its reply and style.",
@@ -277,7 +277,7 @@ class AutoResponder(ObserverCog):
             f'`{row["id"]}` **{row["responder_name"][:24]}** Â· {", ".join(row["triggers"].splitlines())[:24]} Â· {row["cooldown_seconds"]}s'
             for row in responses[page * 25 : (page + 1) * 25]
         ]
-        return "**Auto responses** â€” choose Add or select a response to edit or delete.\n" + (
+        return "**Auto responses** — choose Add or select a response to edit or delete.\n" + (
             "\n".join(lines) if lines else "No responses configured yet."
         ) + f"\n\n{len(responses)}/{MAX_RESPONSES} responses used."
 
