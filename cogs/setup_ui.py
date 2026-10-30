@@ -1232,7 +1232,7 @@ def build_main_embed(store: SetupConfigStore, guild: discord.Guild) -> discord.E
         ),
         color=EMBED_COLOR,
     )
-    embed.set_footer(text=f"{guild.name} â€¢ Use the menu below")
+    embed.set_footer(text=f"{guild.name} • Use the menu below")
     return embed
 
 
@@ -1308,7 +1308,7 @@ def build_module_embed(
         description=description,
         color=EMBED_COLOR,
     )
-    embed.set_footer(text="Click a button to edit â€¢ â—€ Back returns to the dashboard")
+    embed.set_footer(text="Click a button to edit • ◀ Back returns to the dashboard")
 
     values = store.get_module(guild.id, module.key)
     settings = get_module_settings(store, guild, module)
@@ -1329,7 +1329,7 @@ def build_module_embed(
             inline=False,
         )
     embed.set_footer(
-        text=f"Settings page {page + 1}/{page_count} â€¢ Use the buttons to edit or navigate"
+        text=f"Settings page {page + 1}/{page_count} • Use the buttons to edit or navigate"
     )
     return embed
 
@@ -1340,11 +1340,11 @@ def build_select_embed(module: ModuleSpec, spec: SettingSpec) -> discord.Embed:
         "role": "Pick a role",
     }.get(spec.kind, spec.label)
     embed = discord.Embed(
-        title=f"{module.emoji} {module.label} â€“ {spec.label}",
+        title=f"{module.emoji} {module.label} – {spec.label}",
         description=f"{kind_label} for **{spec.label}**.",
         color=EMBED_COLOR,
     )
-    embed.set_footer(text="â—€ Back cancels and returns to the module panel")
+    embed.set_footer(text="◀ Back cancels and returns to the module panel")
     return embed
 
 
@@ -1468,7 +1468,7 @@ class MainView(AdminOnlyView):
             for module in MODULES[start:start + 25]
         ]
         select = discord.ui.Select(
-            placeholder="Select a feature to configureâ€¦",
+            placeholder="Select a feature to configure…",
             min_values=1,
             max_values=1,
             options=options,
@@ -1768,7 +1768,7 @@ class ModuleView(AdminOnlyView):
             self.add_item(previous)
             self.add_item(next_button)
 
-        back = discord.ui.Button(label="â—€ Back to dashboard", style=discord.ButtonStyle.secondary)
+        back = discord.ui.Button(label="◀ Back to dashboard", style=discord.ButtonStyle.secondary)
         back.callback = self._on_back
         self.add_item(back)
 
@@ -1830,7 +1830,7 @@ class ModuleView(AdminOnlyView):
                         cog.store.set(guild.id, module_key, paired_key, False)
                     await self._refresh(interaction)
                     await interaction.followup.send(
-                        f"âœ… {spec.label} is now {'On' if new_val else 'Off'}.",
+                        f"✅ {spec.label} is now {'On' if new_val else 'Off'}.",
                         ephemeral=True,
                     )
                 elif spec.kind in ("text", "integer"):
@@ -1884,7 +1884,7 @@ class ModuleView(AdminOnlyView):
 
 class _BackToModuleButton(discord.ui.Button):
     def __init__(self, parent: ChannelSelectView | RoleSelectView):
-        super().__init__(label="â—€ Back", style=discord.ButtonStyle.secondary)
+        super().__init__(label="◀ Back", style=discord.ButtonStyle.secondary)
         self._setup_view = parent
 
     async def callback(self, interaction: discord.Interaction) -> None:
@@ -1919,7 +1919,7 @@ class ChannelSelectView(AdminOnlyView):
         self.page = page
 
         select = discord.ui.ChannelSelect(
-            placeholder="Select a channelâ€¦",
+            placeholder="Select a channel…",
             min_values=1,
             max_values=1,
             channel_types=[discord.ChannelType.text]
@@ -1956,7 +1956,7 @@ class ChannelSelectView(AdminOnlyView):
                 self.cog, self.module_key, interaction.guild, self.page
             ),
         )
-        await interaction.followup.send("âœ… Setting cleared.", ephemeral=True)
+        await interaction.followup.send("✅ Setting cleared.", ephemeral=True)
 
     async def _on_select(self, interaction: discord.Interaction) -> None:
         try:
@@ -1994,7 +1994,7 @@ class ChannelSelectView(AdminOnlyView):
             )
             await interaction.edit_original_response(embed=embed, view=view)
             await interaction.followup.send(
-                f"âœ… Set to {channel.mention}.", ephemeral=True
+                f"✅ Set to {channel.mention}.", ephemeral=True
             )
         except discord.NotFound:
             await interaction.followup.send("That channel is no longer available. Choose another channel.", ephemeral=True)
@@ -2019,7 +2019,7 @@ class RoleSelectView(AdminOnlyView):
         self.page = page
 
         select = discord.ui.RoleSelect(
-            placeholder="Select a roleâ€¦",
+            placeholder="Select a role…",
             min_values=1,
             max_values=1,
         )
@@ -2041,7 +2041,7 @@ class RoleSelectView(AdminOnlyView):
                 self.cog, self.module_key, interaction.guild, self.page
             ),
         )
-        await interaction.followup.send("âœ… Setting cleared.", ephemeral=True)
+        await interaction.followup.send("✅ Setting cleared.", ephemeral=True)
 
     async def _on_select(self, interaction: discord.Interaction) -> None:
         try:
@@ -2065,7 +2065,7 @@ class RoleSelectView(AdminOnlyView):
             )
             await interaction.response.edit_message(embed=embed, view=view)
             await interaction.followup.send(
-                f"âœ… Set to {role.mention}.", ephemeral=True
+                f"✅ Set to {role.mention}.", ephemeral=True
             )
         except Exception as e:  # noqa: BLE001 - UI boundary must report a user-facing error
             await handle_interaction_error(interaction, e, source="setup_ui")
@@ -2091,7 +2091,7 @@ class TextModal(ErrorHandledModal):
         self.page = page
 
         current = cog.store.get(guild.id, module_key, spec.key, spec.default)
-        placeholder = "Enter a valueâ€¦" if spec.kind == "text" else "Enter a numberâ€¦"
+        placeholder = "Enter a value…" if spec.kind == "text" else "Enter a number…"
         self.input = discord.ui.TextInput(
             label=spec.label[:45],
             placeholder=placeholder,
@@ -2114,7 +2114,7 @@ class TextModal(ErrorHandledModal):
                         value = int(raw)
                     except ValueError:
                         await interaction.response.send_message(
-                            "âŒ Please enter a whole number.", ephemeral=True
+                            "❌ Please enter a whole number.", ephemeral=True
                         )
                         return
             else:
@@ -2131,7 +2131,7 @@ class TextModal(ErrorHandledModal):
             )
             await interaction.response.edit_message(embed=embed, view=view)
             await interaction.followup.send(
-                f"âœ… {self.spec.label} updated.", ephemeral=True
+                f"✅ {self.spec.label} updated.", ephemeral=True
             )
         except Exception as e:  # noqa: BLE001 - UI boundary must report a user-facing error
             await handle_interaction_error(interaction, e, source="setup_ui")
