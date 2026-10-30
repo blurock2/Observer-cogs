@@ -1484,7 +1484,7 @@ class ActivityServer:
             reporter_id, newly_accepted = report_cog.reports.accept(message.id, guild.id)
             embed.add_field(
                 name="Accepted by staff",
-                value=f"<@{user_id}> Â· <t:{int(datetime.now(timezone.utc).timestamp())}:f>",
+                value=f"<@{user_id}> · <t:{int(datetime.now(timezone.utc).timestamp())}:f>",
                 inline=False,
             )
             if reporter_id is not None and newly_accepted:
@@ -1527,7 +1527,7 @@ class ActivityServer:
             target_label = target.mention if target else f"User {target_id}"
             embed.add_field(
                 name="Moderation action",
-                value=f"{action.title()} on {target_label} Â· Case #{action_result['case_number']} by <@{user_id}>",
+                value=f"{action.title()} on {target_label} · Case #{action_result['case_number']} by <@{user_id}>",
                 inline=False,
             )
         from cogs.report_msg import ClaimReportView
