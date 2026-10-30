@@ -82,7 +82,7 @@ def _get_conn() -> sqlite3.Connection:
 
 SPECIAL_LEVELS = {
     10: {
-        "title": "ðŸŽ‰ Level 10 Reached!",
+        "title": "🎉 Level 10 Reached!",
         "description": (
             "{user} reached **Level 10**!"
         ),
@@ -98,7 +98,7 @@ SPECIAL_LEVELS = {
         ),
     },
     69: {
-        "title": "ðŸ˜ Nice! Level 69",
+        "title": "😏 Nice! Level 69",
         "description": (
             "{user} reached **Level 69**!\n\n"
             "That is... a nice level."
@@ -109,13 +109,13 @@ SPECIAL_LEVELS = {
             180,
         ),
         "footer": "Nice.",
-        "field_name": "ðŸ˜ Special Milestone",
+        "field_name": "😏 Special Milestone",
         "field_value": (
             "You unlocked the legendary Level 69 milestone."
         ),
     },
     420: {
-        "title": "ðŸš¬ Level 420 Unlocked",
+        "title": "🚬 Level 420 Unlocked",
         "description": (
             "{user} reached **Level 420**!\n\n"
             "Blaze through the leaderboard."
@@ -126,7 +126,7 @@ SPECIAL_LEVELS = {
             242,
         ),
         "footer": "Level 420 achieved.",
-        "field_name": "ðŸš¬ Special Milestone",
+        "field_name": "🚬 Special Milestone",
         "field_value": (
             "You reached the legendary Level 420 milestone."
         ),
@@ -396,7 +396,7 @@ def error_embed(
     guild: discord.Guild | None = None,
 ) -> discord.Embed:
     return themed_embed(
-        title="âŒ Something went wrong",
+        title="❌ Something went wrong",
         description=message,
         color=ERROR_COLOR,
         guild=guild,
@@ -408,7 +408,7 @@ def success_embed(
     guild: discord.Guild | None = None,
 ) -> discord.Embed:
     return themed_embed(
-        title="âœ… Success",
+        title="✅ Success",
         description=message,
         color=SUCCESS_COLOR,
         guild=guild,
@@ -942,7 +942,7 @@ class Leveling(ObserverCog):
         guild: discord.Guild,
         rows: list[sqlite3.Row],
     ) -> discord.Embed:
-        medals = ["ðŸ¥‡", "ðŸ¥ˆ", "ðŸ¥‰"]
+        medals = ["🥇", "🥈", "🥉"]
         lines: list[str] = []
 
         for index, row in enumerate(rows, start=1):
@@ -962,20 +962,20 @@ class Leveling(ObserverCog):
 
             lines.append(
                 f"{rank_icon} **{name}**\n"
-                f"â”— Level `{row['level']}` â€¢ "
-                f"`{row['xp']:,} XP` â€¢ "
+                f"┗ Level `{row['level']}` • "
+                f"`{row['xp']:,} XP` • "
                 f"`{row['messages']:,} messages`"
             )
 
         embed = themed_embed(
-            title=f"ðŸ† {guild.name} Leaderboard",
+            title=f"🏆 {guild.name} Leaderboard",
             description="\n\n".join(lines),
             color=GOLD_COLOR,
             guild=guild,
         )
 
         embed.add_field(
-            name="ðŸ“Œ Ranking",
+            name="📌 Ranking",
             value="Sorted by level and total XP.",
             inline=False,
         )
@@ -994,7 +994,7 @@ class Leveling(ObserverCog):
         rank: int,
     ) -> discord.Embed:
         embed = themed_embed(
-            title=f"ðŸ“… {member.display_name}'s Weekly Rank",
+            title=f"📅 {member.display_name}'s Weekly Rank",
             description=(
                 f"Weekly activity for the week beginning "
                 f"**{week_start} UTC**."
@@ -1006,19 +1006,19 @@ class Leveling(ObserverCog):
         embed.set_thumbnail(url=member.display_avatar.url)
 
         embed.add_field(
-            name="âš¡ Weekly XP",
+            name="⚡ Weekly XP",
             value=f"```yaml\n{xp:,} XP\n```",
             inline=True,
         )
 
         embed.add_field(
-            name="ðŸ† Position",
+            name="🏆 Position",
             value=f"```yaml\n#{rank}\n```",
             inline=True,
         )
 
         embed.add_field(
-            name="ðŸ’¡ Tip",
+            name="💡 Tip",
             value=(
                 "Keep participating to climb the weekly leaderboard!"
             ),
@@ -1275,7 +1275,7 @@ class Leveling(ObserverCog):
         if not rows:
             return False
 
-        medals = ["ðŸ¥‡", "ðŸ¥ˆ", "ðŸ¥‰"]
+        medals = ["🥇", "🥈", "🥉"]
         lines: list[str] = []
 
         for index, row in enumerate(rows, start=1):
@@ -1294,19 +1294,19 @@ class Leveling(ObserverCog):
             )
 
             lines.append(
-                f"{rank_icon} **{name}** â€” "
+                f"{rank_icon} **{name}** — "
                 f"`{row['xp']:,} XP`"
             )
 
         embed = themed_embed(
-            title="ðŸ† Weekly Leaderboard",
+            title="🏆 Weekly Leaderboard",
             description="\n".join(lines),
             color=PURPLE_COLOR,
             guild=guild,
         )
 
         embed.add_field(
-            name="ðŸ“… Completed Week",
+            name="📅 Completed Week",
             value=f"`{week_start} UTC`",
             inline=False,
         )
@@ -1591,7 +1591,7 @@ class Leveling(ObserverCog):
         if not rows:
             await interaction.response.send_message(
                 embed=themed_embed(
-                    title="ðŸ“­ No Leveling Data",
+                    title="📭 No Leveling Data",
                     description=(
                         "Nobody has earned XP in this server yet."
                     ),
@@ -1629,7 +1629,7 @@ class Leveling(ObserverCog):
         if not rows:
             await ctx.send(
                 embed=themed_embed(
-                    title="ðŸ“­ No Leveling Data",
+                    title="📭 No Leveling Data",
                     description=(
                         "Nobody has earned XP in this server yet."
                     ),
