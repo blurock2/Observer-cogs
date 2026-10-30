@@ -274,7 +274,7 @@ class AutoResponder(ObserverCog):
     def panel_text(self, guild_id: int, page: int = 0) -> str:
         responses = self.store.list(guild_id)
         lines = [
-            f'`{row["id"]}` **{row["responder_name"][:24]}** Â· {", ".join(row["triggers"].splitlines())[:24]} Â· {row["cooldown_seconds"]}s'
+            f'`{row["id"]}` **{row["responder_name"][:24]}** · {", ".join(row["triggers"].splitlines())[:24]} · {row["cooldown_seconds"]}s'
             for row in responses[page * 25 : (page + 1) * 25]
         ]
         return "**Auto responses** — choose Add or select a response to edit or delete.\n" + (
@@ -288,7 +288,7 @@ class AutoResponder(ObserverCog):
         return (
             f'**{response["responder_name"]}** (`{response["id"]}`)\n'
             f'**Triggers:** {triggers}\n**Variations:** {variants}\n'
-            f'**Style:** {response["style"]} Â· **Cooldown:** {response["cooldown_seconds"]}s\n'
+            f'**Style:** {response["style"]} · **Cooldown:** {response["cooldown_seconds"]}s\n'
             f'**Reply:** {response["reply"][:900]}'
         )
 
