@@ -88,7 +88,9 @@ NEW_ACCOUNT_DAYS = 7
 INVITE_USE_THRESHOLD = 2
 LOCKDOWN_TIMEOUT_MINUTES = 30
 SCAM_ALERT_COOLDOWN_SECONDS = 60
-SCAM_SENDER_QUARANTINE_SECONDS = 600
+# Keep the image-only quarantine short: it exists to catch a scam image burst
+# while OCR finishes, not to suppress all of a sender's messages for ten minutes.
+SCAM_SENDER_QUARANTINE_SECONDS = 60
 SCAM_UNCERTAIN_TIMEOUT_MINUTES = 1440
 
 
@@ -1666,7 +1668,8 @@ class AntiScam(ObserverCog):
                     message.author.id,
                     exc_info=True,
                 )
-        if self.scam_quarantine.get(key, 0) > received_at:
+        quarantined_until = self.scam_quarantine.get(key, 0)
+        if quarantined_until > received_at and has_image_attachment:
             try:
                 await message.delete()
             except discord.NotFound:
@@ -1726,7 +1729,7 @@ class AntiScam(ObserverCog):
         # deleted without waiting for OCR on every one.
         async with self.scam_user_locks[key]:
             until = self.scam_quarantine.get(key, 0)
-            if until > time.monotonic():
+            if until > time.monotonic() and has_image_attachment:
                 try:
                     await message.delete()
                 except discord.NotFound:
@@ -1734,7 +1737,7 @@ class AntiScam(ObserverCog):
                 except discord.HTTPException:
                     logger.warning("Could not remove quarantined message %s in guild %s", message.id, message.guild.id)
                 return
-            if until:
+            if until and until <= time.monotonic():
                 self.scam_quarantine.pop(key, None)
             await self._process_scam_message(
                 message,
