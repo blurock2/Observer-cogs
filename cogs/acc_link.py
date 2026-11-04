@@ -7,7 +7,6 @@ import json
 import re
 import ssl
 import xml.etree.ElementTree as ET
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 from urllib import error as urlerror
@@ -19,7 +18,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from cogs.setup_ui import DB_PATH, SetupConfigStore
-from database import connect_sqlite
+from database import sqlite_transaction
 
 EMBED_COLOR = 0x96EDF1
 MODULE_KEY = "acc_link"
@@ -34,18 +33,8 @@ class AccountLinkStore:
         ACCOUNT_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
         self._init()
 
-    @contextmanager
     def _connect(self):
-        conn = connect_sqlite(self.db_path)
-        try:
-            yield conn
-        except Exception:
-            conn.rollback()
-            raise
-        else:
-            conn.commit()
-        finally:
-            conn.close()
+        return sqlite_transaction(self.db_path)
 
     def _init(self) -> None:
         with self._connect() as conn:

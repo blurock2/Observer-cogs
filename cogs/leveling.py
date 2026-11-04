@@ -8,6 +8,7 @@ import random
 import shutil
 import sqlite3
 from datetime import datetime, timedelta, timezone
+from math import isqrt
 from pathlib import Path
 from typing import Any
 
@@ -341,18 +342,7 @@ def _next_level_xp(level: int) -> int:
 
 
 def _level_from_xp(xp: int) -> int:
-    if xp <= 0:
-        return 0
-
-    level = int((xp / 100) ** 0.5)
-
-    while _xp_for_level(level + 1) <= xp:
-        level += 1
-
-    while _xp_for_level(level) > xp:
-        level -= 1
-
-    return level
+    return isqrt(max(0, xp) // 100)
 
 
 def _current_week_start(now: datetime) -> str:

@@ -33,6 +33,21 @@ def connect_sqlite(
     return connection
 
 
+@contextmanager
+def sqlite_transaction(database_path: str | Path):
+    """Commit or roll back one operation and always close its connection."""
+    connection = connect_sqlite(database_path)
+    try:
+        yield connection
+    except Exception:
+        connection.rollback()
+        raise
+    else:
+        connection.commit()
+    finally:
+        connection.close()
+
+
 def cleanup_old_backups(
     data_dir: str | Path = DATA_DIR,
     retention_days: int = BACKUP_RETENTION_DAYS,
@@ -443,18 +458,8 @@ class ModerationCaseStore:
         self.db_path = str(db_path)
         self._init()
 
-    @contextmanager
     def _connect(self):
-        connection = connect_sqlite(self.db_path)
-        try:
-            yield connection
-        except Exception:
-            connection.rollback()
-            raise
-        else:
-            connection.commit()
-        finally:
-            connection.close()
+        return sqlite_transaction(self.db_path)
 
     def _init(self) -> None:
         with self._connect() as connection:
@@ -863,18 +868,8 @@ class BanAppealStore:
         self.db_path = str(db_path)
         self._init()
 
-    @contextmanager
     def _connect(self):
-        connection = connect_sqlite(self.db_path)
-        try:
-            yield connection
-        except Exception:
-            connection.rollback()
-            raise
-        else:
-            connection.commit()
-        finally:
-            connection.close()
+        return sqlite_transaction(self.db_path)
 
     def _init(self) -> None:
         with self._connect() as connection:
@@ -1078,18 +1073,8 @@ class TagStore:
         self.db_path = str(db_path)
         self._init()
 
-    @contextmanager
     def _connect(self):
-        connection = connect_sqlite(self.db_path)
-        try:
-            yield connection
-        except Exception:
-            connection.rollback()
-            raise
-        else:
-            connection.commit()
-        finally:
-            connection.close()
+        return sqlite_transaction(self.db_path)
 
     def _init(self) -> None:
         with self._connect() as connection:
@@ -1162,18 +1147,8 @@ class ModerationActionStore:
         self.db_path = db_path
         self._init()
 
-    @contextmanager
     def _connect(self):
-        connection = connect_sqlite(self.db_path)
-        try:
-            yield connection
-        except Exception:
-            connection.rollback()
-            raise
-        else:
-            connection.commit()
-        finally:
-            connection.close()
+        return sqlite_transaction(self.db_path)
 
     def _init(self) -> None:
         with self._connect() as connection:
@@ -1492,18 +1467,8 @@ class AntiScamActivityStore:
         self.db_path = db_path
         self._init()
 
-    @contextmanager
     def _connect(self):
-        connection = connect_sqlite(self.db_path)
-        try:
-            yield connection
-        except Exception:
-            connection.rollback()
-            raise
-        else:
-            connection.commit()
-        finally:
-            connection.close()
+        return sqlite_transaction(self.db_path)
 
     def _init(self) -> None:
         with self._connect() as connection:

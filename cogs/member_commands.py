@@ -3,7 +3,6 @@ from __future__ import annotations
 from error_handling import ObserverCog
 
 import logging
-from contextlib import contextmanager
 from pathlib import Path
 
 import discord
@@ -12,7 +11,7 @@ from discord.abc import User as DiscordUser
 from discord.ext import commands
 
 from cogs.setup_ui import DB_PATH, SetupConfigStore
-from database import connect_sqlite
+from database import sqlite_transaction
 
 DATABASE_PATH = Path(DB_PATH)
 EMBED_COLOR = 0x96EDF1
@@ -55,20 +54,8 @@ class MemberCommands(ObserverCog):
         # avoids closing a handle while an event listener is still running.
         return
 
-    @contextmanager
     def _connect(self):
-        # Use one connection per operation so cog reloads cannot invalidate
-        # an event listener that is still running.
-        database = connect_sqlite(DATABASE_PATH)
-        try:
-            yield database
-        except Exception:
-            database.rollback()
-            raise
-        else:
-            database.commit()
-        finally:
-            database.close()
+        return sqlite_transaction(DATABASE_PATH)
 
     # ============================================================ Dashboard config
 
