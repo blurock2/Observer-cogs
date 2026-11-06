@@ -197,10 +197,8 @@ def _response_match(
                 if len(hits) >= 2:
                     break
 
-    if len(hits) < 2:
-        return None
-
-    # Every configured context group must match near a primary trigger in the same sentence.
+    # Context mode requires a primary subject trigger plus every configured context group.
+    # Each line is an AND requirement; comma-separated alternatives within a line are OR.
     required_groups = _parse_required_groups(response.get("required_groups", ""))
     if required_groups:
         primary_hits = [(si, pos) for term, (si, pos, _) in hits.items() if kinds[term] == "primary"]
@@ -208,14 +206,23 @@ def _response_match(
             return None
         for group in required_groups:
             positions = [
-                (si, pos) for si, tokens in enumerate(sentences)
+                (si, pos, token) for si, tokens in enumerate(sentences)
                 for pos, token in enumerate(tokens) if token in group
             ]
-            if not positions or not any(
-                group_si == primary_si and abs(group_pos - primary_pos) <= 12
-                for group_si, group_pos in positions for primary_si, primary_pos in primary_hits
-            ):
+            eligible = [
+                (abs(group_pos - primary_pos), group_si, group_pos, token)
+                for group_si, group_pos, token in positions
+                for primary_si, primary_pos in primary_hits
+                if group_si == primary_si and abs(group_pos - primary_pos) <= 12
+            ]
+            if not eligible:
                 return None
+            _, group_si, group_pos, group_term = min(eligible)
+            if group_term not in hits:
+                hits[group_term] = (group_si, group_pos, False)
+                kinds.setdefault(group_term, "context")
+    elif len(hits) < 2:
+        return None
 
     # Reject explicitly negated terms within a short local scope.
     for term, (si, pos, fuzzy) in hits.items():
