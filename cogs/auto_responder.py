@@ -217,7 +217,7 @@ class ResponseDetailsModal(ErrorHandledModal):
         self.guild_id = guild_id
         self.response_id = int(response["id"]) if response else None
         self.name = discord.ui.TextInput(label="Responder name", default=response["responder_name"] if response else None, max_length=50, required=True)
-        self.subs = discord.ui.TextInput(label="Variation words (one per line)", default=response["sub_triggers"] if response else None, max_length=500, required=False, style=discord.TextStyle.paragraph)
+        self.subs = discord.ui.TextInput(label="Variations, slang or common spellings", default=response["sub_triggers"] if response else None, max_length=500, required=False, style=discord.TextStyle.paragraph)
         self.reply = discord.ui.TextInput(label="Reply text", default=response["reply"] if response else None, max_length=1800, required=True, style=discord.TextStyle.paragraph)
         self.style = discord.ui.TextInput(label="Style: text, embed, or card", default=response["style"] if response else "text", max_length=10, required=True)
         self.cooldown = discord.ui.TextInput(label="Cooldown (seconds, 0–3600)", default=str(response["cooldown_seconds"]) if response else "0", max_length=4, required=True)
