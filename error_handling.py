@@ -50,7 +50,8 @@ def error_message(error: Exception) -> str:
 
 
 def log_error(error: Exception, *, source: str, user_id=None, guild_id=None,
-              channel_id=None, reference=None, event_name=None) -> str | None:
+              channel_id=None, reference=None, event_name=None,
+              guild_name=None, channel_name=None) -> str | None:
     original = unwrap(error)
     expected = isinstance(original, (commands.UserInputError, commands.CheckFailure,
                                      commands.CommandOnCooldown, commands.MaxConcurrencyReached,
@@ -69,7 +70,8 @@ def log_error(error: Exception, *, source: str, user_id=None, guild_id=None,
                      exc_info=(type(original), original, original.__traceback__),
                      extra={"error_id": error_id, "error_source": source,
                             "error_guild_id": guild_id, "error_user_id": user_id,
-                            "error_channel_id": channel_id, "error_event_name": event_name})
+                            "error_channel_id": channel_id, "error_event_name": event_name,
+                            "error_guild_name": guild_name, "error_channel_name": channel_name})
         return error_id
 
 
@@ -81,7 +83,9 @@ async def handle_interaction_error(interaction: discord.Interaction, error: Exce
     interaction.extras["observer_error_handled"] = True
     error_id = log_error(error, source=source or getattr(interaction.command, "qualified_name", "interaction"),
               user_id=interaction.user.id, guild_id=interaction.guild_id,
-              channel_id=interaction.channel_id, reference=interaction.id)
+              channel_id=interaction.channel_id, reference=interaction.id,
+              guild_name=getattr(interaction.guild, "name", None),
+              channel_name=getattr(interaction.channel, "name", None))
     message = error_message(error)
     if error_id:
         interaction.extras["observer_error_id"] = error_id
@@ -108,7 +112,9 @@ async def handle_prefix_error(ctx: commands.Context, error: Exception) -> None:
     ctx.observer_error_handled = True
     error_id = log_error(error, source=getattr(ctx.command, "qualified_name", "prefix command"),
               user_id=ctx.author.id, guild_id=getattr(ctx.guild, "id", None),
-              channel_id=ctx.channel.id, reference=ctx.message.id)
+              channel_id=ctx.channel.id, reference=ctx.message.id,
+              guild_name=getattr(ctx.guild, "name", None),
+              channel_name=getattr(ctx.channel, "name", None))
     message = error_message(error)
     if error_id:
         message += f"\nError ID: `{error_id}` — share this with Observer Support."
@@ -216,4 +222,6 @@ def handle_event_error(bot: commands.Bot, event_name: str, *args, **kwargs) -> N
         channel_id=getattr(channel, "id", channel_id),
         reference=reference,
         event_name=event_name,
+        guild_name=getattr(guild, "name", None),
+        channel_name=getattr(channel, "name", None),
     )
