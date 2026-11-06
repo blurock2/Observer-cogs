@@ -13,7 +13,7 @@ from database import connect_sqlite
 from error_handling import ErrorHandledModal, ObserverCog
 
 MAX_RESPONSES = 30
-MAX_TRIGGERS = 5
+MAX_TRIGGERS = 20
 
 
 class AutoResponderStore:
@@ -69,6 +69,91 @@ def _terms(value: str) -> list[str]:
     return list(dict.fromkeys(part.strip() for part in value.splitlines() if part.strip()))
 
 
+_WORD_RE = re.compile(r"[a-z0-9]+(?:['’][a-z0-9]+)?", re.IGNORECASE)
+_SENTENCE_RE = re.compile(r"(?<=[.!?;])\s+|\n+")
+_NEGATIONS = {"no", "not", "never", "neither", "nor", "dont", "don't", "doesnt", "doesn't", "didnt", "didn't", "isnt", "isn't", "arent", "aren't", "wasnt", "wasn't", "werent", "weren't", "cannot", "cant", "can't", "without"}
+
+
+def _edit_distance_one(left: str, right: str) -> bool:
+    if left == right or abs(len(left) - len(right)) > 1 or min(len(left), len(right)) < 4:
+        return False
+    if len(left) > len(right):
+        left, right = right, left
+    i = j = differences = 0
+    while i < len(left) and j < len(right):
+        if left[i] == right[j]:
+            i += 1
+            j += 1
+            continue
+        differences += 1
+        if differences > 1:
+            return False
+        if len(left) == len(right):
+            i += 1
+        j += 1
+    return differences + (j < len(right)) == 1
+
+
+def _sentence_tokens(content: str) -> list[list[str]]:
+    return [
+        [match.group(0).casefold().replace("’", "'") for match in _WORD_RE.finditer(part)]
+        for part in _SENTENCE_RE.split(content.casefold()) if part.strip()
+    ]
+
+
+def _response_match(response: dict[str, Any], sentences: list[list[str]], owners: dict[str, int]):
+    primary = {term.casefold() for term in _terms(response["triggers"])}
+    variations = {term.casefold() for term in _terms(response["sub_triggers"])} - primary
+    kinds = {term: "primary" for term in primary}
+    kinds.update({term: "variation" for term in variations})
+    hits = {}
+
+    for term in kinds:
+        for si, tokens in enumerate(sentences):
+            if term in tokens:
+                hits[term] = (si, tokens.index(term), False)
+                break
+
+    # Misspelling tolerance is a fallback; exact matches always take priority.
+    if len(hits) < 2:
+        for term in kinds.keys() - hits.keys():
+            for si, tokens in enumerate(sentences):
+                found = next((i for i, token in enumerate(tokens) if _edit_distance_one(term, token)), None)
+                if found is not None:
+                    hits[term] = (si, found, True)
+                    break
+
+    if len(hits) < 2:
+        return None
+
+    # Reject explicitly negated terms within a short local scope.
+    for term, (si, pos, fuzzy) in list(hits.items()):
+        if any(word in _NEGATIONS for word in sentences[si][max(0, pos - 3):pos]):
+            del hits[term]
+    if len(hits) < 2:
+        return None
+
+    pairs = []
+    items = list(hits.items())
+    for i, (left, lh) in enumerate(items):
+        for right, rh in items[i + 1:]:
+            if lh[0] == rh[0] and abs(lh[1] - rh[1]) <= 12:
+                pairs.append((abs(lh[1] - rh[1]), left, right))
+    if not pairs:
+        return None
+
+    score = 0.0
+    for term, (_, _, fuzzy) in hits.items():
+        score += 1.5 if fuzzy else (3.0 if kinds[term] == "primary" else 2.0)
+        if owners.get(term, 0) == 1:
+            score += 0.35
+    score += max(0.0, 1.0 - min(pair[0] for pair in pairs) / 13)
+    if all(hit[2] for hit in hits.values()):
+        score -= 0.5
+    return (score, set(hits)) if score >= 3.0 else None
+
+
+
 class ResponseDetailsModal(ErrorHandledModal):
     def __init__(self, cog: "AutoResponder", triggers: list[str], guild_id: int, response: dict[str, Any] | None = None):
         super().__init__(title="Edit auto response" if response else "Set auto response reply")
@@ -107,6 +192,8 @@ class ResponseDetailsModal(ErrorHandledModal):
             saved = self.cog.store.update(self.guild_id, self.response_id, self.triggers, subs, self.reply.value.strip(), style, self.name.value.strip(), cooldown)
         else:
             saved = self.cog.store.add(self.guild_id, self.triggers, subs, self.reply.value.strip(), style, self.name.value.strip(), cooldown)
+        if saved:
+            self.cog.invalidate_cache(self.guild_id)
         if not saved:
             await interaction.response.send_message("This server already has 30 auto responses.", ephemeral=True)
             return
@@ -119,23 +206,21 @@ class TriggerWordsModal(ErrorHandledModal):
         self.cog = cog
         self.guild_id = guild_id
         self.response = response
-        self.trigger_inputs = []
-        old_triggers = response["triggers"].splitlines() if response else []
-        for index in range(MAX_TRIGGERS):
-            field = discord.ui.TextInput(
-                label=f"Trigger word {index + 1}",
-                placeholder="One word only",
-                max_length=50,
-                required=index == 0,
-                default=old_triggers[index] if index < len(old_triggers) else None,
-            )
-            self.trigger_inputs.append(field)
-            self.add_item(field)
+        old_triggers = response["triggers"] if response else ""
+        self.trigger_input = discord.ui.TextInput(
+            label=f"Primary trigger words (up to {MAX_TRIGGERS})",
+            placeholder="One word per line",
+            max_length=1000,
+            required=True,
+            default=old_triggers or None,
+            style=discord.TextStyle.paragraph,
+        )
+        self.add_item(self.trigger_input)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
-        triggers = list(dict.fromkeys(field.value.strip() for field in self.trigger_inputs if field.value.strip()))
+        triggers = _terms(self.trigger_input.value)
         if not 1 <= len(triggers) <= MAX_TRIGGERS or any(len(term.split()) != 1 for term in triggers):
-            await interaction.response.send_message("Enter 1–5 triggers, with exactly one word in each field.", ephemeral=True)
+            await interaction.response.send_message(f"Enter 1–{MAX_TRIGGERS} triggers, with exactly one word per line.", ephemeral=True)
             return
         await interaction.response.send_message(
             "Trigger words saved for this response. Continue to set its reply and style.",
@@ -191,6 +276,7 @@ class ResponseManagementView(discord.ui.View):
     @discord.ui.button(label="Delete response", style=discord.ButtonStyle.danger)
     async def delete_response(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         self.cog.store.delete(self.guild_id, int(self.response["id"]))
+        self.cog.invalidate_cache(self.guild_id)
         await interaction.response.edit_message(
             content=self.cog.panel_text(self.guild_id),
             view=AutoResponderPanelView(self.cog, self.guild_id),
@@ -270,6 +356,19 @@ class AutoResponder(ObserverCog):
         self.bot = bot
         self.store = AutoResponderStore(DB_PATH)
         self._last_response_at: dict[tuple[int, int], float] = {}
+        self._response_cache: dict[int, tuple[float, list[dict[str, Any]]]] = {}
+
+    def invalidate_cache(self, guild_id: int) -> None:
+        self._response_cache.pop(guild_id, None)
+
+    def _get_responses(self, guild_id: int) -> list[dict[str, Any]]:
+        now = monotonic()
+        cached = self._response_cache.get(guild_id)
+        if cached and now - cached[0] < 10:
+            return cached[1]
+        responses = self.store.list(guild_id)
+        self._response_cache[guild_id] = (now, responses)
+        return responses
 
     def panel_text(self, guild_id: int, page: int = 0) -> str:
         responses = self.store.list(guild_id)
@@ -309,34 +408,54 @@ class AutoResponder(ObserverCog):
     async def on_message(self, message: discord.Message) -> None:
         if message.guild is None or message.author.bot or not message.content:
             return
-        body = message.content.casefold()
-        for response in self.store.list(message.guild.id):
+        now = monotonic()
+        responses = self._get_responses(message.guild.id)
+        if not responses:
+            return
+        owners: dict[str, int] = {}
+        for response in responses:
+            for term in set(_terms(response["triggers"]) + _terms(response["sub_triggers"])):
+                key = term.casefold()
+                owners[key] = owners.get(key, 0) + 1
+
+        sentences = _sentence_tokens(message.content)
+        candidates = []
+        for response in responses:
             cooldown_key = (message.guild.id, int(response["id"]))
-            now = monotonic()
             if now - self._last_response_at.get(cooldown_key, 0.0) < int(response["cooldown_seconds"]):
                 continue
-            terms = [*response["triggers"].splitlines(), *response["sub_triggers"].splitlines()]
-            matched = {term.casefold() for term in terms if term and re.search(r"(?<!\w)" + re.escape(term.casefold()) + r"(?!\w)", body)}
-            if len(matched) < 2:
-                continue
-            content = response["reply"]
-            mentions = discord.AllowedMentions(users=True, roles=False, everyone=False)
-            try:
-                if response["style"] == "embed":
-                    await message.reply(embed=discord.Embed(title=response["responder_name"], description=content), mention_author=False, allowed_mentions=mentions)
-                elif response["style"] == "card":
-                    view = discord.ui.LayoutView(timeout=None)
-                    card = discord.ui.Container(
-                        discord.ui.TextDisplay(f'## {response["responder_name"]}\n\n{content}')
-                    )
-                    view.add_item(card)
-                    await message.reply(view=view, mention_author=False, allowed_mentions=mentions)
-                else:
-                    await message.reply(content, mention_author=False, allowed_mentions=mentions)
-                self._last_response_at[cooldown_key] = now
-            except (discord.Forbidden, discord.HTTPException):
-                pass
-            break
+            match = _response_match(response, sentences, owners)
+            if match:
+                score, matched = match
+                candidates.append((score, response, matched))
+
+        if not candidates:
+            return
+        candidates.sort(key=lambda item: item[0], reverse=True)
+        best_score, response, matched = candidates[0]
+        if len(candidates) > 1:
+            second_score, _, second_matched = candidates[1]
+            shared = matched & second_matched
+            if (shared and best_score - second_score < 1.5) or best_score - second_score < 0.75:
+                return
+
+        content = response["reply"]
+        mentions = discord.AllowedMentions(users=True, roles=False, everyone=False)
+        try:
+            if response["style"] == "embed":
+                await message.reply(embed=discord.Embed(title=response["responder_name"], description=content), mention_author=False, allowed_mentions=mentions)
+            elif response["style"] == "card":
+                view = discord.ui.LayoutView(timeout=None)
+                card = discord.ui.Container(
+                    discord.ui.TextDisplay(f'## {response["responder_name"]}\n\n{content}')
+                )
+                view.add_item(card)
+                await message.reply(view=view, mention_author=False, allowed_mentions=mentions)
+            else:
+                await message.reply(content, mention_author=False, allowed_mentions=mentions)
+            self._last_response_at[(message.guild.id, int(response["id"]))] = now
+        except (discord.Forbidden, discord.HTTPException):
+            pass
 
 
 async def setup(bot: commands.Bot) -> None:
