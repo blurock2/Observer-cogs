@@ -87,6 +87,10 @@ def _parse_required_groups(value: str) -> list[set[str]]:
     ]
 
 
+def _next_allowed_at(now: float, cooldown: int, uncertain: bool) -> float:
+    return now + cooldown * (2 if uncertain else 1)
+
+
 _WORD_RE = re.compile(r"[^\W_]+(?:['’][^\W_]+)?", re.IGNORECASE)
 _SENTENCE_RE = re.compile(r"(?<=[.!?;])\s+|\n+")
 _NEGATIONS = {"no", "nope", "nah", "not", "never", "neither", "nor", "aint", "ain't", "dont", "don't", "doesnt", "doesn't", "didnt", "didn't", "isnt", "isn't", "arent", "aren't", "wasnt", "wasn't", "werent", "weren't", "wont", "won't", "wouldnt", "wouldn't", "shouldnt", "shouldn't", "couldnt", "couldn't", "havent", "haven't", "hasnt", "hasn't", "hadnt", "hadn't", "cannot", "cant", "can't", "without"}
@@ -628,7 +632,7 @@ class AutoResponder(ObserverCog):
             else:
                 await message.reply(content, mention_author=False, allowed_mentions=mentions)
             cooldown = int(response["cooldown_seconds"])
-            self._last_response_at[(message.guild.id, int(response["id"]))] = now + cooldown * (2 if uncertain else 1)
+            self._last_response_at[(message.guild.id, int(response["id"]))] = _next_allowed_at(now, cooldown, uncertain)
         except (discord.Forbidden, discord.HTTPException):
             pass
 
