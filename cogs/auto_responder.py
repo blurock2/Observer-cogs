@@ -29,6 +29,7 @@ class AutoResponderStore:
                 style TEXT NOT NULL DEFAULT 'text',
                 responder_name TEXT NOT NULL DEFAULT 'Auto response',
                 cooldown_seconds INTEGER NOT NULL DEFAULT 0,
+                required_groups TEXT NOT NULL DEFAULT '',
                 UNIQUE(guild_id, id)
             )""")
             columns = {row["name"] for row in db.execute("PRAGMA table_info(auto_responses)")}
@@ -36,6 +37,8 @@ class AutoResponderStore:
                 db.execute("ALTER TABLE auto_responses ADD COLUMN responder_name TEXT NOT NULL DEFAULT 'Auto response'")
             if "cooldown_seconds" not in columns:
                 db.execute("ALTER TABLE auto_responses ADD COLUMN cooldown_seconds INTEGER NOT NULL DEFAULT 0")
+            if "required_groups" not in columns:
+                db.execute("ALTER TABLE auto_responses ADD COLUMN required_groups TEXT NOT NULL DEFAULT ''")
             db.execute("CREATE INDEX IF NOT EXISTS idx_auto_responses_guild ON auto_responses(guild_id)")
 
     def list(self, guild_id: int) -> list[dict[str, Any]]:
@@ -53,6 +56,13 @@ class AutoResponderStore:
                        (guild_id, "\n".join(triggers), "\n".join(subs), reply, style, name, cooldown))
             return True
 
+    def set_required_groups(self, guild_id: int, response_id: int, groups: list[str]) -> bool:
+        with connect_sqlite(self.db_path) as db:
+            return db.execute(
+                "UPDATE auto_responses SET required_groups=? WHERE guild_id=? AND id=?",
+                ("\\n".join(groups), guild_id, response_id),
+            ).rowcount > 0
+
     def delete(self, guild_id: int, response_id: int) -> bool:
         with connect_sqlite(self.db_path) as db:
             return db.execute("DELETE FROM auto_responses WHERE guild_id=? AND id=?", (guild_id, response_id)).rowcount > 0
@@ -67,6 +77,14 @@ class AutoResponderStore:
 
 def _terms(value: str) -> list[str]:
     return list(dict.fromkeys(part.strip() for part in value.splitlines() if part.strip()))
+
+
+def _parse_required_groups(value: str) -> list[set[str]]:
+    """Each line is an AND group; comma-separated terms within a line are OR alternatives."""
+    return [
+        {term.strip().casefold() for term in line.split(",") if term.strip()}
+        for line in value.splitlines() if any(term.strip() for term in line.split(","))
+    ]
 
 
 _WORD_RE = re.compile(r"[^\W_]+(?:['’][^\W_]+)?", re.IGNORECASE)
@@ -177,6 +195,23 @@ def _response_match(
 
     if len(hits) < 2:
         return None
+
+    # Every configured context group must match near a primary trigger in the same sentence.
+    required_groups = _parse_required_groups(response.get("required_groups", ""))
+    if required_groups:
+        primary_hits = [(si, pos) for term, (si, pos, _) in hits.items() if kinds[term] == "primary"]
+        if not primary_hits:
+            return None
+        for group in required_groups:
+            positions = [
+                (si, pos) for si, tokens in enumerate(sentences)
+                for pos, token in enumerate(tokens) if token in group
+            ]
+            if not positions or not any(
+                group_si == primary_si and abs(group_pos - primary_pos) <= 12
+                for group_si, group_pos in positions for primary_si, primary_pos in primary_hits
+            ):
+                return None
 
     # Reject explicitly negated terms within a short local scope.
     for term, (si, pos, fuzzy) in hits.items():
@@ -305,6 +340,43 @@ class ResponseDetailsView(discord.ui.View):
         await interaction.response.send_modal(ResponseDetailsModal(self.cog, self.triggers, self.guild_id, self.response))
 
 
+class RequiredContextModal(ErrorHandledModal):
+    def __init__(self, cog: "AutoResponder", guild_id: int, response: dict[str, Any]):
+        super().__init__(title="Required context groups")
+        self.cog = cog
+        self.guild_id = guild_id
+        self.response_id = int(response["id"])
+        self.groups = discord.ui.TextInput(
+            label="Required groups: one per line; comma = OR",
+            placeholder="safe, scam, spyware, trustworthy",
+            default=response.get("required_groups", "") or None,
+            max_length=1000,
+            required=False,
+            style=discord.TextStyle.paragraph,
+        )
+        self.add_item(self.groups)
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        groups = [line.strip() for line in self.groups.value.splitlines() if line.strip()]
+        if len(groups) > 10 or any(
+            any(len(term.strip().split()) != 1 for term in line.split(",") if term.strip())
+            for line in groups
+        ):
+            await interaction.response.send_message(
+                "Use up to 10 groups. Each group must contain single-word alternatives separated by commas.",
+                ephemeral=True,
+            )
+            return
+        saved = self.cog.store.set_required_groups(self.guild_id, self.response_id, groups)
+        if saved:
+            self.cog.invalidate_cache(self.guild_id)
+        await interaction.response.send_message(
+            "Required context groups saved. Every line must match; any comma-separated term can satisfy its line."
+            if saved else "That auto response no longer exists.",
+            ephemeral=True,
+        )
+
+
 class ResponseManagementView(discord.ui.View):
     def __init__(self, cog: "AutoResponder", guild_id: int, response: dict[str, Any]):
         super().__init__(timeout=600)
@@ -327,6 +399,14 @@ class ResponseManagementView(discord.ui.View):
             await interaction.response.send_message("That auto response no longer exists.", ephemeral=True)
             return
         await interaction.response.send_modal(TriggerWordsModal(self.cog, self.guild_id, current))
+
+    @discord.ui.button(label="Configure context groups", style=discord.ButtonStyle.secondary)
+    async def configure_context(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        current = next((row for row in self.cog.store.list(self.guild_id) if int(row["id"]) == int(self.response["id"])), None)
+        if current is None:
+            await interaction.response.send_message("That auto response no longer exists.", ephemeral=True)
+            return
+        await interaction.response.send_modal(RequiredContextModal(self.cog, self.guild_id, current))
 
     @discord.ui.button(label="Delete response", style=discord.ButtonStyle.danger)
     async def delete_response(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
@@ -489,11 +569,11 @@ class AutoResponder(ObserverCog):
             return
         candidates.sort(key=lambda item: item[0], reverse=True)
         best_score, response, matched = candidates[0]
+        uncertain = False
         if len(candidates) > 1:
             second_score, _, second_matched = candidates[1]
             shared = matched & second_matched
-            if (shared and best_score - second_score < 1.5) or best_score - second_score < 0.75:
-                return
+            uncertain = (shared and best_score - second_score < 1.5) or best_score - second_score < 0.75
 
         content = response["reply"]
         mentions = discord.AllowedMentions(users=True, roles=False, everyone=False)
@@ -509,7 +589,10 @@ class AutoResponder(ObserverCog):
                 await message.reply(view=view, mention_author=False, allowed_mentions=mentions)
             else:
                 await message.reply(content, mention_author=False, allowed_mentions=mentions)
-            self._last_response_at[(message.guild.id, int(response["id"]))] = now
+            cooldown = int(response["cooldown_seconds"])
+            self._last_response_at[(message.guild.id, int(response["id"]))] = now - cooldown if uncertain else now
+            if uncertain:
+                self._last_response_at[(message.guild.id, int(response["id"]))] = now - cooldown
         except (discord.Forbidden, discord.HTTPException):
             pass
 
