@@ -39,6 +39,8 @@ class ErrorReport:
     user_id: int | None
     occurred_at: int
     level: int = logging.ERROR
+    channel_id: int | None = None
+    event_name: str | None = None
 
     @classmethod
     def from_record(cls, record: logging.LogRecord) -> ErrorReport:
@@ -54,7 +56,9 @@ class ErrorReport:
                 location = f"{safe_name(tb.tb_frame.f_code.co_name, 40)}:{tb.tb_lineno}"
         return cls(record.error_id, safe_name(getattr(record, "error_source", record.name)),
                    exception, location, getattr(record, "error_guild_id", None),
-                   getattr(record, "error_user_id", None), int(record.created), record.levelno)
+                   getattr(record, "error_user_id", None), int(record.created), record.levelno,
+                   getattr(record, "error_channel_id", None),
+                   getattr(record, "error_event_name", None))
 
     @property
     def severity(self) -> str:
@@ -65,7 +69,12 @@ class ErrorReport:
         return "Warning"
 
     def line(self) -> str:
-        context = f"server={self.guild_id or 'DM/unknown'} user={self.user_id or 'unknown'}"
+        server = str(self.guild_id) if self.guild_id is not None else "DM/unknown"
+        user = str(self.user_id) if self.user_id is not None else "unknown"
+        channel = (f"<#{self.channel_id}>" if self.channel_id is not None
+                   else "not applicable" if self.event_name else "unknown")
+        event = self.event_name or "unknown"
+        context = f"server={server} • channel={channel} • user={user} • event={event}"
         return (f"**{self.severity}** • **`{self.error_id}`** • <t:{self.occurred_at}:T>\n"
                 f"`{self.source}` • `{self.exception}` • `{self.location}`\n"
                 f"{context}")
