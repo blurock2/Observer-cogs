@@ -123,7 +123,8 @@ function controlFor(module, setting) {
     field = `<div class="setting-control">${input}${save}</div><small class="setting-timing">Save this setting to apply your changes</small>`;
   }
   const warning = /experimental|permanently|ban automatically/i.test(`${setting.label} ${setting.description}`) ? " setting-warning" : "";
-  const help = settingHelpText(module, setting);\n  return `<section class="setting-row${warning}"><div class="setting-copy"><div class="setting-label-line"><label for="${id}">${esc(setting.label)}</label><span class="setting-help-wrap"><button class="setting-help" type="button" aria-label="Help: ${esc(setting.label)}" aria-describedby="${id}-help">?</button><span class="setting-help-popout" id="${id}-help" role="tooltip">${esc(help)}</span></span></div>${setting.description ? `<small>${esc(setting.description)}</small>` : ""}</div><div class="setting-widget">${field}</div></section>`;
+  const help = settingHelpText(module, setting);
+  return `<section class="setting-row${warning}"><div class="setting-copy"><div class="setting-label-line"><label for="${id}">${esc(setting.label)}</label><span class="setting-help-wrap"><button class="setting-help" type="button" aria-label="Help: ${esc(setting.label)}" aria-describedby="${id}-help">?</button><span class="setting-help-popout" id="${id}-help" role="tooltip">${esc(help)}</span></span></div>${setting.description ? `<small>${esc(setting.description)}</small>` : ""}</div><div class="setting-widget">${field}</div></section>`;
 }
 
 function autoResponseEditor(module) {
