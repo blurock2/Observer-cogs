@@ -29,6 +29,11 @@ def safe_name(value: str | None, limit: int = 60) -> str:
     return re.sub(r"[^a-zA-Z0-9_. /-]", "", value or "")[:limit] or "unknown"
 
 
+def safe_label(value: str | None, limit: int = 60) -> str:
+    # Names are display context only; strip markdown/control characters.
+    return re.sub(r"[\\r\\n\x00-\x1f`*_~|<>]", "", value or "").strip()[:limit] or "unknown"
+
+
 @dataclass(frozen=True)
 class ErrorReport:
     error_id: str
@@ -41,6 +46,8 @@ class ErrorReport:
     level: int = logging.ERROR
     channel_id: int | None = None
     event_name: str | None = None
+    guild_name: str | None = None
+    channel_name: str | None = None
 
     @classmethod
     def from_record(cls, record: logging.LogRecord) -> ErrorReport:
@@ -71,7 +78,9 @@ class ErrorReport:
                    exception, location, getattr(record, "error_guild_id", None),
                    getattr(record, "error_user_id", None), int(record.created), record.levelno,
                    getattr(record, "error_channel_id", None),
-                   getattr(record, "error_event_name", None))
+                   getattr(record, "error_event_name", None),
+                   getattr(record, "error_guild_name", None),
+                   getattr(record, "error_channel_name", None))
 
     @property
     def severity(self) -> str:
@@ -82,9 +91,12 @@ class ErrorReport:
         return "Warning"
 
     def line(self) -> str:
-        server = str(self.guild_id) if self.guild_id is not None else "DM/unknown"
+        server = (f"{safe_label(self.guild_name)} ({self.guild_id})"
+                  if self.guild_id is not None else "DM/unknown")
         user = str(self.user_id) if self.user_id is not None else "unknown"
-        channel = (f"<#{self.channel_id}>" if self.channel_id is not None
+        channel = (f"#{safe_label(self.channel_name)} (<#{self.channel_id}>)"
+                   if self.channel_id is not None and self.channel_name
+                   else f"<#{self.channel_id}>" if self.channel_id is not None
                    else "not applicable" if self.event_name else "unknown")
         event = self.event_name or "unknown"
         context = f"server={server} • channel={channel} • user={user} • event={event}"
