@@ -80,6 +80,19 @@ class AutoResponderMatchingTests(unittest.TestCase):
             response, _sentence_tokens("I think someone set up a bot for Observer"), owners
         ))
 
+    def test_negation_across_natural_phrase_is_rejected(self):
+        response = {
+            "triggers": "Observer\\nSafe\\nScam\\nSpyware\\nTrustworthy",
+            "sub_triggers": "Scammy\\nBot\\nthis",
+            "required_groups": "safe, scam, scammy, spyware, trustworthy",
+        }
+        owners = {word.casefold(): 1 for word in (
+            "Observer", "Safe", "Scam", "Spyware", "Trustworthy", "Scammy", "Bot", "this"
+        )}
+        self.assertIsNone(_response_match(
+            response, _sentence_tokens("I don't think the Observer bot is safe."), owners
+        ))
+
     def test_required_context_allows_relevant_safety_question(self):
         response = {
             "triggers": "Observer\nSafe\nScam\nSpyware\nTrustworthy",
