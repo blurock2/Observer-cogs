@@ -50,10 +50,23 @@ class ErrorReport:
         if record.exc_info and record.exc_info[1] is not None:
             exception = safe_name(type(record.exc_info[1]).__name__, 40)
             tb = record.exc_info[2]
-            if tb is not None:
-                while tb.tb_next is not None:
-                    tb = tb.tb_next
-                location = f"{safe_name(tb.tb_frame.f_code.co_name, 40)}:{tb.tb_lineno}"
+            fallback_location = location
+            app_location = None
+            while tb is not None:
+                frame = tb.tb_frame
+                filename = frame.f_code.co_filename.replace("\\", "/")
+                fallback_location = f"{safe_name(frame.f_code.co_name, 40)}:{tb.tb_lineno}"
+                # Prefer the bot's own frame over discord.py/stdlib internals.
+                if ("/site-packages/" not in filename
+                        and "/dist-packages/" not in filename
+                        and "/lib/python" not in filename
+                        and "/lib64/python" not in filename):
+                    app_location = (
+                        f"{safe_name(filename.rsplit('/', 1)[-1], 40)}:"
+                        f"{safe_name(frame.f_code.co_name, 30)}:{tb.tb_lineno}"
+                    )
+                tb = tb.tb_next
+            location = app_location or fallback_location
         return cls(record.error_id, safe_name(getattr(record, "error_source", record.name)),
                    exception, location, getattr(record, "error_guild_id", None),
                    getattr(record, "error_user_id", None), int(record.created), record.levelno,
