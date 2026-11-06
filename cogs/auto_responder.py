@@ -377,6 +377,43 @@ class RequiredContextModal(ErrorHandledModal):
         )
 
 
+class RequiredContextModal(ErrorHandledModal):
+    def __init__(self, cog: "AutoResponder", guild_id: int, response: dict[str, Any]):
+        super().__init__(title="Required context groups")
+        self.cog = cog
+        self.guild_id = guild_id
+        self.response_id = int(response["id"])
+        self.groups = discord.ui.TextInput(
+            label="Required groups: one per line; comma = OR",
+            placeholder="safe, scam, spyware, trustworthy",
+            default=response.get("required_groups", "") or None,
+            max_length=1000,
+            required=False,
+            style=discord.TextStyle.paragraph,
+        )
+        self.add_item(self.groups)
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        groups = [line.strip() for line in self.groups.value.splitlines() if line.strip()]
+        if len(groups) > 10 or any(
+            any(len(term.strip().split()) != 1 for term in line.split(",") if term.strip())
+            for line in groups
+        ):
+            await interaction.response.send_message(
+                "Use up to 10 groups. Each group must contain single-word alternatives separated by commas.",
+                ephemeral=True,
+            )
+            return
+        saved = self.cog.store.set_required_groups(self.guild_id, self.response_id, groups)
+        if saved:
+            self.cog.invalidate_cache(self.guild_id)
+        await interaction.response.send_message(
+            "Required context groups saved. Every line must match; any comma-separated term can satisfy its line."
+            if saved else "That auto response no longer exists.",
+            ephemeral=True,
+        )
+
+
 class ResponseManagementView(discord.ui.View):
     def __init__(self, cog: "AutoResponder", guild_id: int, response: dict[str, Any]):
         super().__init__(timeout=600)
@@ -519,9 +556,11 @@ class AutoResponder(ObserverCog):
     def response_text(response: dict[str, Any]) -> str:
         triggers = ", ".join(response["triggers"].splitlines())
         variants = ", ".join(response["sub_triggers"].splitlines()) or "None"
+        required = response.get("required_groups", "").replace("\n", " AND ") or "None"
         return (
             f'**{response["responder_name"]}** (`{response["id"]}`)\n'
             f'**Triggers:** {triggers}\n**Variations:** {variants}\n'
+            f'**Required context:** {required}\n'
             f'**Style:** {response["style"]} · **Cooldown:** {response["cooldown_seconds"]}s\n'
             f'**Reply:** {response["reply"][:900]}'
         )
