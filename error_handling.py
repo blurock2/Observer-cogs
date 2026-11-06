@@ -84,8 +84,8 @@ async def handle_interaction_error(interaction: discord.Interaction, error: Exce
     error_id = log_error(error, source=source or getattr(interaction.command, "qualified_name", "interaction"),
               user_id=interaction.user.id, guild_id=interaction.guild_id,
               channel_id=interaction.channel_id, reference=interaction.id,
-              guild_name=getattr(interaction.guild, "name", None),
-              channel_name=getattr(interaction.channel, "name", None))
+              guild_name=getattr(getattr(interaction, "guild", None), "name", None),
+              channel_name=getattr(getattr(interaction, "channel", None), "name", None))
     message = error_message(error)
     if error_id:
         interaction.extras["observer_error_id"] = error_id
