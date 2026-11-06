@@ -32,6 +32,16 @@ class AutoResponderMatchingTests(unittest.TestCase):
     def test_adjacent_transposition_is_accepted_as_typo(self):
         self.assertIsNotNone(self.match("Stema has free."))
 
+    def test_two_distinct_misspellings_can_match(self):
+        self.assertIsNotNone(self.match("Steem has frea."))
+
+    def test_one_typo_cannot_satisfy_two_keywords(self):
+        response = {"triggers": "steam\nstream", "sub_triggers": ""}
+        self.assertIsNone(_response_match(response, _sentence_tokens("steem"), {"steam": 1, "stream": 1}))
+
+    def test_not_only_is_not_treated_as_negation(self):
+        self.assertIsNotNone(self.match("Not only Steam is free."))
+
     def test_distant_terms_do_not_match(self):
         self.assertIsNone(self.match("Steam account status is fine and several unrelated words follow before the weather report says the coffee is finally free."))
 
