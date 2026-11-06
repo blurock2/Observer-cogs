@@ -144,7 +144,7 @@ def handle_event_error(bot: commands.Bot, event_name: str, *args, **kwargs) -> N
         logger.error("Discord event %s failed without an active exception", event_name)
         return
 
-    guild = user = channel = message = None
+    guild = user = channel = None
     guild_id = user_id = channel_id = reference = None
 
     # Discord event callbacks receive the objects needed to identify their context.
@@ -170,18 +170,28 @@ def handle_event_error(bot: commands.Bot, event_name: str, *args, **kwargs) -> N
             channel = value
             guild = value.guild or guild
         else:
-            # Raw gateway payloads expose IDs rather than cached Discord models.
+            # Support raw gateway payloads and model-like event arguments.
+            candidate_guild = getattr(value, "guild", None)
+            candidate_author = getattr(value, "author", None)
+            candidate_channel = getattr(value, "channel", None)
+            if candidate_guild is not None:
+                guild = candidate_guild
+            if candidate_author is not None:
+                user = candidate_author
+            elif candidate_guild is not None and hasattr(value, "id") and candidate_channel is None:
+                user = value
+            if candidate_channel is not None:
+                channel = candidate_channel
             guild_id = getattr(value, "guild_id", None) or guild_id
             user_id = getattr(value, "user_id", None) or user_id
             channel_id = getattr(value, "channel_id", None) or channel_id
             reference = (getattr(value, "message_id", None)
                          or getattr(value, "id", None) or reference)
             nested_message = getattr(value, "message", None)
-            if isinstance(nested_message, discord.Message):
-                message = nested_message
-                guild = message.guild or guild
-                user = message.author or user
-                channel = message.channel or channel
+            if nested_message is not None:
+                guild = getattr(nested_message, "guild", None) or guild
+                user = getattr(nested_message, "author", None) or user
+                channel = getattr(nested_message, "channel", None) or channel
 
     guild_id = getattr(guild, "id", None) or guild_id
     user_id = getattr(user, "id", None) or user_id
