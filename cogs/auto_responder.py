@@ -105,6 +105,20 @@ def _sentence_tokens(content: str) -> list[list[str]]:
     ]
 
 
+def _fuzzy_candidate_positions(term: str, token_positions: dict[str, list[tuple[int, int]]], deletion_positions: dict[str, set[tuple[int, int]]]) -> list[tuple[int, int]]:
+    candidates: set[tuple[int, int]] = set()
+    for index in range(len(term)):
+        signature = term[:index] + term[index + 1:]
+        candidates.update(token_positions.get(signature, ()))
+        candidates.update(deletion_positions.get(signature, ()))
+    for index in range(len(term) - 1):
+        if term[index] == term[index + 1]:
+            continue
+        swapped = term[:index] + term[index + 1] + term[index] + term[index + 2:]
+        candidates.update(token_positions.get(swapped, ()))
+    return sorted(candidates)
+
+
 def _response_match(response: dict[str, Any], sentences: list[list[str]], owners: dict[str, int]):
     primary = {term.casefold() for term in _terms(response["triggers"])}
     variations = {term.casefold() for term in _terms(response["sub_triggers"])} - primary
@@ -121,18 +135,30 @@ def _response_match(response: dict[str, Any], sentences: list[list[str]], owners
     # Misspelling tolerance is a fallback; exact matches always take priority.
     if len(hits) < 2:
         used_positions = {(si, position) for si, position, _ in hits.values()}
+        token_positions: dict[str, list[tuple[int, int]]] = {}
+        deletion_positions: dict[str, set[tuple[int, int]]] = {}
+        for si, tokens in enumerate(sentences):
+            for position, token in enumerate(tokens):
+                location = (si, position)
+                token_positions.setdefault(token, []).append(location)
+                for index in range(len(token)):
+                    signature = token[:index] + token[index + 1:]
+                    deletion_positions.setdefault(signature, set()).add(location)
+
+        # Index-based candidates avoid comparing every keyword against every word.
         # Prefer fuzzy primary matches before falling back to variation words.
         for term in sorted(kinds, key=lambda value: kinds[value] != "primary"):
-            if term in hits:
+            if term in hits or len(term) < 4:
                 continue
-            found = None
-            for si, tokens in enumerate(sentences):
-                for position, token in enumerate(tokens):
-                    if (si, position) not in used_positions and _edit_distance_one(term, token):
-                        found = (si, position)
-                        break
-                if found:
-                    break
+            found = next(
+                (
+                    (si, position)
+                    for si, position in _fuzzy_candidate_positions(term, token_positions, deletion_positions)
+                    if (si, position) not in used_positions
+                    and _edit_distance_one(term, sentences[si][position])
+                ),
+                None,
+            )
             if found:
                 hits[term] = (found[0], found[1], True)
                 used_positions.add(found)
