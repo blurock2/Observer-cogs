@@ -163,11 +163,12 @@ function renderEditor(key, animate = true, force = false) {
 
   selectedModule = key;
   editor.innerHTML = markup;
+  // Activate the dialog synchronously. Deferring visibility to requestAnimationFrame
+  // while locking body scrolling can leave the whole dashboard unusable if the
+  // animation frame is delayed or throttled.
   editor.hidden = false;
-  editor.classList.remove("is-open");
+  editor.classList.add("is-open");
   document.body.classList.add("modal-open");
-  if (animate) requestAnimationFrame(() => editor.classList.add("is-open"));
-  else editor.classList.add("is-open");
 }
 
 function closeEditor() {
