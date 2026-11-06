@@ -183,6 +183,7 @@ body:has(.site-shell), body:has(.dashboard-shell) { background: #0b0b0d; color: 
 .editor-head p { max-width: 680px; margin: 0; color: #929a9d; font-size: 11px; line-height: 1.65; }
 .editor-close { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 1px solid #394044; border-radius: 6px; background: #111315; color: #cbd4d7; font-size: 20px; line-height: 1; cursor: pointer; }
 .editor-enable { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 15px 0; color: #c4c9ca; font-size: 11px; border-bottom: 1px solid #ffffff10; }
+.editor-enable-label { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
 .settings-list { display: grid; }
 .setting-row { display: grid; grid-template-columns: minmax(180px,.7fr) minmax(260px,1.3fr); gap: 20px; align-items: center; padding: 15px 0; border-bottom: 1px solid #ffffff0b; }
 .setting-copy>label, .ticket-panel-fields>label { display: block; color: #e7e9e9; font-size: 11px; font-weight: 600; }
