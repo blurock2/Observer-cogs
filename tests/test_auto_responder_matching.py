@@ -42,6 +42,27 @@ class AutoResponderMatchingTests(unittest.TestCase):
     def test_not_only_is_not_treated_as_negation(self):
         self.assertIsNotNone(self.match("Not only Steam is free."))
 
+    def test_common_internet_slang_variations(self):
+        response = {"triggers": "free\ngames", "sub_triggers": "fr\nf2p\ngamez\ng4mes\nggs"}
+        owners = {word: 1 for word in ("free", "games", "fr", "f2p", "gamez", "g4mes", "ggs")}
+        for message in ("fr games", "f2p games", "free gamez", "free g4mes", "free ggs"):
+            with self.subTest(message=message):
+                self.assertIsNotNone(_response_match(response, _sentence_tokens(message), owners))
+
+    def test_slang_requires_configured_variation(self):
+        self.assertIsNone(self.match("Steam fr"))
+
+    def test_common_chat_negations_reject(self):
+        for message in ("Nah, free games on Steam", "Nope, free games on Steam", "I won't use free games on Steam"):
+            with self.subTest(message=message):
+                self.assertIsNone(self.match(message))
+
+    def test_unrelated_sentence_after_keyword_does_not_match(self):
+        self.assertIsNone(self.match("Steam is fine. Anyway, free coffee is cheap."))
+
+    def test_unicode_and_mixed_case(self):
+        self.assertIsNotNone(self.match("STEAM has FREE games today"))
+
     def test_distant_terms_do_not_match(self):
         self.assertIsNone(self.match("Steam account status is fine and several unrelated words follow before the weather report says the coffee is finally free."))
 
