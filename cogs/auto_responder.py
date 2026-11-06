@@ -240,7 +240,7 @@ def _response_match(
     score += max(0.0, 1.0 - min(pair[0] for pair in pairs) / 13)
     if all(hit[2] for hit in hits.values()):
         score -= 0.5
-    return (score, set(hits)) if score >= 3.0 else None
+    return (score, set(hits), any(hit[2] for hit in hits.values())) if score >= 3.0 else None
 
 
 
@@ -601,18 +601,17 @@ class AutoResponder(ObserverCog):
                 continue
             match = _response_match(response, sentences, owners, fuzzy_index)
             if match:
-                score, matched = match
-                candidates.append((score, response, matched))
+                score, matched, fuzzy_uncertain = match
+                candidates.append((score, response, matched, fuzzy_uncertain))
 
         if not candidates:
             return
         candidates.sort(key=lambda item: item[0], reverse=True)
-        best_score, response, matched = candidates[0]
-        uncertain = False
+        best_score, response, matched, uncertain = candidates[0]
         if len(candidates) > 1:
-            second_score, _, second_matched = candidates[1]
+            second_score, _, second_matched, _ = candidates[1]
             shared = matched & second_matched
-            uncertain = (shared and best_score - second_score < 1.5) or best_score - second_score < 0.75
+            uncertain = uncertain or (shared and best_score - second_score < 1.5) or best_score - second_score < 0.75
 
         content = response["reply"]
         mentions = discord.AllowedMentions(users=True, roles=False, everyone=False)
