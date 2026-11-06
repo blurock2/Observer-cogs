@@ -60,7 +60,7 @@ class AutoResponderStore:
         with connect_sqlite(self.db_path) as db:
             return db.execute(
                 "UPDATE auto_responses SET required_groups=? WHERE guild_id=? AND id=?",
-                ("\\n".join(groups), guild_id, response_id),
+                ("\n".join(groups), guild_id, response_id),
             ).rowcount > 0
 
     def delete(self, guild_id: int, response_id: int) -> bool:
@@ -558,7 +558,7 @@ class AutoResponder(ObserverCog):
         candidates = []
         for response in responses:
             cooldown_key = (message.guild.id, int(response["id"]))
-            if now - self._last_response_at.get(cooldown_key, 0.0) < int(response["cooldown_seconds"]):
+            if now < self._last_response_at.get(cooldown_key, 0.0):
                 continue
             match = _response_match(response, sentences, owners, fuzzy_index)
             if match:
@@ -590,9 +590,7 @@ class AutoResponder(ObserverCog):
             else:
                 await message.reply(content, mention_author=False, allowed_mentions=mentions)
             cooldown = int(response["cooldown_seconds"])
-            self._last_response_at[(message.guild.id, int(response["id"]))] = now - cooldown if uncertain else now
-            if uncertain:
-                self._last_response_at[(message.guild.id, int(response["id"]))] = now - cooldown
+            self._last_response_at[(message.guild.id, int(response["id"]))] = now + cooldown * (2 if uncertain else 1)
         except (discord.Forbidden, discord.HTTPException):
             pass
 
