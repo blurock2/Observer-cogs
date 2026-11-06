@@ -139,21 +139,35 @@ function renderEditor(key, animate = true, force = false) {
     if (!confirm("You have unsaved settings. Discard them and open another feature?")) return;
     for (const item of [...dirtySettings]) if (item.startsWith(`${selectedModule}|`)) dirtySettings.delete(item);
   }
-  selectedModule = key;
+
   const module = panel.modules.find((item) => item.key === key);
   const editor = document.querySelector("#module-editor");
-  const enabled = module.settings.find((setting) => setting.key === "enabled");
-  editor.hidden = false;
-  if (animate) editor.classList.remove("is-open");
-  if (module.key === "auto_responder") {
-    editor.innerHTML = `<div class="module-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="module-editor-title"><div class="editor-head"><div><div class="eyebrow">CONFIGURE FEATURE</div><h2 id="module-editor-title">${esc(moduleEmoji(module))} ${esc(module.label)}</h2><p>${esc(module.description)}</p></div><button id="close-module-editor" class="editor-close" aria-label="Close settings">&#215;</button></div>${autoResponseEditor(module)}</div>`;
-    document.body.classList.add("modal-open");
-    if (animate) requestAnimationFrame(() => editor.classList.add("is-open"));
+  if (!module || !editor) return;
+
+  // Build the complete dialog before showing the overlay. If a setting contains
+  // malformed data, the existing page remains interactive instead of trapping
+  // the user behind an empty modal.
+  let markup;
+  try {
+    const enabled = module.settings?.find((setting) => setting.key === "enabled");
+    if (module.key === "auto_responder") {
+      markup = `<div class="module-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="module-editor-title"><div class="editor-head"><div><div class="eyebrow">CONFIGURE FEATURE</div><h2 id="module-editor-title">${esc(moduleEmoji(module))} ${esc(module.label)}</h2><p>${esc(module.description)}</p></div><button id="close-module-editor" class="editor-close" aria-label="Close settings">&#215;</button></div>${autoResponseEditor(module)}</div>`;
+    } else {
+      markup = `<div class="module-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="module-editor-title"><div class="editor-head"><div><div class="eyebrow">CONFIGURE FEATURE</div><h2 id="module-editor-title">${esc(moduleEmoji(module))} ${esc(module.label)}</h2><p>${esc(module.description)}</p></div><button id="close-module-editor" class="editor-close" aria-label="Close settings">&#215;</button></div>${module.key === "bot" ? `<a class="embed-tool-link" href="/embeds?guild_id=${encodeURIComponent(guildId)}">Open custom embed sender <span>&#8599;</span></a>` : ""}<div class="editor-enable">${enabled ? `<div class="editor-enable-label"><span>${esc(enabled.label)}</span><span class="setting-help-wrap"><button class="setting-help" type="button" aria-label="Help: ${esc(enabled.label)}" aria-describedby="module-${module.key}-enabled-help">?</button><span class="setting-help-popout" id="module-${module.key}-enabled-help" role="tooltip">Turn this feature on or off for this server. When disabled, Observer will stop running this feature here. Other settings are kept so you can enable it again later.</span></span></div><label class="web-toggle"><input type="checkbox" data-toggle-setting="${module.key}|enabled" ${enabled.value ? "checked" : ""}><span></span><b>${enabled.value ? "Enabled" : "Disabled"}</b></label>` : `<span>This feature has no master switch. Configure its options below.</span>`}</div><div class="pending-save-bar"><span>Unsaved edits stay here until you save them.</span><button class="save-setting" data-save-all disabled>Save changes</button></div><div class="settings-list">${(module.settings || []).map((setting) => controlFor(module, setting)).join("") || `<p class="empty-settings">No web settings are defined for this feature yet.</p>`}</div></div>`;
+    }
+  } catch (error) {
+    console.error("Could not render configuration editor:", error);
+    showError(new Error("These settings could not be displayed. Refresh the page and try again."));
     return;
   }
-  editor.innerHTML = `<div class="module-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="module-editor-title"><div class="editor-head"><div><div class="eyebrow">CONFIGURE FEATURE</div><h2 id="module-editor-title">${esc(moduleEmoji(module))} ${esc(module.label)}</h2><p>${esc(module.description)}</p></div><button id="close-module-editor" class="editor-close" aria-label="Close settings">&#215;</button></div>${module.key === "bot" ? `<a class="embed-tool-link" href="/embeds?guild_id=${encodeURIComponent(guildId)}">Open custom embed sender <span>&#8599;</span></a>` : ""}<div class="editor-enable">${enabled ? `<div class="editor-enable-label"><span>${esc(enabled.label)}</span><span class="setting-help-wrap"><button class="setting-help" type="button" aria-label="Help: ${esc(enabled.label)}" aria-describedby="module-${module.key}-enabled-help">?</button><span class="setting-help-popout" id="module-${module.key}-enabled-help" role="tooltip">Turn this feature on or off for this server. When disabled, Observer will stop running this feature here. Other settings are kept so you can enable it again later.</span></span></div><label class="web-toggle"><input type="checkbox" data-toggle-setting="${module.key}|enabled" ${enabled.value ? "checked" : ""}><span></span><b>${enabled.value ? "Enabled" : "Disabled"}</b></label>` : `<span>This feature has no master switch. Configure its options below.</span>`}</div><div class="pending-save-bar"><span>Unsaved edits stay here until you save them.</span><button class="save-setting" data-save-all disabled>Save changes</button></div><div class="settings-list">${module.settings.map((setting) => controlFor(module, setting)).join("") || `<p class="empty-settings">No web settings are defined for this feature yet.</p>`}</div></div>`;
+
+  selectedModule = key;
+  editor.innerHTML = markup;
+  editor.hidden = false;
+  editor.classList.remove("is-open");
   document.body.classList.add("modal-open");
   if (animate) requestAnimationFrame(() => editor.classList.add("is-open"));
+  else editor.classList.add("is-open");
 }
 
 function closeEditor() {
