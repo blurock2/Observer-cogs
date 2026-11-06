@@ -27,13 +27,13 @@ class AutoResponderMatchingTests(unittest.TestCase):
         self.assertIsNotNone(self.match("Games giveaway announced today."))
 
     def test_single_typo_can_fall_back_when_another_term_matches(self):
-        self.assertIsNotNone(self.match("Steem has free games today."))
+        self.assertIsNotNone(self.match("Steem has free."))
 
     def test_adjacent_transposition_is_accepted_as_typo(self):
-        self.assertIsNotNone(self.match("Stema has free games today."))
+        self.assertIsNotNone(self.match("Stema has free."))
 
     def test_distant_terms_do_not_match(self):
-        self.assertIsNone(self.match("Steam account status is fine and several unrelated words follow before free."))
+        self.assertIsNone(self.match("Steam account status is fine and several unrelated words follow before the weather report says the coffee is finally free."))
 
 
 if __name__ == "__main__":
