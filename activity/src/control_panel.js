@@ -75,6 +75,21 @@ function renderCards() {
   }).join("") || `<p class="empty-settings">No features match that search.</p>`;
 }
 
+function settingHelpText(module, setting) {
+  if (setting.description?.trim()) return setting.description.trim();
+  const label = setting.label || setting.key.replaceAll("_", " ");
+  const moduleName = module.label || "this feature";
+  const kindHelp = {
+    toggle: "Turn this option on or off. Changes apply immediately.",
+    channel: "Choose the Discord channel where this feature should post messages or activity. Observer needs permission to view and send messages there.",
+    role: "Choose the Discord role this option applies to. Make sure Observer's role is high enough to assign it when required.",
+    integer: "Enter a whole-number value. Check the unit in the option name; values that are too high or too low may affect how often this feature runs.",
+    text: "Enter the text or value Observer should use for this option. Save your changes to apply them.",
+    ticket_panel: "Customize the ticket panel's wording and available reasons. Save the panel settings before sending the panel."
+  }[setting.kind] || "Configure how this option behaves for this server.";
+  return `${label} controls part of ${moduleName.toLowerCase()}. ${kindHelp}`;
+}
+
 function controlFor(module, setting) {
   const id = `setting-${module.key}-${setting.key}`;
   const value = setting.value;
@@ -108,7 +123,7 @@ function controlFor(module, setting) {
     field = `<div class="setting-control">${input}${save}</div><small class="setting-timing">Save this setting to apply your changes</small>`;
   }
   const warning = /experimental|permanently|ban automatically/i.test(`${setting.label} ${setting.description}`) ? " setting-warning" : "";
-  return `<section class="setting-row${warning}"><div class="setting-copy"><label for="${id}">${esc(setting.label)}</label>${setting.description ? `<small>${esc(setting.description)}</small>` : ""}</div><div class="setting-widget">${field}</div></section>`;
+  const help = settingHelpText(module, setting);\n  return `<section class="setting-row${warning}"><div class="setting-copy"><div class="setting-label-line"><label for="${id}">${esc(setting.label)}</label><span class="setting-help-wrap"><button class="setting-help" type="button" aria-label="Help: ${esc(setting.label)}" aria-describedby="${id}-help">?</button><span class="setting-help-popout" id="${id}-help" role="tooltip">${esc(help)}</span></span></div>${setting.description ? `<small>${esc(setting.description)}</small>` : ""}</div><div class="setting-widget">${field}</div></section>`;
 }
 
 function autoResponseEditor(module) {
