@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
 from pathlib import Path
 from typing import ClassVar
 
-from database import connect_sqlite
+from database import sqlite_transaction
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = PROJECT_ROOT / "data" / "bot.db"
@@ -22,18 +21,8 @@ class ModerationStatsStore:
         self.db_path = str(db_path)
         self._init_table()
 
-    @contextmanager
     def _connect(self):
-        conn = connect_sqlite(self.db_path)
-        try:
-            yield conn
-        except Exception:
-            conn.rollback()
-            raise
-        else:
-            conn.commit()
-        finally:
-            conn.close()
+        return sqlite_transaction(self.db_path)
 
     def _init_table(self) -> None:
         with self._connect() as conn:
@@ -62,26 +51,11 @@ class ModerationStatsStore:
 
         with self._connect() as conn:
             conn.execute(
-                """
-                INSERT INTO moderation_stats (
-                    guild_id,
-                    moderator_id,
-                    reports_claimed,
-                    kicks,
-                    bans,
-                    timeouts
-                )
-                VALUES (?, ?, 0, 0, 0, 0)
-                ON CONFLICT(guild_id, moderator_id) DO NOTHING
-                """,
-                (guild_id, moderator_id),
-            )
-
-            conn.execute(
                 f"""
-                UPDATE moderation_stats
-                SET {action} = {action} + 1
-                WHERE guild_id = ? AND moderator_id = ?
+                INSERT INTO moderation_stats (guild_id, moderator_id, {action})
+                VALUES (?, ?, 1)
+                ON CONFLICT(guild_id, moderator_id)
+                DO UPDATE SET {action} = {action} + 1
                 """,
                 (guild_id, moderator_id),
             )

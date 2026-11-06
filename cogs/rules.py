@@ -3,7 +3,6 @@ from __future__ import annotations
 from error_handling import ErrorHandledModal, ObserverCog
 
 import sqlite3
-from contextlib import contextmanager
 from dataclasses import dataclass
 
 import discord
@@ -15,7 +14,7 @@ from cogs.setup_ui import (
     SetupConfigStore,
     owner_or_has_permissions,
 )
-from database import connect_sqlite
+from database import sqlite_transaction
 
 MODULE_KEY = "rules"
 EMBED_COLOR = 0x96EDF1
@@ -38,18 +37,8 @@ class RulesStore:
         self.db_path = db_path
         self._init_table()
 
-    @contextmanager
     def _connect(self):
-        connection = connect_sqlite(self.db_path)
-        try:
-            yield connection
-        except Exception:
-            connection.rollback()
-            raise
-        else:
-            connection.commit()
-        finally:
-            connection.close()
+        return sqlite_transaction(self.db_path)
 
     def _init_table(self) -> None:
         with self._connect() as conn:

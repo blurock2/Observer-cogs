@@ -29,6 +29,11 @@ def safe_name(value: str | None, limit: int = 60) -> str:
     return re.sub(r"[^a-zA-Z0-9_. /-]", "", value or "")[:limit] or "unknown"
 
 
+def safe_label(value: str | None, limit: int = 60) -> str:
+    # Names are display context only; strip markdown/control characters.
+    return re.sub(r"[\r\n\x00-\x1f`*_~|<>]", "", value or "").strip()[:limit] or "unknown"
+
+
 @dataclass(frozen=True)
 class ErrorReport:
     error_id: str
@@ -39,6 +44,10 @@ class ErrorReport:
     user_id: int | None
     occurred_at: int
     level: int = logging.ERROR
+    channel_id: int | None = None
+    event_name: str | None = None
+    guild_name: str | None = None
+    channel_name: str | None = None
 
     @classmethod
     def from_record(cls, record: logging.LogRecord) -> ErrorReport:
@@ -48,13 +57,30 @@ class ErrorReport:
         if record.exc_info and record.exc_info[1] is not None:
             exception = safe_name(type(record.exc_info[1]).__name__, 40)
             tb = record.exc_info[2]
-            if tb is not None:
-                while tb.tb_next is not None:
-                    tb = tb.tb_next
-                location = f"{safe_name(tb.tb_frame.f_code.co_name, 40)}:{tb.tb_lineno}"
+            fallback_location = location
+            app_location = None
+            while tb is not None:
+                frame = tb.tb_frame
+                filename = frame.f_code.co_filename.replace("\\", "/")
+                fallback_location = f"{safe_name(frame.f_code.co_name, 40)}:{tb.tb_lineno}"
+                # Prefer the bot's own frame over discord.py/stdlib internals.
+                if ("/site-packages/" not in filename
+                        and "/dist-packages/" not in filename
+                        and "/lib/python" not in filename
+                        and "/lib64/python" not in filename):
+                    app_location = (
+                        f"{safe_name(filename.rsplit('/', 1)[-1], 40)}:"
+                        f"{safe_name(frame.f_code.co_name, 30)}:{tb.tb_lineno}"
+                    )
+                tb = tb.tb_next
+            location = app_location or fallback_location
         return cls(record.error_id, safe_name(getattr(record, "error_source", record.name)),
                    exception, location, getattr(record, "error_guild_id", None),
-                   getattr(record, "error_user_id", None), int(record.created), record.levelno)
+                   getattr(record, "error_user_id", None), int(record.created), record.levelno,
+                   getattr(record, "error_channel_id", None),
+                   getattr(record, "error_event_name", None),
+                   getattr(record, "error_guild_name", None),
+                   getattr(record, "error_channel_name", None))
 
     @property
     def severity(self) -> str:
@@ -65,7 +91,15 @@ class ErrorReport:
         return "Warning"
 
     def line(self) -> str:
-        context = f"server={self.guild_id or 'DM/unknown'} user={self.user_id or 'unknown'}"
+        server = (f"{safe_label(self.guild_name)} ({self.guild_id})"
+                  if self.guild_id is not None else "DM/unknown")
+        user = str(self.user_id) if self.user_id is not None else "unknown"
+        channel = (f"#{safe_label(self.channel_name)} (<#{self.channel_id}>)"
+                   if self.channel_id is not None and self.channel_name
+                   else f"<#{self.channel_id}>" if self.channel_id is not None
+                   else "not applicable" if self.event_name else "unknown")
+        event = self.event_name or "unknown"
+        context = f"server={server} • channel={channel} • user={user} • event={event}"
         return (f"**{self.severity}** • **`{self.error_id}`** • <t:{self.occurred_at}:T>\n"
                 f"`{self.source}` • `{self.exception}` • `{self.location}`\n"
                 f"{context}")

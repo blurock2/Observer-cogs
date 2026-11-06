@@ -169,3 +169,59 @@ async def test_command_id_matches_queued_report_and_expected_errors_are_skipped(
         assert 'observer_error_id' not in i.extras
     finally:
         await reporter.close()
+
+
+
+def test_event_error_report_includes_guild_user_and_event_without_channel(caplog):
+    from error_handling import handle_event_error
+
+    guild = SimpleNamespace(id=12345, name="Example server", get_member=Mock(return_value=None))
+    member = SimpleNamespace(id=67890, guild=guild)
+    bot = SimpleNamespace(get_guild=Mock(return_value=guild), get_user=Mock(return_value=None),
+                          get_channel=Mock(return_value=None))
+
+    with caplog.at_level(logging.ERROR, logger="observer.errors"):
+        try:
+            raise discord.Forbidden(
+                SimpleNamespace(status=403, reason="Forbidden"),
+                {"message": "Missing Permissions", "code": 50013},
+            )
+        except discord.Forbidden:
+            handle_event_error(bot, "on_member_join", member)
+
+    record = next(r for r in caplog.records if getattr(r, "error_event_name", None))
+    report = ErrorReport.from_record(record)
+    line = report.line()
+    assert report.guild_id == 12345
+    assert report.user_id == 67890
+    assert report.channel_id is None
+    assert "server=Example server (12345)" in line
+    assert "user=67890" in line
+    assert "channel=not applicable" in line
+    assert "event=on_member_join" in line
+
+
+def test_event_error_report_includes_channel_for_message_events(caplog):
+    from error_handling import handle_event_error
+
+    guild = SimpleNamespace(id=12345, get_member=Mock(return_value=None),
+                            get_channel=Mock(return_value=None))
+    channel = SimpleNamespace(id=24680, guild=guild)
+    author = SimpleNamespace(id=67890)
+    message = SimpleNamespace(id=13579, guild=guild, channel=channel, author=author)
+
+    with caplog.at_level(logging.ERROR, logger="observer.errors"):
+        try:
+            raise RuntimeError("private message contents must not appear")
+        except RuntimeError:
+            handle_event_error(SimpleNamespace(get_guild=Mock(return_value=guild),
+                                                get_channel=Mock(return_value=channel),
+                                                get_user=Mock(return_value=author)),
+                               "on_message", message)
+
+    record = next(r for r in caplog.records if getattr(r, "error_event_name", None))
+    line = ErrorReport.from_record(record).line()
+    assert "server=unknown (12345)" in line
+    assert "channel=<#24680>" in line
+    assert "event=on_message" in line
+    assert "private message contents" not in line

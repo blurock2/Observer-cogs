@@ -6,7 +6,6 @@ from error_handling import ErrorHandledModal, ErrorHandledView, ObserverCog, han
 import json
 import os
 from collections.abc import Callable
-from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import ClassVar
@@ -16,7 +15,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from cogs.config import RESTRICTED_BOT_ID, is_bot_owner
-from database import connect_sqlite
+from database import sqlite_transaction
 
 
 def owner_or_has_permissions(**perms: bool):
@@ -135,18 +134,8 @@ class SetupConfigStore:
         os.makedirs(os.path.dirname(db_path) or ".", exist_ok=True)
         self._init()
 
-    @contextmanager
     def _connect(self):
-        conn = connect_sqlite(self.db_path)
-        try:
-            yield conn
-        except Exception:
-            conn.rollback()
-            raise
-        else:
-            conn.commit()
-        finally:
-            conn.close()
+        return sqlite_transaction(self.db_path)
 
     def _init(self) -> None:
         with self._connect() as conn:
@@ -165,7 +154,9 @@ class SetupConfigStore:
     # ============================================================ Core read / write
 
     def get(self, guild_id: int, module: str, key: str, default=None):
-        values = self.get_module(guild_id, module)
+        values = self._module_cache.get((self.db_path, guild_id, module))
+        if values is None:
+            values = self.get_module(guild_id, module)
         return values.get(key, default)
 
     def set(self, guild_id: int, module: str, key: str, value) -> None:
@@ -1310,7 +1301,6 @@ def build_module_embed(
     )
     embed.set_footer(text="Click a button to edit • ◀ Back returns to the dashboard")
 
-    values = store.get_module(guild.id, module.key)
     settings = get_module_settings(store, guild, module)
     page_count = max(
         1,
