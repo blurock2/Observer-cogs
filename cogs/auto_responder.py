@@ -105,6 +105,19 @@ def _sentence_tokens(content: str) -> list[list[str]]:
     ]
 
 
+def _build_fuzzy_index(sentences: list[list[str]]) -> tuple[dict[str, list[tuple[int, int]]], dict[str, set[tuple[int, int]]]]:
+    token_positions: dict[str, list[tuple[int, int]]] = {}
+    deletion_positions: dict[str, set[tuple[int, int]]] = {}
+    for sentence_index, tokens in enumerate(sentences):
+        for position, token in enumerate(tokens):
+            location = (sentence_index, position)
+            token_positions.setdefault(token, []).append(location)
+            for index in range(len(token)):
+                signature = token[:index] + token[index + 1:]
+                deletion_positions.setdefault(signature, set()).add(location)
+    return token_positions, deletion_positions
+
+
 def _fuzzy_candidate_positions(term: str, token_positions: dict[str, list[tuple[int, int]]], deletion_positions: dict[str, set[tuple[int, int]]]) -> list[tuple[int, int]]:
     candidates: set[tuple[int, int]] = set()
     for index in range(len(term)):
@@ -119,7 +132,12 @@ def _fuzzy_candidate_positions(term: str, token_positions: dict[str, list[tuple[
     return sorted(candidates)
 
 
-def _response_match(response: dict[str, Any], sentences: list[list[str]], owners: dict[str, int]):
+def _response_match(
+    response: dict[str, Any],
+    sentences: list[list[str]],
+    owners: dict[str, int],
+    fuzzy_index: tuple[dict[str, list[tuple[int, int]]], dict[str, set[tuple[int, int]]]] | None = None,
+):
     primary = {term.casefold() for term in _terms(response["triggers"])}
     variations = {term.casefold() for term in _terms(response["sub_triggers"])} - primary
     kinds = {term: "primary" for term in primary}
@@ -135,15 +153,7 @@ def _response_match(response: dict[str, Any], sentences: list[list[str]], owners
     # Misspelling tolerance is a fallback; exact matches always take priority.
     if len(hits) < 2:
         used_positions = {(si, position) for si, position, _ in hits.values()}
-        token_positions: dict[str, list[tuple[int, int]]] = {}
-        deletion_positions: dict[str, set[tuple[int, int]]] = {}
-        for si, tokens in enumerate(sentences):
-            for position, token in enumerate(tokens):
-                location = (si, position)
-                token_positions.setdefault(token, []).append(location)
-                for index in range(len(token)):
-                    signature = token[:index] + token[index + 1:]
-                    deletion_positions.setdefault(signature, set()).add(location)
+        token_positions, deletion_positions = fuzzy_index or _build_fuzzy_index(sentences)
 
         # Index-based candidates avoid comparing every keyword against every word.
         # Prefer fuzzy primary matches before falling back to variation words.
@@ -464,12 +474,13 @@ class AutoResponder(ObserverCog):
                 owners[key] = owners.get(key, 0) + 1
 
         sentences = _sentence_tokens(message.content)
+        fuzzy_index = _build_fuzzy_index(sentences)
         candidates = []
         for response in responses:
             cooldown_key = (message.guild.id, int(response["id"]))
             if now - self._last_response_at.get(cooldown_key, 0.0) < int(response["cooldown_seconds"]):
                 continue
-            match = _response_match(response, sentences, owners)
+            match = _response_match(response, sentences, owners, fuzzy_index)
             if match:
                 score, matched = match
                 candidates.append((score, response, matched))
