@@ -71,7 +71,7 @@ def _terms(value: str) -> list[str]:
 
 _WORD_RE = re.compile(r"[^\W_]+(?:['’][^\W_]+)?", re.IGNORECASE)
 _SENTENCE_RE = re.compile(r"(?<=[.!?;])\s+|\n+")
-_NEGATIONS = {"no", "not", "never", "neither", "nor", "dont", "don't", "doesnt", "doesn't", "didnt", "didn't", "isnt", "isn't", "arent", "aren't", "wasnt", "wasn't", "werent", "weren't", "cannot", "cant", "can't", "without"}
+_NEGATIONS = {"no", "nope", "nah", "not", "never", "neither", "nor", "aint", "ain't", "dont", "don't", "doesnt", "doesn't", "didnt", "didn't", "isnt", "isn't", "arent", "aren't", "wasnt", "wasn't", "werent", "weren't", "wont", "won't", "wouldnt", "wouldn't", "shouldnt", "shouldn't", "couldnt", "couldn't", "havent", "haven't", "hasnt", "hasn't", "hadnt", "hadn't", "cannot", "cant", "can't", "without"}
 
 
 def _edit_distance_one(left: str, right: str) -> bool:
