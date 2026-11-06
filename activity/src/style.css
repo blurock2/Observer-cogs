@@ -318,7 +318,7 @@ body:has(.site-shell), body:has(.dashboard-shell) { background: #0b0b0d; color: 
   .control-feature-area .module-grid { grid-template-columns: 1fr; }
 }
 .module-editor:not([hidden]) { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; overflow: hidden; margin: 0; padding: clamp(14px, 4vw, 42px); border: 0; border-radius: 0; background: rgba(4, 7, 9, .84); opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .18s ease, visibility .18s ease; }
-.module-editor.is-open { opacity: 1; visibility: visible; }
+.module-editor.is-open { opacity: 1; visibility: visible; pointer-events: auto; }
 .module-editor-dialog { width: min(940px, 100%); max-height: min(calc(100vh - 84px), 920px); overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; padding: 28px; border: 1px solid #354246; border-radius: 14px; background: linear-gradient(145deg, #171c1e, #101315); box-shadow: 0 20px 48px #0009, 0 0 24px var(--site-palette-42d7e808); transform: translate3d(0, 10px, 0); transition: transform .2s cubic-bezier(.2,.8,.2,1); scrollbar-width: thin; scrollbar-color: var(--site-palette-30474c) transparent; }
 .module-editor-dialog::-webkit-scrollbar { width: 6px; height: 6px; }
 .module-editor-dialog::-webkit-scrollbar-track { margin: 12px 0; background: transparent; }
