@@ -31,7 +31,7 @@ def safe_name(value: str | None, limit: int = 60) -> str:
 
 def safe_label(value: str | None, limit: int = 60) -> str:
     # Names are display context only; strip markdown/control characters.
-    return re.sub(r"[\\r\\n\x00-\x1f`*_~|<>]", "", value or "").strip()[:limit] or "unknown"
+    return re.sub(r"[\r\n\x00-\x1f`*_~|<>]", "", value or "").strip()[:limit] or "unknown"
 
 
 @dataclass(frozen=True)
