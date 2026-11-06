@@ -120,11 +120,23 @@ def _response_match(response: dict[str, Any], sentences: list[list[str]], owners
 
     # Misspelling tolerance is a fallback; exact matches always take priority.
     if len(hits) < 2:
-        for term in kinds.keys() - hits.keys():
+        used_positions = {(si, position) for si, position, _ in hits.values()}
+        # Prefer fuzzy primary matches before falling back to variation words.
+        for term in sorted(kinds, key=lambda value: kinds[value] != "primary"):
+            if term in hits:
+                continue
+            found = None
             for si, tokens in enumerate(sentences):
-                found = next((i for i, token in enumerate(tokens) if _edit_distance_one(term, token)), None)
-                if found is not None:
-                    hits[term] = (si, found, True)
+                for position, token in enumerate(tokens):
+                    if (si, position) not in used_positions and _edit_distance_one(term, token):
+                        found = (si, position)
+                        break
+                if found:
+                    break
+            if found:
+                hits[term] = (found[0], found[1], True)
+                used_positions.add(found)
+                if len(hits) >= 2:
                     break
 
     if len(hits) < 2:
