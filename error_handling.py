@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 
 import discord
 from discord import app_commands
@@ -49,7 +50,7 @@ def error_message(error: Exception) -> str:
 
 
 def log_error(error: Exception, *, source: str, user_id=None, guild_id=None,
-              channel_id=None, reference=None) -> str | None:
+              channel_id=None, reference=None, event_name=None) -> str | None:
     original = unwrap(error)
     expected = isinstance(original, (commands.UserInputError, commands.CheckFailure,
                                      commands.CommandOnCooldown, commands.MaxConcurrencyReached,
@@ -67,7 +68,8 @@ def log_error(error: Exception, *, source: str, user_id=None, guild_id=None,
                      source, user_id, guild_id, channel_id, reference,
                      exc_info=(type(original), original, original.__traceback__),
                      extra={"error_id": error_id, "error_source": source,
-                            "error_guild_id": guild_id, "error_user_id": user_id})
+                            "error_guild_id": guild_id, "error_user_id": user_id,
+                            "error_channel_id": channel_id, "error_event_name": event_name})
         return error_id
 
 
@@ -133,3 +135,75 @@ class ErrorHandledView(discord.ui.View):
 class ErrorHandledModal(discord.ui.Modal):
     async def on_error(self, interaction, error):
         await handle_interaction_error(interaction, error, source=type(self).__name__)
+
+
+def handle_event_error(bot: commands.Bot, event_name: str, *args, **kwargs) -> None:
+    """Report an uncaught Discord event/listener exception with its event arguments."""
+    error = sys.exc_info()[1]
+    if error is None:
+        logger.error("Discord event %s failed without an active exception", event_name)
+        return
+
+    guild = user = channel = message = None
+    guild_id = user_id = channel_id = reference = None
+
+    # Discord event callbacks receive the objects needed to identify their context.
+    for value in (*args, *kwargs.values()):
+        if isinstance(value, discord.Interaction):
+            guild = value.guild or guild
+            user = value.user or user
+            channel = value.channel or channel
+            reference = value.id or reference
+        elif isinstance(value, discord.Message):
+            guild = value.guild or guild
+            user = value.author or user
+            channel = value.channel or channel
+            reference = value.id or reference
+        elif isinstance(value, discord.Member):
+            guild = value.guild or guild
+            user = value
+        elif isinstance(value, discord.User):
+            user = value
+        elif isinstance(value, discord.Guild):
+            guild = value
+        elif isinstance(value, discord.abc.GuildChannel):
+            channel = value
+            guild = value.guild or guild
+        else:
+            # Raw gateway payloads expose IDs rather than cached Discord models.
+            guild_id = getattr(value, "guild_id", None) or guild_id
+            user_id = getattr(value, "user_id", None) or user_id
+            channel_id = getattr(value, "channel_id", None) or channel_id
+            reference = (getattr(value, "message_id", None)
+                         or getattr(value, "id", None) or reference)
+            nested_message = getattr(value, "message", None)
+            if isinstance(nested_message, discord.Message):
+                message = nested_message
+                guild = message.guild or guild
+                user = message.author or user
+                channel = message.channel or channel
+
+    guild_id = getattr(guild, "id", None) or guild_id
+    user_id = getattr(user, "id", None) or user_id
+    channel_id = getattr(channel, "id", None) or channel_id
+
+    if guild is None and guild_id is not None:
+        guild = bot.get_guild(int(guild_id))
+    if channel is None and channel_id is not None:
+        channel = bot.get_channel(int(channel_id))
+        if channel is None and guild is not None:
+            channel = guild.get_channel(int(channel_id))
+    if user is None and user_id is not None:
+        user = bot.get_user(int(user_id))
+        if user is None and guild is not None:
+            user = guild.get_member(int(user_id))
+
+    log_error(
+        error,
+        source=f"discord event {event_name}",
+        user_id=getattr(user, "id", user_id),
+        guild_id=getattr(guild, "id", guild_id),
+        channel_id=getattr(channel, "id", channel_id),
+        reference=reference,
+        event_name=event_name,
+    )
