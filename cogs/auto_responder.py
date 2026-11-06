@@ -77,6 +77,12 @@ _NEGATIONS = {"no", "not", "never", "neither", "nor", "dont", "don't", "doesnt",
 def _edit_distance_one(left: str, right: str) -> bool:
     if left == right or abs(len(left) - len(right)) > 1 or min(len(left), len(right)) < 4:
         return False
+    if len(left) == len(right):
+        differences = [i for i, (a, b) in enumerate(zip(left, right)) if a != b]
+        if len(differences) == 2:
+            a, b = differences
+            return b == a + 1 and left[a] == right[b] and left[b] == right[a]
+        return len(differences) == 1
     if len(left) > len(right):
         left, right = right, left
     i = j = differences = 0
@@ -88,8 +94,6 @@ def _edit_distance_one(left: str, right: str) -> bool:
         differences += 1
         if differences > 1:
             return False
-        if len(left) == len(right):
-            i += 1
         j += 1
     return differences + (j < len(right)) == 1
 
@@ -210,7 +214,7 @@ class TriggerWordsModal(ErrorHandledModal):
         self.trigger_input = discord.ui.TextInput(
             label=f"Primary trigger words (up to {MAX_TRIGGERS})",
             placeholder="One word per line",
-            max_length=1000,
+            max_length=2000,
             required=True,
             default=old_triggers or None,
             style=discord.TextStyle.paragraph,
