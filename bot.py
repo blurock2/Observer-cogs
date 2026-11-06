@@ -17,7 +17,7 @@ from cogs.setup_ui import DB_PATH, SetupConfigStore
 from database import cleanup_old_backups, migrate_legacy_databases
 from logging_config import configure_logging
 from error_reporting import ErrorReporter
-from error_handling import handle_interaction_error, handle_prefix_error
+from error_handling import handle_event_error, handle_interaction_error, handle_prefix_error
 from activity_server import ActivityServer
 
 load_dotenv()
@@ -146,6 +146,11 @@ class MyBot(commands.Bot):
             except (TypeError, ValueError):
                 continue
         return any(role.id in role_ids for role in getattr(user, "roles", []))
+
+    async def on_error(self, event_method: str, *args, **kwargs) -> None:
+        # discord.py calls this with the original event arguments while the
+        # listener exception is still active; the default handler loses that context.
+        handle_event_error(self, event_method, *args, **kwargs)
 
     async def close(self) -> None:
         await self.activity_server.close()
