@@ -969,6 +969,34 @@ MODULES: list[ModuleSpec] = [
         ],
     ),
     ModuleSpec(
+        key="steam_free",
+        label="Steam Free Games",
+        emoji="🎮",
+        description="Post verified Steam free-to-keep games and DLC promotions.",
+        settings=[
+            SettingSpec(
+                "enabled",
+                "Enable Steam free-game alerts",
+                "toggle",
+                default=False,
+                description="Opt in to posting free-to-keep Steam games and DLC in this server.",
+            ),
+            SettingSpec(
+                "channel",
+                "Steam alerts channel",
+                "channel",
+                description="Text channel where new Steam promotions are posted.",
+            ),
+            SettingSpec(
+                "country",
+                "Steam country code",
+                "text",
+                default="si",
+                description="Two-letter Steam region code used for local prices and store links (for example: si, de, us).",
+            ),
+        ],
+    ),
+    ModuleSpec(
         key="auto_responder",
         label="Auto Responders",
         emoji="💬",
