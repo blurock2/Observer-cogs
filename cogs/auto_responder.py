@@ -69,7 +69,7 @@ def _terms(value: str) -> list[str]:
     return list(dict.fromkeys(part.strip() for part in value.splitlines() if part.strip()))
 
 
-_WORD_RE = re.compile(r"[^\W_]+(?:['’][^\\W_]+)?", re.IGNORECASE)
+_WORD_RE = re.compile(r"[^\W_]+(?:['’][^\W_]+)?", re.IGNORECASE)
 _SENTENCE_RE = re.compile(r"(?<=[.!?;])\s+|\n+")
 _NEGATIONS = {"no", "not", "never", "neither", "nor", "dont", "don't", "doesnt", "doesn't", "didnt", "didn't", "isnt", "isn't", "arent", "aren't", "wasnt", "wasn't", "werent", "weren't", "cannot", "cant", "can't", "without"}
 
