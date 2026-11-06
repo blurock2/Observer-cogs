@@ -216,7 +216,7 @@ class ResponseDetailsModal(ErrorHandledModal):
         if not saved:
             await interaction.response.send_message("This server already has 30 auto responses.", ephemeral=True)
             return
-        await interaction.response.send_message("Auto response updated." if self.response_id is not None else "Auto response saved. It sends when at least two distinct triggers or variations match a message.", ephemeral=True)
+        await interaction.response.send_message("Auto response updated." if self.response_id is not None else "Auto response saved. It looks for at least two nearby keywords; variation words and minor typos are weaker fallback matches.", ephemeral=True)
 
 
 class TriggerWordsModal(ErrorHandledModal):
