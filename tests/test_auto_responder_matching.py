@@ -1,6 +1,6 @@
 import unittest
 
-from cogs.auto_responder import _response_match, _sentence_tokens
+from cogs.auto_responder import _next_allowed_at, _response_match, _sentence_tokens
 
 
 class AutoResponderMatchingTests(unittest.TestCase):
@@ -65,6 +65,68 @@ class AutoResponderMatchingTests(unittest.TestCase):
 
     def test_distant_terms_do_not_match(self):
         self.assertIsNone(self.match("Steam account status is fine and several unrelated words follow before the weather report says the coffee is finally free."))
+
+    def test_required_context_blocks_the_observer_bot_false_positive(self):
+        response = {
+            "triggers": "Observer\\nSafe\\nScam\\nSpyware\\nTrustworthy",
+            "sub_triggers": "Scammy\\nScam\\nBot\\nthis",
+            "required_groups": "safe, scam, scammy, spyware, trustworthy",
+        }
+        owners = {word.casefold(): 1 for word in (
+            "Observer", "Safe", "Scam", "Spyware", "Trustworthy",
+            "Scammy", "Bot", "this",
+        )}
+        self.assertIsNone(_response_match(
+            response, _sentence_tokens("I think someone set up a bot for Observer"), owners
+        ))
+
+    def test_required_context_allows_relevant_safety_question(self):
+        response = {
+            "triggers": "Observer\\nSafe\\nScam\\nSpyware\\nTrustworthy",
+            "sub_triggers": "Scammy\\nBot",
+            "required_groups": "safe, scam, scammy, spyware, trustworthy",
+        }
+        owners = {word.casefold(): 1 for word in (
+            "Observer", "Safe", "Scam", "Spyware", "Trustworthy", "Scammy", "Bot"
+        )}
+        self.assertIsNotNone(_response_match(
+            response, _sentence_tokens("Is the Observer bot safe?"), owners
+        ))
+
+    def test_each_required_group_must_match(self):
+        response = {
+            "triggers": "Observer\\nBot",
+            "sub_triggers": "",
+            "required_groups": "safe, trustworthy\\nscam, spyware",
+        }
+        owners = {"observer": 1, "bot": 1}
+        self.assertIsNone(_response_match(
+            response, _sentence_tokens("Is the Observer bot safe?"), owners
+        ))
+        self.assertIsNotNone(_response_match(
+            response, _sentence_tokens("Is the Observer bot safe or spyware?"), owners
+        ))
+
+    def test_comma_separated_context_terms_are_alternatives(self):
+        response = {
+            "triggers": "Observer\\nBot",
+            "sub_triggers": "",
+            "required_groups": "safe, trustworthy",
+        }
+        owners = {"observer": 1, "bot": 1}
+        self.assertIsNotNone(_response_match(
+            response, _sentence_tokens("Is the Observer bot trustworthy?"), owners
+        ))
+
+    def test_fuzzy_match_is_marked_uncertain_and_doubles_cooldown(self):
+        match = self.match("Steem has free.")
+        self.assertIsNotNone(match)
+        self.assertTrue(match[2])
+        self.assertEqual(_next_allowed_at(100.0, 60, True), 220.0)
+        self.assertEqual(_next_allowed_at(100.0, 60, False), 160.0)
+
+    def test_exact_match_keeps_normal_cooldown(self):
+        self.assertEqual(_next_allowed_at(100.0, 60, False), 160.0)
 
 
 if __name__ == "__main__":
