@@ -40,6 +40,7 @@ PURPLE_COLOR = discord.Color.from_rgb(155, 89, 182)
 XP_COOLDOWN_SECONDS = 15
 XP_REWARDS = [15, 20, 25, 30, 35, 40, 45, 50]
 XP_FLUSH_DELAY_SECONDS = 5
+XP_FLUSH_RETRY_ATTEMPTS = 3
 
 # Module key used by the /setup dashboard for this cog.
 MODULE_KEY = "leveling"
@@ -733,7 +734,30 @@ class Leveling(ObserverCog):
     async def _delayed_xp_flush(self) -> None:
         try:
             await asyncio.sleep(XP_FLUSH_DELAY_SECONDS)
-            await self._flush_pending_xp()
+            for attempt in range(XP_FLUSH_RETRY_ATTEMPTS):
+                try:
+                    await self._flush_pending_xp()
+                    return
+                except asyncio.CancelledError:
+                    raise
+                except sqlite3.OperationalError as exc:
+                    # SQLite's single-writer lock is transient. Keep the
+                    # pending batch intact and retry it without blocking the
+                    # event loop; do not retry unrelated database failures.
+                    message = str(exc).lower()
+                    if not any(token in message for token in ("locked", "busy")):
+                        raise
+                    if attempt + 1 >= XP_FLUSH_RETRY_ATTEMPTS:
+                        raise
+                    retry_delay = min(XP_FLUSH_DELAY_SECONDS, 0.25) * (attempt + 1)
+                    logger.warning(
+                        "SQLite is busy while flushing leveling XP; retrying "
+                        "(attempt %s/%s) in %.3fs",
+                        attempt + 1,
+                        XP_FLUSH_RETRY_ATTEMPTS,
+                        retry_delay,
+                    )
+                    await asyncio.sleep(retry_delay)
         except asyncio.CancelledError:
             raise
         except Exception:
