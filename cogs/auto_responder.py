@@ -219,7 +219,7 @@ def _response_match(
 
     # Reject explicitly negated terms within a short local scope.
     for term, (si, pos, fuzzy) in hits.items():
-        preceding = sentences[si][max(0, pos - 3):pos]
+        preceding = sentences[si][max(0, pos - 5):pos]
         if any(preceding[index:index + 2] == ["not", "only"] for index in range(len(preceding) - 1)):
             preceding = [word for word in preceding if word not in {"not", "only"}]
         if any(word in _NEGATIONS for word in preceding):
