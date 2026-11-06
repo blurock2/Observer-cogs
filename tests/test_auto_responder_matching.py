@@ -68,8 +68,8 @@ class AutoResponderMatchingTests(unittest.TestCase):
 
     def test_required_context_blocks_the_observer_bot_false_positive(self):
         response = {
-            "triggers": "Observer\\nSafe\\nScam\\nSpyware\\nTrustworthy",
-            "sub_triggers": "Scammy\\nScam\\nBot\\nthis",
+            "triggers": "Observer\nSafe\nScam\nSpyware\nTrustworthy",
+            "sub_triggers": "Scammy\nScam\nBot\nthis",
             "required_groups": "safe, scam, scammy, spyware, trustworthy",
         }
         owners = {word.casefold(): 1 for word in (
@@ -82,8 +82,8 @@ class AutoResponderMatchingTests(unittest.TestCase):
 
     def test_required_context_allows_relevant_safety_question(self):
         response = {
-            "triggers": "Observer\\nSafe\\nScam\\nSpyware\\nTrustworthy",
-            "sub_triggers": "Scammy\\nBot",
+            "triggers": "Observer\nSafe\nScam\nSpyware\nTrustworthy",
+            "sub_triggers": "Scammy\nBot",
             "required_groups": "safe, scam, scammy, spyware, trustworthy",
         }
         owners = {word.casefold(): 1 for word in (
@@ -95,9 +95,9 @@ class AutoResponderMatchingTests(unittest.TestCase):
 
     def test_each_required_group_must_match(self):
         response = {
-            "triggers": "Observer\\nBot",
+            "triggers": "Observer\nBot",
             "sub_triggers": "",
-            "required_groups": "safe, trustworthy\\nscam, spyware",
+            "required_groups": "safe, trustworthy\nscam, spyware",
         }
         owners = {"observer": 1, "bot": 1}
         self.assertIsNone(_response_match(
@@ -109,7 +109,7 @@ class AutoResponderMatchingTests(unittest.TestCase):
 
     def test_comma_separated_context_terms_are_alternatives(self):
         response = {
-            "triggers": "Observer\\nBot",
+            "triggers": "Observer\nBot",
             "sub_triggers": "",
             "required_groups": "safe, trustworthy",
         }
