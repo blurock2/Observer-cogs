@@ -131,9 +131,12 @@ def _response_match(response: dict[str, Any], sentences: list[list[str]], owners
         return None
 
     # Reject explicitly negated terms within a short local scope.
-    for term, (si, pos, fuzzy) in list(hits.items()):
-        if any(word in _NEGATIONS for word in sentences[si][max(0, pos - 3):pos]):
-            del hits[term]
+    for term, (si, pos, fuzzy) in hits.items():
+        preceding = sentences[si][max(0, pos - 3):pos]
+        if "not" in preceding and preceding[-2:] == ["not", "only"]:
+            preceding = [word for word in preceding if word != "not"]
+        if any(word in _NEGATIONS for word in preceding):
+            return None
     if len(hits) < 2:
         return None
 
