@@ -71,7 +71,7 @@ function renderCards() {
     const enabled = module.settings.find((setting) => setting.key === "enabled");
     const state = enabled ? (enabled.value ? "Enabled" : "Disabled") : "Configure options";
     const count = module.key === "auto_responder" ? `${module.responses?.length || 0} RESPONSES` : `${module.settings.length} SETTINGS`;
-    return `<article class="control-module" data-open-module="${module.key}" tabindex="0"><div class="module-card-top"><span class="module-emoji">${esc(moduleEmoji(module))}</span><span class="module-count">${count}</span></div><h2>${esc(module.label)}</h2><p>${esc(module.description)}</p><div class="module-card-actions">${enabled ? `<label class="web-toggle"><input id="${id}" type="checkbox" data-toggle-setting="${module.key}|enabled" ${enabled.value ? "checked" : ""}><span></span><b>${state}</b></label>` : `<span class="module-state">${state}</span>`}<button class="configure-module" data-config-module="${module.key}">Configure <span>&#8594;</span></button></div></article>`;
+    return `<article class="control-module" data-open-module="${module.key}" tabindex="0"><div class="module-card-top"><span class="module-emoji">${esc(moduleEmoji(module))}</span><span class="module-count">${count}</span></div><h2>${esc(module.label)}</h2><p>${esc(module.description)}</p><div class="module-card-actions">${enabled ? `<label class="web-toggle"><input type="checkbox" data-toggle-setting="${module.key}|enabled" ${enabled.value ? "checked" : ""}><span></span><b>${state}</b></label>` : `<span class="module-state">${state}</span>`}<button class="configure-module" data-config-module="${module.key}">Configure <span>&#8594;</span></button></div></article>`;
   }).join("") || `<p class="empty-settings">No features match that search.</p>`;
 }
 
@@ -96,7 +96,7 @@ function controlFor(module, setting) {
   const save = `<button class="save-setting" data-save-setting="${module.key}|${setting.key}">Save this setting</button>`;
   let field;
   if (setting.kind === "toggle") {
-    field = `<label class="web-toggle"><input type="checkbox" data-toggle-setting="${module.key}|${setting.key}" ${value ? "checked" : ""}><span></span><b>${value ? "On" : "Off"}</b></label><small class="setting-timing">Changes apply immediately</small>`;
+    field = `<label class="web-toggle"><input id="${id}" type="checkbox" data-toggle-setting="${module.key}|${setting.key}" ${value ? "checked" : ""}><span></span><b>${value ? "On" : "Off"}</b></label><small class="setting-timing">Changes apply immediately</small>`;
   } else if (setting.kind === "channel" || setting.kind === "role") {
     const isChannel = setting.kind === "channel";
     const options = isChannel ? panel.channels : panel.roles;
