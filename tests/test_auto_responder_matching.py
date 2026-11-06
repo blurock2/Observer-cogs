@@ -106,6 +106,20 @@ class AutoResponderMatchingTests(unittest.TestCase):
             response, _sentence_tokens("Is the Observer bot safe?"), owners
         ))
 
+    def test_context_group_can_supply_context_without_duplicate_trigger(self):
+        response = {
+            "triggers": "Observer",
+            "sub_triggers": "Bot",
+            "required_groups": "safe, scam, spyware, trustworthy",
+        }
+        owners = {"observer": 1, "bot": 1}
+        self.assertIsNone(_response_match(
+            response, _sentence_tokens("Someone set up a bot for Observer"), owners
+        ))
+        self.assertIsNotNone(_response_match(
+            response, _sentence_tokens("Is the Observer bot safe?"), owners
+        ))
+
     def test_each_required_group_must_match(self):
         response = {
             "triggers": "Observer\nBot",
