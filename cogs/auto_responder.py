@@ -69,7 +69,7 @@ def _terms(value: str) -> list[str]:
     return list(dict.fromkeys(part.strip() for part in value.splitlines() if part.strip()))
 
 
-_WORD_RE = re.compile(r"[a-z0-9]+(?:['’][a-z0-9]+)?", re.IGNORECASE)
+_WORD_RE = re.compile(r"[^\\W_]+(?:['’][^\\W_]+)?", re.IGNORECASE)
 _SENTENCE_RE = re.compile(r"(?<=[.!?;])\s+|\n+")
 _NEGATIONS = {"no", "not", "never", "neither", "nor", "dont", "don't", "doesnt", "doesn't", "didnt", "didn't", "isnt", "isn't", "arent", "aren't", "wasnt", "wasn't", "werent", "weren't", "cannot", "cant", "can't", "without"}
 
@@ -133,8 +133,8 @@ def _response_match(response: dict[str, Any], sentences: list[list[str]], owners
     # Reject explicitly negated terms within a short local scope.
     for term, (si, pos, fuzzy) in hits.items():
         preceding = sentences[si][max(0, pos - 3):pos]
-        if "not" in preceding and preceding[-2:] == ["not", "only"]:
-            preceding = [word for word in preceding if word != "not"]
+        if any(preceding[index:index + 2] == ["not", "only"] for index in range(len(preceding) - 1)):
+            preceding = [word for word in preceding if word not in {"not", "only"}]
         if any(word in _NEGATIONS for word in preceding):
             return None
     if len(hits) < 2:
