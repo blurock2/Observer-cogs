@@ -75,6 +75,21 @@ function renderCards() {
   }).join("") || `<p class="empty-settings">No features match that search.</p>`;
 }
 
+function settingHelpText(module, setting) {
+  if (setting.description?.trim()) return setting.description.trim();
+  const label = setting.label || setting.key.replaceAll("_", " ");
+  const moduleName = module.label || "this feature";
+  const kindHelp = {
+    toggle: "Turn this option on or off. Changes apply immediately.",
+    channel: "Choose the Discord channel where this feature should post messages or activity. Observer needs permission to view and send messages there.",
+    role: "Choose the Discord role this option applies to. Make sure Observer's role is high enough to assign it when required.",
+    integer: "Enter a whole-number value. Check the unit in the option name; values that are too high or too low may affect how often this feature runs.",
+    text: "Enter the text or value Observer should use for this option. Save your changes to apply them.",
+    ticket_panel: "Customize the ticket panel's wording and available reasons. Save the panel settings before sending the panel."
+  }[setting.kind] || "Configure how this option behaves for this server.";
+  return `${label} controls part of ${moduleName.toLowerCase()}. ${kindHelp}`;
+}
+
 function controlFor(module, setting) {
   const id = `setting-${module.key}-${setting.key}`;
   const value = setting.value;
@@ -108,7 +123,8 @@ function controlFor(module, setting) {
     field = `<div class="setting-control">${input}${save}</div><small class="setting-timing">Save this setting to apply your changes</small>`;
   }
   const warning = /experimental|permanently|ban automatically/i.test(`${setting.label} ${setting.description}`) ? " setting-warning" : "";
-  return `<section class="setting-row${warning}"><div class="setting-copy"><label for="${id}">${esc(setting.label)}</label>${setting.description ? `<small>${esc(setting.description)}</small>` : ""}</div><div class="setting-widget">${field}</div></section>`;
+  const help = settingHelpText(module, setting);
+  return `<section class="setting-row${warning}"><div class="setting-copy"><div class="setting-label-line"><label for="${id}">${esc(setting.label)}</label><span class="setting-help-wrap"><button class="setting-help" type="button" aria-label="Help: ${esc(setting.label)}" aria-describedby="${id}-help">?</button><span class="setting-help-popout" id="${id}-help" role="tooltip">${esc(help)}</span></span></div>${setting.description ? `<small>${esc(setting.description)}</small>` : ""}</div><div class="setting-widget">${field}</div></section>`;
 }
 
 function autoResponseEditor(module) {
@@ -135,7 +151,7 @@ function renderEditor(key, animate = true, force = false) {
     if (animate) requestAnimationFrame(() => editor.classList.add("is-open"));
     return;
   }
-  editor.innerHTML = `<div class="module-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="module-editor-title"><div class="editor-head"><div><div class="eyebrow">CONFIGURE FEATURE</div><h2 id="module-editor-title">${esc(moduleEmoji(module))} ${esc(module.label)}</h2><p>${esc(module.description)}</p></div><button id="close-module-editor" class="editor-close" aria-label="Close settings">&#215;</button></div>${module.key === "bot" ? `<a class="embed-tool-link" href="/embeds?guild_id=${encodeURIComponent(guildId)}">Open custom embed sender <span>&#8599;</span></a>` : ""}<div class="editor-enable">${enabled ? `<span>${esc(enabled.label)}</span><label class="web-toggle"><input type="checkbox" data-toggle-setting="${module.key}|enabled" ${enabled.value ? "checked" : ""}><span></span><b>${enabled.value ? "Enabled" : "Disabled"}</b></label>` : `<span>This feature has no master switch. Configure its options below.</span>`}</div><div class="pending-save-bar"><span>Unsaved edits stay here until you save them.</span><button class="save-setting" data-save-all disabled>Save changes</button></div><div class="settings-list">${module.settings.map((setting) => controlFor(module, setting)).join("") || `<p class="empty-settings">No web settings are defined for this feature yet.</p>`}</div></div>`;
+  editor.innerHTML = `<div class="module-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="module-editor-title"><div class="editor-head"><div><div class="eyebrow">CONFIGURE FEATURE</div><h2 id="module-editor-title">${esc(moduleEmoji(module))} ${esc(module.label)}</h2><p>${esc(module.description)}</p></div><button id="close-module-editor" class="editor-close" aria-label="Close settings">&#215;</button></div>${module.key === "bot" ? `<a class="embed-tool-link" href="/embeds?guild_id=${encodeURIComponent(guildId)}">Open custom embed sender <span>&#8599;</span></a>` : ""}<div class="editor-enable">${enabled ? `<div class="editor-enable-label"><span>${esc(enabled.label)}</span><span class="setting-help-wrap"><button class="setting-help" type="button" aria-label="Help: ${esc(enabled.label)}" aria-describedby="module-${module.key}-enabled-help">?</button><span class="setting-help-popout" id="module-${module.key}-enabled-help" role="tooltip">Turn this feature on or off for this server. When disabled, Observer will stop running this feature here. Other settings are kept so you can enable it again later.</span></span></div><label class="web-toggle"><input type="checkbox" data-toggle-setting="${module.key}|enabled" ${enabled.value ? "checked" : ""}><span></span><b>${enabled.value ? "Enabled" : "Disabled"}</b></label>` : `<span>This feature has no master switch. Configure its options below.</span>`}</div><div class="pending-save-bar"><span>Unsaved edits stay here until you save them.</span><button class="save-setting" data-save-all disabled>Save changes</button></div><div class="settings-list">${module.settings.map((setting) => controlFor(module, setting)).join("") || `<p class="empty-settings">No web settings are defined for this feature yet.</p>`}</div></div>`;
   document.body.classList.add("modal-open");
   if (animate) requestAnimationFrame(() => editor.classList.add("is-open"));
 }
