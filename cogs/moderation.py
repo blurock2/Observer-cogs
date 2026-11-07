@@ -1883,7 +1883,6 @@ class ModerationCog(ObserverCog):
         description="Remove a user's ban from the server.",
     )
     @app_commands.guild_only()
-    @app_commands.check(mod_perms_check)
     @app_commands.describe(
         user_id="ID of the banned user (copy their ID from a mention or case log).",
         reason="Reason for removing the ban.",
@@ -1897,26 +1896,33 @@ class ModerationCog(ObserverCog):
         if interaction.guild is None:
             return
 
+        # Defer before permission checks: the configured-role check reads
+        # guild configuration and can otherwise consume Discord's 3-second window.
+        await interaction.response.defer(ephemeral=True)
+
         if not isinstance(interaction.user, discord.Member):
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "Could not verify your server permissions.",
+                ephemeral=True,
+            )
+            return
+
+        if not is_bot_owner(interaction.user) and not await self._check_mod_perms(interaction):
+            await interaction.followup.send(
+                "You do not have permission to use this moderation command.",
                 ephemeral=True,
             )
             return
 
         id_match = re.fullmatch(r"<@!?(\d+)>|\s*(\d+)\s*", user_id)
         if id_match is None:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "Enter the user's numeric Discord ID or paste their mention.",
                 ephemeral=True,
             )
             return
         target_id = int(id_match.group(1) or id_match.group(2))
         target_label = f"User ID `{target_id}`"
-
-        # Acknowledge before any Discord API or database work. This gives the
-        # command a valid follow-up token even if fetching the ban is slow.
-        await interaction.response.defer(ephemeral=True)
         active_ban_case = None
         try:
             ban_entry = await interaction.guild.fetch_ban(
