@@ -1025,6 +1025,12 @@ class ModerationCog(ObserverCog):
         )
 
     async def cog_load(self) -> None:
+        recovered = self.appeals.recover_interrupted_reviews()
+        if recovered:
+            logger.warning(
+                "Recovered %s interrupted ban appeal review(s) after restart",
+                recovered,
+            )
         self.expire_moderation_cases.start()
 
     def cog_unload(self) -> None:
