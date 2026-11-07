@@ -801,10 +801,50 @@ class ModerationCog(ObserverCog):
             return
 
         if not self.appeals.claim_review(appeal["id"]):
-            await interaction.followup.send(
-                "This appeal is already being reviewed or has been decided.",
-                ephemeral=True,
-            )
+            if appeal["status"] in ("accepted", "rejected"):
+                # Repair stale controls if the process stopped after committing
+                # the decision but before editing the staff message.
+                try:
+                    final_color = (
+                        discord.Color.green()
+                        if appeal["status"] == "accepted"
+                        else discord.Color.red()
+                    )
+                    embed = (
+                        discord.Embed.from_dict(staff_message.embeds[0].to_dict())
+                        if staff_message.embeds
+                        else discord.Embed(title=f"Ban Appeal #{appeal['id']}")
+                    )
+                    embed.title = (
+                        f"Permanent Ban Appeal #{appeal['id']} · "
+                        f"{appeal['status'].title()}"
+                    )
+                    embed.color = final_color
+                    if not any(field.name == "Decision" for field in embed.fields):
+                        embed.add_field(
+                            name="Decision",
+                            value=f"Decision recorded: {appeal['status'].title()}",
+                            inline=False,
+                        )
+                    await staff_message.edit(
+                        embed=embed,
+                        view=None,
+                        allowed_mentions=discord.AllowedMentions.none(),
+                    )
+                except Exception:
+                    logger.exception(
+                        "Could not repair decided appeal message %s", appeal["id"]
+                    )
+                await interaction.followup.send(
+                    f"This appeal was already {appeal['status']}. "
+                    "I refreshed its staff controls.",
+                    ephemeral=True,
+                )
+            else:
+                await interaction.followup.send(
+                    "This appeal is already being reviewed. Try again shortly.",
+                    ephemeral=True,
+                )
             return
 
         committed = False
