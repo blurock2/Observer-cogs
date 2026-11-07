@@ -18,6 +18,7 @@ class ImageRecord:
     path: Path
     label: int
     group: str
+    fingerprint: str = ""
 
 
 def parse_label(value: str) -> int:
@@ -63,10 +64,9 @@ def load_manifest(manifest: str | Path, verify_images: bool = True) -> list[Imag
                         image.verify()
                 except (UnidentifiedImageError, OSError) as exc:
                     raise ValueError(f"Invalid image on CSV line {line}: {image_path}") from exc
+            fingerprint = sha256_file(image_path)
             supplied_group = (row.get("group_id") or "").strip()
-            # Hash grouping prevents identical files from leaking between splits.
-            group = supplied_group or sha256_file(image_path)
-            records.append(ImageRecord(image_path, label, group))
+            records.append(ImageRecord(image_path, label, supplied_group or fingerprint, fingerprint))
     if len(records) < 6:
         raise ValueError("At least 6 labelled images are required for train/validation/test splits")
     if {record.label for record in records} != {0, 1}:
@@ -76,21 +76,43 @@ def load_manifest(manifest: str | Path, verify_images: bool = True) -> list[Imag
 
 def split_records(records: list[ImageRecord], seed: int = 42,
                   test_fraction: float = 0.15, validation_fraction: float = 0.15):
-    """Deterministic group split; never places one group in multiple partitions."""
+    """Deterministic split; website groups and byte-identical images cannot leak."""
     if not 0 < test_fraction < 0.5 or not 0 < validation_fraction < 0.5:
         raise ValueError("Split fractions must be between 0 and 0.5")
-    groups: dict[str, list[ImageRecord]] = {}
-    for record in records:
-        groups.setdefault(record.group, []).append(record)
-    if len(groups) < 3:
-        raise ValueError("At least 3 distinct groups are required for leakage-safe splitting")
 
-    # Shuffle groups within each class and allocate groups independently.
+    # Union records sharing either a declared website/sample group or file hash.
+    parent = list(range(len(records)))
+
+    def find(index):
+        while parent[index] != index:
+            parent[index] = parent[parent[index]]
+            index = parent[index]
+        return index
+
+    def union(left, right):
+        left_root, right_root = find(left), find(right)
+        if left_root != right_root:
+            parent[right_root] = left_root
+
+    seen: dict[tuple[str, str], int] = {}
+    for index, record in enumerate(records):
+        keys = [("group", record.group)]
+        if record.fingerprint:
+            keys.append(("sha256", record.fingerprint))
+        for key in keys:
+            if key in seen:
+                union(index, seen[key])
+            else:
+                seen[key] = index
+
+    groups: dict[str, list[ImageRecord]] = {}
+    for index, record in enumerate(records):
+        groups.setdefault(str(find(index)), []).append(record)
     by_label: dict[int, list[str]] = {0: [], 1: []}
     for group, items in groups.items():
         labels = {item.label for item in items}
         if len(labels) != 1:
-            raise ValueError(f"Group {group!r} contains conflicting labels")
+            raise ValueError(f"A website/duplicate-image group has conflicting labels: {group}")
         by_label[next(iter(labels))].append(group)
 
     rng = random.Random(seed)
@@ -99,7 +121,7 @@ def split_records(records: list[ImageRecord], seed: int = 42,
         rng.shuffle(label_groups)
         if len(label_groups) < 3:
             raise ValueError(
-                f"Class {label} needs at least 3 distinct groups; found {len(label_groups)}"
+                f"Class {label} needs at least 3 independent groups; found {len(label_groups)}"
             )
         test_n = max(1, round(len(label_groups) * test_fraction))
         val_n = max(1, round(len(label_groups) * validation_fraction))
