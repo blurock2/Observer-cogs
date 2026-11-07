@@ -99,3 +99,131 @@ def test_level_thresholds_are_exact(level):
 @pytest.mark.parametrize("xp", [-100, -1, 0, 1, 99])
 def test_xp_below_first_level(xp):
     assert _level_from_xp(xp) == 0
+
+
+def test_interrupted_ban_appeal_review_can_be_retried(tmp_path):
+    store = BanAppealStore(str(tmp_path / "appeals.db"))
+    appeal_id, created = store.create(
+        guild_id=1,
+        ban_case_id=2,
+        appeal_case_id=3,
+        target_id=4,
+        reason="Test appeal",
+        evidence_filenames="",
+        staff_channel_id=5,
+    )
+    assert created is True
+    assert store.claim_review(appeal_id) is True
+    assert store.get(appeal_id)["status"] == "reviewing"
+
+    store.release_review(appeal_id)
+
+    assert store.get(appeal_id)["status"] == "pending"
+    assert store.claim_review(appeal_id) is True
+
+
+def test_active_ban_appeal_review_is_not_recovered_during_cog_reload(tmp_path):
+    store = BanAppealStore(str(tmp_path / "appeals.db"))
+    appeal_id, _ = store.create(
+        guild_id=1,
+        ban_case_id=2,
+        appeal_case_id=3,
+        target_id=4,
+        reason="Test appeal",
+        evidence_filenames="",
+        staff_channel_id=5,
+    )
+    assert store.claim_review(appeal_id) is True
+
+    assert store.recover_interrupted_reviews() == 0
+    assert store.get(appeal_id)["status"] == "reviewing"
+    assert store.claim_review(appeal_id) is False
+
+
+def test_bot_restart_recovers_stale_ban_appeal_review(tmp_path):
+    path = str(tmp_path / "appeals.db")
+    store = BanAppealStore(path)
+    appeal_id, _ = store.create(
+        guild_id=1,
+        ban_case_id=2,
+        appeal_case_id=3,
+        target_id=4,
+        reason="Test appeal",
+        evidence_filenames="",
+        staff_channel_id=5,
+    )
+    assert store.claim_review(appeal_id) is True
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "UPDATE moderation_ban_appeals "
+            "SET review_started_at = datetime('now', '-6 minutes') WHERE id = ?",
+            (appeal_id,),
+        )
+
+    assert store.recover_interrupted_reviews() == 1
+    assert store.get(appeal_id)["status"] == "pending"
+    assert store.claim_review(appeal_id) is True
+
+def test_stale_review_lease_can_be_reclaimed_without_restart(tmp_path):
+    path = str(tmp_path / "appeals.db")
+    store = BanAppealStore(path)
+    appeal_id, _ = store.create(
+        guild_id=1,
+        ban_case_id=2,
+        appeal_case_id=3,
+        target_id=4,
+        reason="Test appeal",
+        evidence_filenames="",
+        staff_channel_id=5,
+    )
+    assert store.claim_review(appeal_id) is True
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "UPDATE moderation_ban_appeals "
+            "SET review_started_at = datetime('now', '-6 minutes') WHERE id = ?",
+            (appeal_id,),
+        )
+
+    assert store.claim_review(appeal_id) is True
+    assert store.claim_review(appeal_id) is False
+    assert store.get(appeal_id)["status"] == "reviewing"
+
+
+def test_existing_ban_appeal_database_migrates_review_lease_column(tmp_path):
+    path = str(tmp_path / "appeals.db")
+    BanAppealStore(path)
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "ALTER TABLE moderation_ban_appeals DROP COLUMN review_started_at"
+        )
+
+    migrated = BanAppealStore(path)
+    with migrated._connect() as connection:
+        columns = {
+            row[1]
+            for row in connection.execute(
+                "PRAGMA table_info(moderation_ban_appeals)"
+            ).fetchall()
+        }
+    assert "review_started_at" in columns
+
+
+def test_final_decision_clears_review_lease_and_cannot_be_reclaimed(tmp_path):
+    store = BanAppealStore(str(tmp_path / "appeals.db"))
+    appeal_id, _ = store.create(
+        guild_id=1,
+        ban_case_id=2,
+        appeal_case_id=3,
+        target_id=4,
+        reason="Test appeal",
+        evidence_filenames="",
+        staff_channel_id=5,
+    )
+    assert store.claim_review(appeal_id) is True
+
+    store.set_status(appeal_id, "accepted", reviewer_id=99)
+
+    appeal = store.get(appeal_id)
+    assert appeal["status"] == "accepted"
+    assert appeal["review_started_at"] is None
+    assert store.claim_review(appeal_id) is False

@@ -889,6 +889,7 @@ class BanAppealStore:
                     submitted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     reviewed_by INTEGER,
                     reviewed_at TEXT,
+                    review_started_at TEXT,
                     controls_disabled_at TEXT,
                     controls_reenabled_at TEXT,
                     UNIQUE (guild_id, ban_case_id)
@@ -901,7 +902,11 @@ class BanAppealStore:
                     "PRAGMA table_info(moderation_ban_appeals)"
                 ).fetchall()
             }
-            for column in ("controls_disabled_at", "controls_reenabled_at"):
+            for column in (
+                "review_started_at",
+                "controls_disabled_at",
+                "controls_reenabled_at",
+            ):
                 if column not in columns:
                     connection.execute(
                         f"ALTER TABLE moderation_ban_appeals ADD COLUMN {column} TEXT"
@@ -1018,8 +1023,8 @@ class BanAppealStore:
                 "UPDATE moderation_ban_appeals SET appeal_case_id = ?, reason = ?, "
                 "evidence_filenames = ?, status = 'pending', staff_channel_id = ?, "
                 "staff_message_id = NULL, submitted_at = CURRENT_TIMESTAMP, "
-                "reviewed_by = NULL, reviewed_at = NULL, controls_disabled_at = NULL, "
-                "controls_reenabled_at = NULL "
+                "reviewed_by = NULL, reviewed_at = NULL, review_started_at = NULL, "
+                "controls_disabled_at = NULL, controls_reenabled_at = NULL "
                 "WHERE id = ? AND status = 'rejected' AND reviewed_at IS NOT NULL "
                 "AND datetime(reviewed_at) <= datetime('now', '-7 days')",
                 (
@@ -1033,13 +1038,38 @@ class BanAppealStore:
             return cursor.rowcount == 1
 
     def claim_review(self, appeal_id: int) -> bool:
+        """Claim a pending appeal, or reclaim one abandoned for at least five minutes."""
         with self._connect() as connection:
             cursor = connection.execute(
-                "UPDATE moderation_ban_appeals SET status = 'reviewing' "
-                "WHERE id = ? AND status = 'pending'",
+                "UPDATE moderation_ban_appeals SET status = 'reviewing', "
+                "review_started_at = CURRENT_TIMESTAMP "
+                "WHERE id = ? AND (status = 'pending' OR (status = 'reviewing' "
+                "AND (review_started_at IS NULL OR "
+                "datetime(review_started_at) <= datetime('now', '-5 minutes'))))",
                 (appeal_id,),
             )
             return cursor.rowcount == 1
+
+    def recover_interrupted_reviews(self) -> int:
+        """Reset review claims that are stale or predate the review lease column."""
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "UPDATE moderation_ban_appeals SET status = 'pending', "
+                "review_started_at = NULL WHERE status = 'reviewing' AND "
+                "(review_started_at IS NULL OR "
+                "datetime(review_started_at) <= datetime('now', '-5 minutes'))"
+            )
+            return cursor.rowcount
+
+    def release_review(self, appeal_id: int) -> None:
+        """Return an interrupted review to pending when no decision was committed."""
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE moderation_ban_appeals SET status = 'pending', "
+                "review_started_at = NULL "
+                "WHERE id = ? AND status = 'reviewing'",
+                (appeal_id,),
+            )
 
     def set_status(
         self,
@@ -1053,7 +1083,8 @@ class BanAppealStore:
                 "UPDATE moderation_ban_appeals SET status = ?, "
                 "reviewed_by = CASE WHEN ? = 'pending' THEN NULL ELSE ? END, "
                 "reviewed_at = CASE WHEN ? = 'pending' THEN NULL "
-                "ELSE CURRENT_TIMESTAMP END, controls_disabled_at = NULL, "
+                "ELSE CURRENT_TIMESTAMP END, review_started_at = NULL, "
+                "controls_disabled_at = NULL, "
                 "controls_reenabled_at = NULL WHERE id = ?",
                 (status, status, reviewer_id, status, appeal_id),
             )
