@@ -1,0 +1,31 @@
+name: Ban appeal lifecycle regression
+
+on:
+  pull_request:
+    paths:
+      - 'cogs/moderation.py'
+      - 'database.py'
+      - 'tests/test_ban_appeal_lifecycle.py'
+      - 'tests/test_efficiency_refactor.py'
+      - '.github/workflows/ban-appeal-regression.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ban-appeal-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install test dependencies
+        run: python -m pip install 'discord.py>=2.7,<3' 'python-dotenv' 'Pillow' 'pytest>=8' 'pytest-asyncio'
+      - name: Compile changed modules
+        run: python -m compileall -q cogs/moderation.py database.py
+      - name: Run ban appeal lifecycle and database regressions
+        run: python -m pytest -q tests/test_ban_appeal_lifecycle.py tests/test_efficiency_refactor.py
