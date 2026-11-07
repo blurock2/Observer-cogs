@@ -244,7 +244,7 @@ class Autoroles(commands.GroupCog, group_name="autorole", group_description="Con
 		"""Post the configured verification message with the persistent Verify button."""
 		errors = self.validation_errors(guild)
 		if errors:
-			raise ValueError("\\n".join(errors))
+			raise ValueError("\n".join(errors))
 		channel_id = self.store.get(guild.id, "verification", "channel")
 		channel = guild.get_channel(int(channel_id)) if channel_id else fallback_channel
 		if not isinstance(channel, discord.TextChannel):
@@ -267,7 +267,7 @@ class Autoroles(commands.GroupCog, group_name="autorole", group_description="Con
 			return
 		errors = self.validation_errors(interaction.guild)
 		if errors:
-			await interaction.response.send_message("\\n".join(errors), ephemeral=True)
+			await interaction.response.send_message("\n".join(errors), ephemeral=True)
 			return
 		await interaction.response.defer(ephemeral=True)
 		channel = await self.post_verification_panel(interaction.guild, fallback_channel=interaction.channel)
