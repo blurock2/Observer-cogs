@@ -953,7 +953,7 @@ class ModerationCog(ObserverCog):
             dm_content = outcome
             if decision_message:
                 dm_content += (
-                    "\\n\\n**Message from the moderation team:**\\n"
+                    "\n\n**Message from the moderation team:**\n"
                     + decision_message
                 )
             try:
