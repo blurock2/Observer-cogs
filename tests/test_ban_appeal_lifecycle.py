@@ -52,10 +52,11 @@ def _review_fixture(*, target=None, decision="accepted"):
     interaction = SimpleNamespace(
         guild=guild,
         user=moderator,
-        response=SimpleNamespace(defer=AsyncMock()),
+        response=SimpleNamespace(defer=AsyncMock(), send_message=AsyncMock()),
         followup=SimpleNamespace(send=AsyncMock()),
     )
     cog = object.__new__(ModerationCog)
+    interaction.client = SimpleNamespace(get_cog=Mock(return_value=cog))
     cog.bot = SimpleNamespace(
         get_user=Mock(return_value=target),
         fetch_user=AsyncMock(return_value=target),
