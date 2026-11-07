@@ -987,6 +987,8 @@ class ModerationCog(ObserverCog):
         try:
             if await self._update_ban_appeal_dm(ban_case, final_status):
                 self.appeals.mark_controls_disabled(appeal["id"])
+            else:
+                post_commit_warning = True
         except Exception:
             post_commit_warning = True
             logger.exception(
@@ -1025,7 +1027,7 @@ class ModerationCog(ObserverCog):
         followup = f"Appeal #{appeal['id']} {final_status}."
         if delivery_warning:
             followup += " I couldn't DM the user; their DMs may be closed or unavailable."
-        elif post_commit_warning:
+        if post_commit_warning:
             followup += " Some secondary logging or UI updates failed; check the bot log."
         await interaction.followup.send(followup, ephemeral=True)
 
