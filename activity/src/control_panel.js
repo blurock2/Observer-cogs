@@ -113,6 +113,9 @@ function controlFor(module, setting) {
   } else if (setting.kind === "ticket_panel") {
     const panelSettings = value || {};
     field = `<div class="ticket-panel-fields"><label>Panel title<input id="${id}" data-ticket-field="panel_title" maxlength="256" value="${esc(panelSettings.panel_title || "")}"></label><label>Panel description<textarea data-ticket-field="panel_description" maxlength="2048">${esc(panelSettings.panel_description || "")}</textarea></label><label>Panel footer<textarea data-ticket-field="panel_footer" maxlength="2048">${esc(panelSettings.panel_footer || "")}</textarea></label><label>Ticket reasons <small>One per line; up to 24.</small><textarea data-ticket-field="reason_options">${esc((panelSettings.reason_options || []).join("\n"))}</textarea></label><div class="ticket-panel-actions"><button class="save-setting" data-save-ticket="${module.key}|${setting.key}">Save panel settings</button><button class="save-setting" data-send-ticket-panel="${module.key}|${setting.key}">Save &amp; send panel to channel</button></div></div>`;
+  } else if (module.key === "verification" && setting.key === "message") {
+    const text = value == null ? "" : String(value);
+    field = `<div class="setting-control verification-message-control"><textarea id="${id}" maxlength="4000" data-setting-value="verification|message">${esc(text)}</textarea><div class="verification-message-actions">${save}<button class="save-setting" type="button" data-send-verification-panel>Save &amp; send verification message</button></div></div><small class="setting-timing">Save the text, then send it with the Verify button to the selected verification channel.</small>`;
   } else {
     const text = value == null ? "" : String(value);
     const input = setting.kind === "integer"
@@ -331,6 +334,26 @@ function render() {
       const [moduleKey, key] = ticket.dataset.saveTicket.split("|");
       const value = readTicketPanelFields();
       try { await save(moduleKey, key, value); } catch (error) { showError(error); }
+      return;
+    }
+    const sendVerificationPanel = event.target.closest("[data-send-verification-panel]");
+    if (sendVerificationPanel) {
+      const messageField = document.querySelector('[data-setting-value="verification|message"]');
+      if (!messageField) return;
+      sendVerificationPanel.disabled = true;
+      try {
+        await save("verification", "message", messageField.value);
+        const result = await api(`/api/control-panel/${encodeURIComponent(guildId)}/verification-panel`, { method: "POST" });
+        const notice = document.querySelector("#save-notice");
+        notice.textContent = `Verification message sent to #${result.channel_name}`;
+        notice.classList.add("is-visible");
+        setTimeout(() => notice.classList.remove("is-visible"), 2600);
+      } catch (error) {
+        showError(error);
+      } finally {
+        const currentButton = document.querySelector("[data-send-verification-panel]");
+        if (currentButton) currentButton.disabled = false;
+      }
       return;
     }
     const sendTicketPanel = event.target.closest("[data-send-ticket-panel]");
