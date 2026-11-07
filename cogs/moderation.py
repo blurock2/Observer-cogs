@@ -248,7 +248,7 @@ class PermanentBanDMView(ErrorHandledView):
         await self.cog.open_ban_appeal(interaction)
 
 
-class BanAppealReviewView(discord.ui.View):
+class BanAppealReviewView(ErrorHandledView):
     """Persistent staff controls for an appeal submitted in a DM."""
 
     def __init__(self, cog: ModerationCog):
@@ -700,9 +700,12 @@ class ModerationCog(ObserverCog):
         interaction: discord.Interaction,
         decision: str,
     ) -> None:
+        # Acknowledge immediately; Discord expires unacknowledged interactions
+        # after a few seconds, while unbanning and message edits can take longer.
+        await interaction.response.defer(ephemeral=True)
         guild = interaction.guild
         if guild is None or interaction.message is None:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "Appeals can only be reviewed in the configured server channel.",
                 ephemeral=True,
             )
@@ -715,18 +718,18 @@ class ModerationCog(ObserverCog):
         if not allowed and isinstance(member, discord.Member):
             allowed = await self._check_mod_perms(interaction)
         if not allowed:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "Only server moderators can review ban appeals.", ephemeral=True
             )
             return
         appeal = self.appeals.get_by_staff_message(interaction.message.id)
         if appeal is None or appeal["guild_id"] != guild.id:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "This appeal could not be found.", ephemeral=True
             )
             return
         if not self.appeals.claim_review(appeal["id"]):
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "This appeal has already been reviewed.", ephemeral=True
             )
             return
@@ -753,7 +756,7 @@ class ModerationCog(ObserverCog):
                 pass
             except (discord.Forbidden, discord.HTTPException):
                 self.appeals.set_status(appeal["id"], "pending")
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     "The appeal is still pending because I couldn't unban the user.",
                     ephemeral=True,
                 )
@@ -826,7 +829,7 @@ class ModerationCog(ObserverCog):
         self.cases.set_case_status(appeal["appeal_case_id"], appeal_case_status)
         if await self._update_ban_appeal_dm(ban_case, decision):
             self.appeals.mark_controls_disabled(appeal["id"])
-        await interaction.response.send_message(
+        await interaction.followup.send(
             f"Appeal #{appeal['id']} {decision}.", ephemeral=True
         )
         try:
