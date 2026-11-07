@@ -88,10 +88,17 @@ async def test_accept_defers_before_network_io_unbans_and_sends_custom_dm():
         sequence.append("defer")
 
     async def fetch_ban(_):
-        assert sequence == ["defer"]
+        assert sequence == ["defer", "fetch_staff_message"]
         sequence.append("fetch_ban")
         return SimpleNamespace(user=target)
 
+    async def fetch_staff_message(_):
+        assert sequence == ["defer"]
+        sequence.append("fetch_staff_message")
+        return staff_message
+
+    channel = interaction.guild.get_channel.return_value
+    channel.fetch_message.side_effect = fetch_staff_message
     interaction.response.defer.side_effect = defer
     interaction.guild.fetch_ban.side_effect = fetch_ban
 
@@ -99,7 +106,7 @@ async def test_accept_defers_before_network_io_unbans_and_sends_custom_dm():
         interaction, "accepted", 900, "Your appeal was reviewed."
     )
 
-    assert sequence == ["defer", "fetch_ban"]
+    assert sequence == ["defer", "fetch_staff_message", "fetch_ban"]
     interaction.response.defer.assert_awaited_once_with(ephemeral=True)
     interaction.guild.unban.assert_awaited_once()
     cog.appeals.set_status.assert_called_once_with(
@@ -292,3 +299,99 @@ async def test_decision_modal_passes_optional_message_to_review():
         900,
         "Please appeal again with evidence.",
     )
+
+@pytest.mark.asyncio
+async def test_committed_decision_repairs_stale_staff_controls_on_duplicate_click():
+    cog, interaction, target, staff_message, appeal, _ = _review_fixture()
+    appeal["status"] = "accepted"
+    cog.appeals.claim_review.return_value = False
+
+    await cog.review_ban_appeal(interaction, "accepted", 900, "")
+
+    interaction.guild.unban.assert_not_awaited()
+    target.send.assert_not_awaited()
+    assert staff_message.edit.await_count == 1
+    assert staff_message.edit.await_args.kwargs["view"] is None
+    assert "already accepted" in interaction.followup.send.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_missing_target_dm_does_not_prevent_rejection_record_or_ui_update():
+    cog, interaction, _, staff_message, appeal, _ = _review_fixture()
+    cog.bot.get_user.return_value = None
+    cog.bot.fetch_user.side_effect = discord.NotFound(
+        response=Mock(status=404, reason="Not Found"), message="unknown user"
+    )
+
+    await cog.review_ban_appeal(interaction, "rejected", 900, "Decision note")
+
+    cog.appeals.set_status.assert_called_once_with(
+        appeal["id"], "rejected", reviewer_id=interaction.user.id
+    )
+    assert staff_message.edit.await_count == 1
+    assert "couldn't DM" in interaction.followup.send.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_unavailable_staff_channel_does_not_claim_appeal():
+    cog, interaction, _, _, _, _ = _review_fixture()
+    interaction.guild.get_channel.return_value = None
+    interaction.guild.fetch_channel.side_effect = discord.Forbidden(
+        response=Mock(status=403, reason="Forbidden"), message="forbidden"
+    )
+
+    await cog.review_ban_appeal(interaction, "accepted", 900, "")
+
+    cog.appeals.claim_review.assert_not_called()
+    interaction.guild.unban.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_case_database_failure_after_decision_does_not_leave_stale_controls():
+    cog, interaction, target, staff_message, appeal, _ = _review_fixture()
+    cog.cases.set_case_status.side_effect = RuntimeError("simulated case DB failure")
+
+    await cog.review_ban_appeal(interaction, "rejected", 900, "")
+
+    cog.appeals.set_status.assert_called_once_with(
+        appeal["id"], "rejected", reviewer_id=interaction.user.id
+    )
+    target.send.assert_awaited_once()
+    assert staff_message.edit.await_count == 1
+    assert "secondary logging or UI updates failed" in interaction.followup.send.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_decision_dm_disables_everyone_mentions_and_stays_under_limit():
+    cog, interaction, target, _, _, _ = _review_fixture()
+    note = "@everyone " + ("reviewed " * 170)
+
+    await cog.review_ban_appeal(interaction, "rejected", 900, note)
+
+    content = target.send.await_args.args[0]
+    mentions = target.send.await_args.kwargs["allowed_mentions"]
+    assert len(content) <= 1950
+    assert mentions.everyone is False
+    assert mentions.users is False
+    assert mentions.roles is False
+
+
+@pytest.mark.asyncio
+async def test_accept_and_reject_buttons_open_the_correct_decision_modal():
+    cog, interaction, *_ = _review_fixture()
+    interaction.message = SimpleNamespace(id=900)
+    interaction.response.send_modal = AsyncMock()
+    view = BanAppealReviewView(cog)
+
+    await view.accept(interaction)
+    accepted_modal = interaction.response.send_modal.await_args.args[0]
+    assert isinstance(accepted_modal, BanAppealDecisionModal)
+    assert accepted_modal.decision == "accepted"
+    assert accepted_modal.staff_message_id == 900
+
+    interaction.response.send_modal.reset_mock()
+    await view.reject(interaction)
+    rejected_modal = interaction.response.send_modal.await_args.args[0]
+    assert isinstance(rejected_modal, BanAppealDecisionModal)
+    assert rejected_modal.decision == "rejected"
+    assert rejected_modal.staff_message_id == 900
