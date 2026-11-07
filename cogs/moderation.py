@@ -963,6 +963,7 @@ class ModerationCog(ObserverCog):
 
         # DM delivery is deliberately best-effort: a closed DM must never undo
         # an accepted/rejected decision or leave the review lock held.
+        delivery_warning = target is None
         if target is not None:
             dm_content = outcome
             if decision_message:
@@ -976,6 +977,7 @@ class ModerationCog(ObserverCog):
                     allowed_mentions=discord.AllowedMentions.none(),
                 )
             except (discord.Forbidden, discord.HTTPException):
+                delivery_warning = True
                 logger.info(
                     "Could not DM appeal decision to user %s (appeal %s)",
                     appeal["target_id"],
@@ -986,6 +988,7 @@ class ModerationCog(ObserverCog):
             if await self._update_ban_appeal_dm(ban_case, final_status):
                 self.appeals.mark_controls_disabled(appeal["id"])
         except Exception:
+            post_commit_warning = True
             logger.exception(
                 "Could not update original ban DM for appeal %s", appeal["id"]
             )
@@ -1014,15 +1017,17 @@ class ModerationCog(ObserverCog):
                 allowed_mentions=discord.AllowedMentions.none(),
             )
         except discord.HTTPException:
+            post_commit_warning = True
             logger.exception(
                 "Could not update staff message for appeal %s", appeal["id"]
             )
 
-        await interaction.followup.send(
-            f"Appeal #{appeal['id']} {final_status}."
-            + (" Some secondary logging or notification work failed; check the bot log." if post_commit_warning else ""),
-            ephemeral=True,
-        )
+        followup = f"Appeal #{appeal['id']} {final_status}."
+        if delivery_warning:
+            followup += " I couldn't DM the user; their DMs may be closed or unavailable."
+        elif post_commit_warning:
+            followup += " Some secondary logging or UI updates failed; check the bot log."
+        await interaction.followup.send(followup, ephemeral=True)
 
     async def cog_load(self) -> None:
         recovered = self.appeals.recover_interrupted_reviews()
