@@ -808,6 +808,7 @@ class ModerationCog(ObserverCog):
             return
 
         committed = False
+        post_commit_warning = False
         try:
             ban_case = self.cases.get_case(appeal["ban_case_id"])
             target = self.bot.get_user(appeal["target_id"])
@@ -919,6 +920,7 @@ class ModerationCog(ObserverCog):
             logger.exception(
                 "Post-decision Discord API failure for appeal %s", appeal["id"]
             )
+            post_commit_warning = True
             outcome = (
                 f"Your permanent ban from {guild.name} was appealed successfully. "
                 "The ban has been removed."
@@ -933,19 +935,31 @@ class ModerationCog(ObserverCog):
             )
             final_status = decision
         except Exception:
+            logger.exception("Unexpected error while reviewing appeal %s", appeal["id"])
             if not committed:
                 self.appeals.release_review(appeal["id"])
-            logger.exception("Unexpected error while reviewing appeal %s", appeal["id"])
-            await interaction.followup.send(
-                "The review encountered an internal error. "
-                + (
-                    "The decision was already committed; check the appeal record."
-                    if committed
-                    else "The appeal was returned to pending so it can be retried."
-                ),
-                ephemeral=True,
+                await interaction.followup.send(
+                    "The review encountered an internal error. "
+                    "The appeal was returned to pending so it can be retried.",
+                    ephemeral=True,
+                )
+                return
+            # The unban/decision is already committed. Continue with the user
+            # notification and staff-message update instead of leaving stale controls.
+            post_commit_warning = True
+            outcome = (
+                f"Your permanent ban from {guild.name} was appealed successfully. "
+                "The ban has been removed."
+                if decision == "accepted"
+                else f"Your appeal for the ban from {guild.name} was declined. "
+                "The ban remains active."
             )
-            return
+            color = (
+                discord.Color.green()
+                if decision == "accepted"
+                else discord.Color.red()
+            )
+            final_status = decision
 
         # DM delivery is deliberately best-effort: a closed DM must never undo
         # an accepted/rejected decision or leave the review lock held.
@@ -971,7 +985,7 @@ class ModerationCog(ObserverCog):
         try:
             if await self._update_ban_appeal_dm(ban_case, final_status):
                 self.appeals.mark_controls_disabled(appeal["id"])
-        except (discord.Forbidden, discord.HTTPException):
+        except Exception:
             logger.exception(
                 "Could not update original ban DM for appeal %s", appeal["id"]
             )
@@ -1005,7 +1019,8 @@ class ModerationCog(ObserverCog):
             )
 
         await interaction.followup.send(
-            f"Appeal #{appeal['id']} {final_status}.",
+            f"Appeal #{appeal['id']} {final_status}."
+            + (" Some secondary logging or notification work failed; check the bot log." if post_commit_warning else ""),
             ephemeral=True,
         )
 
