@@ -1907,7 +1907,10 @@ class ModerationCog(ObserverCog):
             )
             return
 
-        if not is_bot_owner(interaction.user) and not await self._check_mod_perms(interaction):
+        if (
+            not is_bot_owner(interaction.user)
+            and not await self._check_mod_perms(interaction)
+        ):
             await interaction.followup.send(
                 "You do not have permission to use this moderation command.",
                 ephemeral=True,
