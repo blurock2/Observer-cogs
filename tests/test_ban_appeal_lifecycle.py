@@ -396,3 +396,32 @@ async def test_accept_and_reject_buttons_open_the_correct_decision_modal():
     assert isinstance(rejected_modal, BanAppealDecisionModal)
     assert rejected_modal.decision == "rejected"
     assert rejected_modal.staff_message_id == 900
+
+
+@pytest.mark.asyncio
+async def test_unban_not_found_uses_target_id_without_unbound_user():
+    cog, interaction, *_ = _review_fixture()
+    sequence = []
+
+    async def defer(*, ephemeral=False):
+        sequence.append("defer")
+
+    async def fetch_ban(_):
+        assert sequence == ["defer"]
+        sequence.append("fetch_ban")
+        raise discord.NotFound(
+            response=Mock(status=404, reason="Not Found"), message="Unknown Ban"
+        )
+
+    interaction.response.defer.side_effect = defer
+    interaction.guild.fetch_ban.side_effect = fetch_ban
+
+    await ModerationCog.unban.callback(cog, interaction, "805687087784394773", None)
+
+    assert sequence == ["defer", "fetch_ban"]
+    interaction.response.defer.assert_awaited_once_with(ephemeral=True)
+    interaction.followup.send.assert_awaited_once()
+    response = interaction.followup.send.await_args.args[0]
+    assert "805687087784394773" in response
+    assert "not banned" in response
+    cog.actions.create.assert_not_called()
