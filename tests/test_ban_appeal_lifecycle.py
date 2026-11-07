@@ -21,6 +21,7 @@ def _review_fixture(*, target=None, decision="accepted"):
         "ban_case_id": 300,
         "appeal_case_id": 400,
         "staff_channel_id": 500,
+        "status": "pending",
     }
     ban_case = {
         "id": 300,
