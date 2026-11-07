@@ -1912,7 +1912,10 @@ class ModerationCog(ObserverCog):
             )
             return
         target_id = int(id_match.group(1) or id_match.group(2))
+        target_label = f"User ID `{target_id}`"
 
+        # Acknowledge before any Discord API or database work. This gives the
+        # command a valid follow-up token even if fetching the ban is slow.
         await interaction.response.defer(ephemeral=True)
         active_ban_case = None
         try:
@@ -1920,6 +1923,7 @@ class ModerationCog(ObserverCog):
                 discord.Object(id=target_id)
             )
             user = ban_entry.user
+            target_label = f"`{user}`"
             active_ban_case = self.cases.find_active_ban(
                 interaction.guild.id,
                 user.id,
@@ -1927,7 +1931,7 @@ class ModerationCog(ObserverCog):
             await interaction.guild.unban(user, reason=reason)
         except discord.NotFound:
             await interaction.followup.send(
-                f"`{user}` is not banned from this server.",
+                f"{target_label} is not banned from this server.",
                 ephemeral=True,
             )
             return
