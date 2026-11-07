@@ -976,9 +976,9 @@ class ModerationCog(ObserverCog):
                     dm_content[:1950],
                     allowed_mentions=discord.AllowedMentions.none(),
                 )
-            except (discord.Forbidden, discord.HTTPException):
+            except Exception:
                 delivery_warning = True
-                logger.info(
+                logger.exception(
                     "Could not DM appeal decision to user %s (appeal %s)",
                     appeal["target_id"],
                     appeal["id"],
@@ -1018,7 +1018,7 @@ class ModerationCog(ObserverCog):
                 view=None,
                 allowed_mentions=discord.AllowedMentions.none(),
             )
-        except discord.HTTPException:
+        except Exception:
             post_commit_warning = True
             logger.exception(
                 "Could not update staff message for appeal %s", appeal["id"]
