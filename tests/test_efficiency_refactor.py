@@ -122,7 +122,7 @@ def test_interrupted_ban_appeal_review_can_be_retried(tmp_path):
     assert store.claim_review(appeal_id) is True
 
 
-def test_bot_restart_recovers_appeals_left_in_reviewing_state(tmp_path):
+def test_active_ban_appeal_review_is_not_recovered_during_cog_reload(tmp_path):
     store = BanAppealStore(str(tmp_path / "appeals.db"))
     appeal_id, _ = store.create(
         guild_id=1,
@@ -135,5 +135,31 @@ def test_bot_restart_recovers_appeals_left_in_reviewing_state(tmp_path):
     )
     assert store.claim_review(appeal_id) is True
 
+    assert store.recover_interrupted_reviews() == 0
+    assert store.get(appeal_id)["status"] == "reviewing"
+    assert store.claim_review(appeal_id) is False
+
+
+def test_bot_restart_recovers_stale_ban_appeal_review(tmp_path):
+    path = str(tmp_path / "appeals.db")
+    store = BanAppealStore(path)
+    appeal_id, _ = store.create(
+        guild_id=1,
+        ban_case_id=2,
+        appeal_case_id=3,
+        target_id=4,
+        reason="Test appeal",
+        evidence_filenames="",
+        staff_channel_id=5,
+    )
+    assert store.claim_review(appeal_id) is True
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "UPDATE moderation_ban_appeals "
+            "SET review_started_at = datetime('now', '-6 minutes') WHERE id = ?",
+            (appeal_id,),
+        )
+
     assert store.recover_interrupted_reviews() == 1
     assert store.get(appeal_id)["status"] == "pending"
+    assert store.claim_review(appeal_id) is True
