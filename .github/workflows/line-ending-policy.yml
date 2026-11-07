@@ -1,0 +1,52 @@
+name: Line ending policy
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-lf:
+    name: Verify tracked text files use LF
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Reject CRLF in tracked text files
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import subprocess
+          from pathlib import Path
+
+          text_suffixes = {
+              ".py", ".js", ".css", ".html", ".json", ".md",
+              ".txt", ".yml", ".yaml", ".toml",
+          }
+          paths = subprocess.check_output(
+              ["git", "ls-files", "-z"]
+          ).split(b"\0")
+
+          invalid = []
+          for raw_path in filter(None, paths):
+              path = Path(raw_path.decode("utf-8", errors="surrogateescape"))
+              if path.suffix.lower() not in text_suffixes and path.name != ".gitattributes":
+                  continue
+              try:
+                  data = path.read_bytes()
+              except OSError as exc:
+                  print(f"Could not read {path}: {exc}")
+                  raise SystemExit(2)
+              if b"\r\n" in data or b"\r" in data:
+                  invalid.append(str(path))
+
+          if invalid:
+              print("These tracked text files contain CR characters; commit them with LF:")
+              print("\n".join(f"  - {name}" for name in invalid))
+              raise SystemExit(1)
+
+          print("All tracked text files use LF line endings.")
+          PY
