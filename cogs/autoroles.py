@@ -240,25 +240,39 @@ class Autoroles(commands.GroupCog, group_name="autorole", group_description="Con
 		if verification["enabled"] and not member.bot:
 			await member.add_roles(*(role for role in (member.guild.get_role(role_id) for role_id in unverified) if role), reason="Unverified role")
 
+	async def post_verification_panel(self, guild: discord.Guild, fallback_channel=None):
+		"""Post the configured verification message with the persistent Verify button."""
+		errors = self.validation_errors(guild)
+		if errors:
+			raise ValueError("\n".join(errors))
+		channel_id = self.store.get(guild.id, "verification", "channel")
+		channel = guild.get_channel(int(channel_id)) if channel_id else fallback_channel
+		if not isinstance(channel, discord.TextChannel):
+			raise ValueError("Choose an available text channel in the dashboard first.")
+		message = self.store.get(guild.id, "verification", "message", "Click Verify to access the server.")
+		if len(message or "") > 2000:
+			raise ValueError("Verification messages must be 2,000 characters or fewer.")
+		await channel.send(message or "Click Verify to access the server.", view=VerifyView(self), allowed_mentions=discord.AllowedMentions.none())
+		with connect_sqlite(DB_PATH) as db:
+			db.execute("INSERT INTO guild_verification_config (guild_id, enabled, channel_id) VALUES (?, 1, ?) ON CONFLICT(guild_id) DO UPDATE SET enabled=1, channel_id=excluded.channel_id", (guild.id, channel.id))
+		self.store.set(guild.id, "verification", "enabled", True)
+		return channel
+
 	@app_commands.command(name="setup", description="Post or update the verification button.")
 	@app_commands.guild_only()
 	@owner_or_has_guild_permissions(manage_guild=True)
 	async def verify_setup(self, interaction: discord.Interaction):
-		errors = self.validation_errors(interaction.guild)
-		if errors:
-			await interaction.response.send_message("\n".join(errors), ephemeral=True)
-			return
 		channel_id = self.store.get(interaction.guild.id, "verification", "channel")
 		channel = interaction.guild.get_channel(int(channel_id)) if channel_id else interaction.channel
 		if not isinstance(channel, discord.TextChannel):
 			await interaction.response.send_message("Choose an available text channel in /setup first.", ephemeral=True)
 			return
+		errors = self.validation_errors(interaction.guild)
+		if errors:
+			await interaction.response.send_message("\n".join(errors), ephemeral=True)
+			return
 		await interaction.response.defer(ephemeral=True)
-		message = self.store.get(interaction.guild.id, "verification", "message", "Click Verify to access the server.")
-		await channel.send(message or "Click Verify to access the server.", view=VerifyView(self), allowed_mentions=discord.AllowedMentions.none())
-		with connect_sqlite(DB_PATH) as db:
-			db.execute("INSERT INTO guild_verification_config (guild_id, enabled, channel_id) VALUES (?, 1, ?) ON CONFLICT(guild_id) DO UPDATE SET enabled=1, channel_id=excluded.channel_id", (interaction.guild.id, channel.id))
-		self.store.set(interaction.guild.id, "verification", "enabled", True)
+		channel = await self.post_verification_panel(interaction.guild, fallback_channel=interaction.channel)
 		await interaction.followup.send(f"Verification panel posted in {channel.mention}.", ephemeral=True)
 
 	@verify_group.command(name="enable", description="Enable button verification.")

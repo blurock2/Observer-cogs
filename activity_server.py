@@ -206,6 +206,7 @@ class ActivityServer:
         app.router.add_post("/api/control-panel/{guild_id}/auto-responses", self.save_auto_response)
         app.router.add_delete("/api/control-panel/{guild_id}/auto-responses/{response_id}", self.delete_auto_response)
         app.router.add_post("/api/control-panel/{guild_id}/ticket-panel", self.send_ticket_panel)
+        app.router.add_post("/api/control-panel/{guild_id}/verification-panel", self.send_verification_panel)
         app.router.add_get("/api/public-updates", self.public_updates)
         app.router.add_get("/api/custom-embed/{guild_id}", self.custom_embed_info)
         app.router.add_get("/api/custom-embed/{guild_id}/message", self.custom_embed_message)
@@ -1815,8 +1816,9 @@ class ActivityServer:
             if type(value) is not int or not 0 <= value <= 1_000_000:
                 raise web.HTTPBadRequest(text="Enter a whole number between 0 and 1,000,000")
         elif spec.kind == "text":
-            if not isinstance(value, str) or len(value) > 4000:
-                raise web.HTTPBadRequest(text="Text values must be 4,000 characters or fewer")
+            max_length = 2000 if module.key == "verification" and spec.key == "message" else 4000
+            if not isinstance(value, str) or len(value) > max_length:
+                raise web.HTTPBadRequest(text=f"Text values must be {max_length:,} characters or fewer")
         elif spec.kind == "channel":
             if value in (None, ""):
                 value = None
@@ -1842,6 +1844,26 @@ class ActivityServer:
 
         store.set(guild.id, module.key, spec.key, value)
         return web.json_response({"ok": True, "value": value}, headers={"Cache-Control": "no-store"})
+
+    async def send_verification_panel(self, request: web.Request) -> web.Response:
+        _, guild = self._dashboard_guild(request)
+        verification = self.bot.get_cog("Autoroles")
+        if verification is None:
+            raise web.HTTPServiceUnavailable(text="Verification is not loaded")
+        try:
+            channel = await verification.post_verification_panel(guild)
+        except ValueError as error:
+            raise web.HTTPBadRequest(text=str(error))
+        except discord.Forbidden:
+            raise web.HTTPForbidden(text="Observer cannot send a verification panel in the configured channel")
+        except discord.HTTPException:
+            logger.exception("Could not post verification panel in guild %s", guild.id)
+            raise web.HTTPBadGateway(text="Discord could not post the verification panel")
+        return web.json_response({
+            "ok": True,
+            "channel_id": str(channel.id),
+            "channel_name": channel.name,
+        }, headers={"Cache-Control": "no-store"})
 
     async def send_ticket_panel(self, request: web.Request) -> web.Response:
         _, guild = self._dashboard_guild(request)
