@@ -270,10 +270,57 @@ class BanAppealReviewView(ErrorHandledView):
         self.add_item(reject)
 
     async def accept(self, interaction: discord.Interaction) -> None:
-        await self.cog.review_ban_appeal(interaction, "accepted")
+        if interaction.message is None:
+            await interaction.response.send_message(
+                "This appeal message could not be found.", ephemeral=True
+            )
+            return
+        await interaction.response.send_modal(
+            BanAppealDecisionModal(self.cog, "accepted", interaction.message.id)
+        )
 
     async def reject(self, interaction: discord.Interaction) -> None:
-        await self.cog.review_ban_appeal(interaction, "rejected")
+        if interaction.message is None:
+            await interaction.response.send_message(
+                "This appeal message could not be found.", ephemeral=True
+            )
+            return
+        await interaction.response.send_modal(
+            BanAppealDecisionModal(self.cog, "rejected", interaction.message.id)
+        )
+
+
+class BanAppealDecisionModal(ErrorHandledModal):
+    """Collect an optional moderator message before finalizing an appeal."""
+
+    def __init__(
+        self,
+        cog: ModerationCog,
+        decision: str,
+        staff_message_id: int,
+    ):
+        super().__init__(
+            title="Accept ban appeal" if decision == "accepted" else "Reject ban appeal"
+        )
+        self.cog = cog
+        self.decision = decision
+        self.staff_message_id = staff_message_id
+        self.message = discord.ui.TextInput(
+            label="Message to the user (optional)",
+            style=discord.TextStyle.paragraph,
+            placeholder="This message will be sent to the user by Observer.",
+            required=False,
+            max_length=1500,
+        )
+        self.add_item(self.message)
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        await self.cog.review_ban_appeal(
+            interaction,
+            self.decision,
+            self.staff_message_id,
+            self.message.value.strip(),
+        )
 
 
 class BanAppealModal(ErrorHandledModal):
@@ -699,17 +746,19 @@ class ModerationCog(ObserverCog):
         self,
         interaction: discord.Interaction,
         decision: str,
+        staff_message_id: int,
+        decision_message: str = "",
     ) -> None:
-        # Acknowledge immediately; Discord expires unacknowledged interactions
-        # after a few seconds, while unbanning and message edits can take longer.
+        # Modal submissions also have the same short acknowledgement deadline.
         await interaction.response.defer(ephemeral=True)
         guild = interaction.guild
-        if guild is None or interaction.message is None:
+        if guild is None:
             await interaction.followup.send(
                 "Appeals can only be reviewed in the configured server channel.",
                 ephemeral=True,
             )
             return
+
         member = interaction.user
         allowed = guild.owner_id == member.id or any(
             getattr(member.guild_permissions, permission, False)
@@ -722,136 +771,243 @@ class ModerationCog(ObserverCog):
                 "Only server moderators can review ban appeals.", ephemeral=True
             )
             return
-        appeal = self.appeals.get_by_staff_message(interaction.message.id)
+
+        appeal = self.appeals.get_by_staff_message(staff_message_id)
         if appeal is None or appeal["guild_id"] != guild.id:
             await interaction.followup.send(
                 "This appeal could not be found.", ephemeral=True
             )
             return
-        if not self.appeals.claim_review(appeal["id"]):
+
+        channel = guild.get_channel(appeal["staff_channel_id"])
+        if channel is None:
+            try:
+                channel = await guild.fetch_channel(appeal["staff_channel_id"])
+            except discord.HTTPException:
+                channel = None
+        if channel is None:
             await interaction.followup.send(
-                "This appeal has already been reviewed.", ephemeral=True
+                "The appeal's staff channel is unavailable. No decision was made.",
+                ephemeral=True,
+            )
+            return
+        try:
+            staff_message = await channel.fetch_message(staff_message_id)
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            await interaction.followup.send(
+                "The appeal message could not be loaded. No decision was made.",
+                ephemeral=True,
             )
             return
 
-        ban_case = self.cases.get_case(appeal["ban_case_id"])
-        target = self.bot.get_user(appeal["target_id"])
-        if target is None:
-            try:
-                target = await self.bot.fetch_user(appeal["target_id"])
-            except discord.HTTPException:
-                target = None
+        if not self.appeals.claim_review(appeal["id"]):
+            await interaction.followup.send(
+                "This appeal is already being reviewed or has been decided.",
+                ephemeral=True,
+            )
+            return
 
-        if decision == "accepted":
-            try:
-                ban_entry = await guild.fetch_ban(
-                    discord.Object(id=appeal["target_id"])
+        committed = False
+        try:
+            ban_case = self.cases.get_case(appeal["ban_case_id"])
+            target = self.bot.get_user(appeal["target_id"])
+            if target is None:
+                try:
+                    target = await self.bot.fetch_user(appeal["target_id"])
+                except discord.HTTPException:
+                    target = None
+
+            if decision == "accepted":
+                try:
+                    ban_entry = await guild.fetch_ban(
+                        discord.Object(id=appeal["target_id"])
+                    )
+                except discord.NotFound:
+                    # A prior attempt may already have removed the ban.
+                    ban_entry = None
+                if ban_entry is not None:
+                    target = ban_entry.user
+                    await guild.unban(
+                        ban_entry.user,
+                        reason=f"Ban appeal #{appeal['id']} accepted by {member}",
+                    )
+
+                # Commit the decision immediately after the irreversible action.
+                self.appeals.set_status(
+                    appeal["id"], "accepted", reviewer_id=member.id
                 )
-                await guild.unban(
-                    ban_entry.user,
-                    reason=f"Ban appeal #{appeal['id']} accepted by {member}",
+                committed = True
+                self.cases.set_case_status(
+                    appeal["appeal_case_id"], "accepted"
                 )
-                target = ban_entry.user
-            except discord.NotFound:
-                pass
-            except (discord.Forbidden, discord.HTTPException):
-                self.appeals.set_status(appeal["id"], "pending")
+                if ban_case is not None:
+                    self.cases.set_case_status(
+                        ban_case["id"], "reverted", actor_id=member.id
+                    )
+                    if ban_case["action_id"] is not None:
+                        self.actions.mark_undone(
+                            ban_case["action_id"], member.id
+                        )
+
+                unban_action_id = self.actions.create(
+                    guild.id,
+                    "unban",
+                    appeal["target_id"],
+                    member.id,
+                    status="resolved",
+                )
+                unban_case_id = self.cases.create_case(
+                    guild.id,
+                    "unban",
+                    appeal["target_id"],
+                    member.id,
+                    f"Ban appeal #{appeal['id']} accepted.",
+                    status="resolved",
+                    action_id=unban_action_id,
+                )
+                if isinstance(member, discord.Member):
+                    try:
+                        await self._send_mod_log(
+                            guild=guild,
+                            action="Appeal accepted; unbanned",
+                            moderator=member,
+                            target=target or discord.Object(id=appeal["target_id"]),
+                            reason=f"Ban appeal #{appeal['id']} accepted.",
+                            action_id=unban_action_id,
+                            case_id=unban_case_id,
+                            undoable=False,
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Could not write mod log for appeal %s", appeal["id"]
+                        )
+                outcome = (
+                    f"Your permanent ban from {guild.name} was appealed successfully. "
+                    "The ban has been removed."
+                )
+                color = discord.Color.green()
+                final_status = "accepted"
+            else:
+                self.appeals.set_status(
+                    appeal["id"], "rejected", reviewer_id=member.id
+                )
+                committed = True
+                self.cases.set_case_status(
+                    appeal["appeal_case_id"], "rejected"
+                )
+                outcome = (
+                    f"Your appeal for the ban from {guild.name} was declined. "
+                    "The ban remains active."
+                )
+                color = discord.Color.red()
+                final_status = "rejected"
+
+        except (discord.Forbidden, discord.HTTPException) as error:
+            if not committed:
+                self.appeals.release_review(appeal["id"])
                 await interaction.followup.send(
-                    "The appeal is still pending because I couldn't unban the user.",
+                    "Discord rejected part of the review. The appeal remains pending; "
+                    "you can safely try again.",
                     ephemeral=True,
                 )
-                return
-            if ban_case is not None:
-                self.cases.set_case_status(
-                    ban_case["id"], "reverted", actor_id=member.id
+                logger.warning(
+                    "Discord API failure while reviewing appeal %s: %s",
+                    appeal["id"],
+                    error,
                 )
-                if ban_case["action_id"] is not None:
-                    self.actions.mark_undone(ban_case["action_id"], member.id)
-            appeal_case_status = "accepted"
-            color = discord.Color.green()
+                return
+            logger.exception(
+                "Post-decision Discord API failure for appeal %s", appeal["id"]
+            )
             outcome = (
                 f"Your permanent ban from {guild.name} was appealed successfully. "
                 "The ban has been removed."
-            )
-            if target is not None:
-                await dm_moderation_action(
-                    target,
-                    guild,
-                    "Ban lifted",
-                    f"Ban appeal #{appeal['id']} accepted by {member}",
-                )
-            unban_action_id = self.actions.create(
-                guild.id,
-                "unban",
-                appeal["target_id"],
-                member.id,
-                status="resolved",
-            )
-            unban_case_id = self.cases.create_case(
-                guild.id,
-                "unban",
-                appeal["target_id"],
-                member.id,
-                f"Ban appeal #{appeal['id']} accepted.",
-                status="resolved",
-                action_id=unban_action_id,
-            )
-            if isinstance(member, discord.Member):
-                await self._send_mod_log(
-                    guild=guild,
-                    action="Appeal accepted; unbanned",
-                    moderator=member,
-                    target=target or discord.Object(id=appeal["target_id"]),
-                    reason=f"Ban appeal #{appeal['id']} accepted.",
-                    action_id=unban_action_id,
-                    case_id=unban_case_id,
-                    undoable=False,
-                )
-        else:
-            appeal_case_status = "rejected"
-            color = discord.Color.red()
-            outcome = (
-                f"Your appeal for the ban from {guild.name} was declined. "
+                if decision == "accepted"
+                else f"Your appeal for the ban from {guild.name} was declined. "
                 "The ban remains active."
             )
-            if target is not None:
-                try:
-                    await target.send(
-                        outcome,
-                        allowed_mentions=discord.AllowedMentions.none(),
-                    )
-                except (discord.Forbidden, discord.HTTPException):
-                    pass
+            color = (
+                discord.Color.green()
+                if decision == "accepted"
+                else discord.Color.red()
+            )
+            final_status = decision
+        except Exception:
+            if not committed:
+                self.appeals.release_review(appeal["id"])
+            logger.exception("Unexpected error while reviewing appeal %s", appeal["id"])
+            await interaction.followup.send(
+                "The review encountered an internal error. "
+                + (
+                    "The decision was already committed; check the appeal record."
+                    if committed
+                    else "The appeal was returned to pending so it can be retried."
+                ),
+                ephemeral=True,
+            )
+            return
 
-        self.appeals.set_status(
-            appeal["id"], decision, reviewer_id=member.id
-        )
-        self.cases.set_case_status(appeal["appeal_case_id"], appeal_case_status)
-        if await self._update_ban_appeal_dm(ban_case, decision):
-            self.appeals.mark_controls_disabled(appeal["id"])
-        await interaction.followup.send(
-            f"Appeal #{appeal['id']} {decision}.", ephemeral=True
-        )
+        # DM delivery is deliberately best-effort: a closed DM must never undo
+        # an accepted/rejected decision or leave the review lock held.
+        if target is not None:
+            dm_content = outcome
+            if decision_message:
+                dm_content += (
+                    "\\n\\n**Message from the moderation team:**\\n"
+                    + decision_message
+                )
+            try:
+                await target.send(
+                    dm_content[:1950],
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+            except (discord.Forbidden, discord.HTTPException):
+                logger.info(
+                    "Could not DM appeal decision to user %s (appeal %s)",
+                    appeal["target_id"],
+                    appeal["id"],
+                )
+
+        try:
+            if await self._update_ban_appeal_dm(ban_case, final_status):
+                self.appeals.mark_controls_disabled(appeal["id"])
+        except (discord.Forbidden, discord.HTTPException):
+            logger.exception(
+                "Could not update original ban DM for appeal %s", appeal["id"]
+            )
+
         try:
             embed = (
-                discord.Embed.from_dict(interaction.message.embeds[0].to_dict())
-                if interaction.message.embeds
+                discord.Embed.from_dict(staff_message.embeds[0].to_dict())
+                if staff_message.embeds
                 else discord.Embed(title=f"Ban Appeal #{appeal['id']}")
             )
-            embed.title = f"Permanent Ban Appeal #{appeal['id']} · {decision.title()}"
+            embed.title = (
+                f"Permanent Ban Appeal #{appeal['id']} · {final_status.title()}"
+            )
             embed.color = color
             embed.add_field(
                 name="Decision",
-                value=f"Reviewed by {member.mention} (`{member}`) · <t:{int(discord.utils.utcnow().timestamp())}:F>",
+                value=(
+                    f"Reviewed by {member.mention} (`{member}`) · "
+                    f"<t:{int(discord.utils.utcnow().timestamp())}:F>"
+                ),
                 inline=False,
             )
-            await interaction.message.edit(
+            await staff_message.edit(
                 embed=embed,
                 view=None,
                 allowed_mentions=discord.AllowedMentions.none(),
             )
         except discord.HTTPException:
-            logger.exception("Could not update staff message for appeal %s", appeal["id"])
+            logger.exception(
+                "Could not update staff message for appeal %s", appeal["id"]
+            )
+
+        await interaction.followup.send(
+            f"Appeal #{appeal['id']} {final_status}.",
+            ephemeral=True,
+        )
 
     async def cog_load(self) -> None:
         self.expire_moderation_cases.start()
