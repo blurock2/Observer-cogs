@@ -52,10 +52,11 @@ def _review_fixture(*, target=None, decision="accepted"):
     interaction = SimpleNamespace(
         guild=guild,
         user=moderator,
-        response=SimpleNamespace(defer=AsyncMock()),
+        response=SimpleNamespace(defer=AsyncMock(), send_message=AsyncMock()),
         followup=SimpleNamespace(send=AsyncMock()),
     )
     cog = object.__new__(ModerationCog)
+    interaction.client = SimpleNamespace(get_cog=Mock(return_value=cog))
     cog.bot = SimpleNamespace(
         get_user=Mock(return_value=target),
         fetch_user=AsyncMock(return_value=target),
@@ -461,3 +462,108 @@ async def test_unban_denied_permission_is_checked_after_defer():
     interaction.guild.fetch_ban.assert_not_awaited()
     interaction.followup.send.assert_awaited_once()
     assert "do not have permission" in interaction.followup.send.await_args.args[0]
+
+# Permission regression matrix: native Discord permissions alone must never grant
+# access to the appeal-review controls. Only configured moderator roles/head mods
+# (or the configured bot owner) pass mod_perms_check.
+@pytest.mark.parametrize(
+    "user_id,administrator,ban_members,moderate_members,server_owner",
+    [
+        (101, False, False, False, False),
+        (102, True, False, False, False),
+        (103, False, True, False, False),
+        (104, False, False, True, False),
+        (105, True, True, False, False),
+        (106, True, False, True, False),
+        (107, False, True, True, False),
+        (108, True, True, True, False),
+        (109, False, False, False, True),
+        (110, True, False, False, True),
+        (111, False, True, False, True),
+        (112, False, False, True, True),
+        (113, True, True, False, True),
+        (114, True, False, True, True),
+        (115, False, True, True, True),
+        (116, True, True, True, True),
+        (117, False, False, False, False),
+        (118, True, False, False, False),
+        (119, False, True, False, False),
+        (120, False, False, True, False),
+    ],
+)
+@pytest.mark.asyncio
+async def test_review_buttons_reject_unconfigured_users_across_permission_matrix(
+    user_id, administrator, ban_members, moderate_members, server_owner
+):
+    cog, interaction, *_ = _review_fixture()
+    interaction.user.id = user_id
+    interaction.guild.owner_id = user_id if server_owner else 999
+    interaction.user.guild_permissions = SimpleNamespace(
+        administrator=administrator,
+        ban_members=ban_members,
+        moderate_members=moderate_members,
+    )
+    cog._check_mod_perms.return_value = False
+    interaction.message = SimpleNamespace(id=900)
+    interaction.response.send_modal = AsyncMock()
+    view = BanAppealReviewView(cog)
+
+    await view.accept(interaction)
+    await view.reject(interaction)
+
+    assert interaction.response.send_modal.await_count == 0
+    assert interaction.response.send_message.await_count == 2
+    assert all(
+        "Only configured moderators" in call.args[0]
+        for call in interaction.response.send_message.await_args_list
+    )
+
+
+@pytest.mark.parametrize(
+    "user_id,administrator,ban_members,moderate_members,server_owner",
+    [
+        (201, False, False, False, False),
+        (202, True, False, False, False),
+        (203, False, True, False, False),
+        (204, False, False, True, False),
+        (205, True, True, False, False),
+        (206, True, False, True, False),
+        (207, False, True, True, False),
+        (208, True, True, True, False),
+        (209, False, False, False, True),
+        (210, True, False, False, True),
+        (211, False, True, False, True),
+        (212, False, False, True, True),
+        (213, True, True, False, True),
+        (214, True, False, True, True),
+        (215, False, True, True, True),
+        (216, True, True, True, True),
+        (217, False, False, False, False),
+        (218, True, False, False, False),
+        (219, False, True, False, False),
+        (220, False, False, True, False),
+    ],
+)
+@pytest.mark.asyncio
+async def test_modal_submission_rechecks_permissions_before_claiming_appeal(
+    user_id, administrator, ban_members, moderate_members, server_owner
+):
+    cog, interaction, target, staff_message, *_ = _review_fixture()
+    interaction.user.id = user_id
+    interaction.guild.owner_id = user_id if server_owner else 999
+    interaction.user.guild_permissions = SimpleNamespace(
+        administrator=administrator,
+        ban_members=ban_members,
+        moderate_members=moderate_members,
+    )
+    cog._check_mod_perms.return_value = False
+
+    await cog.review_ban_appeal(interaction, "accepted", 900, "unauthorized attempt")
+
+    cog.appeals.claim_review.assert_not_called()
+    cog.appeals.set_status.assert_not_called()
+    interaction.guild.unban.assert_not_awaited()
+    target.send.assert_not_awaited()
+    staff_message.edit.assert_not_awaited()
+    interaction.followup.send.assert_awaited_once()
+    assert "Only configured moderators" in interaction.followup.send.await_args.args[0]
