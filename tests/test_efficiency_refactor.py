@@ -99,3 +99,23 @@ def test_level_thresholds_are_exact(level):
 @pytest.mark.parametrize("xp", [-100, -1, 0, 1, 99])
 def test_xp_below_first_level(xp):
     assert _level_from_xp(xp) == 0
+
+def test_interrupted_ban_appeal_review_can_be_retried(tmp_path):
+    store = BanAppealStore(str(tmp_path / "appeals.db"))
+    appeal_id, created = store.create(
+        guild_id=1,
+        ban_case_id=2,
+        appeal_case_id=3,
+        target_id=4,
+        reason="Test appeal",
+        evidence_filenames="",
+        staff_channel_id=5,
+    )
+    assert created is True
+    assert store.claim_review(appeal_id) is True
+    assert store.get(appeal_id)["status"] == "reviewing"
+
+    store.release_review(appeal_id)
+
+    assert store.get(appeal_id)["status"] == "pending"
+    assert store.claim_review(appeal_id) is True
