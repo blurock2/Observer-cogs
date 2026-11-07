@@ -100,6 +100,7 @@ def test_level_thresholds_are_exact(level):
 def test_xp_below_first_level(xp):
     assert _level_from_xp(xp) == 0
 
+
 def test_interrupted_ban_appeal_review_can_be_retried(tmp_path):
     store = BanAppealStore(str(tmp_path / "appeals.db"))
     appeal_id, created = store.create(
@@ -119,6 +120,7 @@ def test_interrupted_ban_appeal_review_can_be_retried(tmp_path):
 
     assert store.get(appeal_id)["status"] == "pending"
     assert store.claim_review(appeal_id) is True
+
 
 def test_bot_restart_recovers_appeals_left_in_reviewing_state(tmp_path):
     store = BanAppealStore(str(tmp_path / "appeals.db"))
