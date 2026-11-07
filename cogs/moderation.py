@@ -270,6 +270,12 @@ class BanAppealReviewView(ErrorHandledView):
         self.add_item(reject)
 
     async def accept(self, interaction: discord.Interaction) -> None:
+        if not await mod_perms_check(interaction):
+            await interaction.response.send_message(
+                "Only configured moderators can review ban appeals.",
+                ephemeral=True,
+            )
+            return
         if interaction.message is None:
             await interaction.response.send_message(
                 "This appeal message could not be found.", ephemeral=True
@@ -280,6 +286,12 @@ class BanAppealReviewView(ErrorHandledView):
         )
 
     async def reject(self, interaction: discord.Interaction) -> None:
+        if not await mod_perms_check(interaction):
+            await interaction.response.send_message(
+                "Only configured moderators can review ban appeals.",
+                ephemeral=True,
+            )
+            return
         if interaction.message is None:
             await interaction.response.send_message(
                 "This appeal message could not be found.", ephemeral=True
@@ -759,18 +771,14 @@ class ModerationCog(ObserverCog):
             )
             return
 
-        member = interaction.user
-        allowed = guild.owner_id == member.id or any(
-            getattr(member.guild_permissions, permission, False)
-            for permission in ("administrator", "ban_members", "moderate_members")
-        )
-        if not allowed and isinstance(member, discord.Member):
-            allowed = await self._check_mod_perms(interaction)
-        if not allowed:
+        if not await mod_perms_check(interaction):
             await interaction.followup.send(
-                "Only server moderators can review ban appeals.", ephemeral=True
+                "Only configured moderators can review ban appeals.",
+                ephemeral=True,
             )
             return
+
+        member = interaction.user
 
         appeal = self.appeals.get_by_staff_message(staff_message_id)
         if appeal is None or appeal["guild_id"] != guild.id:
@@ -1048,7 +1056,8 @@ class ModerationCog(ObserverCog):
             embed.add_field(
                 name="Decision",
                 value=(
-                    f"Reviewed by {member.mention} (`{member}`) · "
+                    f"{'Accepted' if final_status == 'accepted' else 'Rejected'} by "
+                    f"{member.mention} (`{member}`) · "
                     f"<t:{int(discord.utils.utcnow().timestamp())}:F>"
                 ),
                 inline=False,
