@@ -1816,8 +1816,9 @@ class ActivityServer:
             if type(value) is not int or not 0 <= value <= 1_000_000:
                 raise web.HTTPBadRequest(text="Enter a whole number between 0 and 1,000,000")
         elif spec.kind == "text":
-            if not isinstance(value, str) or len(value) > 4000:
-                raise web.HTTPBadRequest(text="Text values must be 4,000 characters or fewer")
+            max_length = 2000 if module.key == "verification" and spec.key == "message" else 4000
+            if not isinstance(value, str) or len(value) > max_length:
+                raise web.HTTPBadRequest(text=f"Text values must be {max_length:,} characters or fewer")
         elif spec.kind == "channel":
             if value in (None, ""):
                 value = None
