@@ -250,6 +250,8 @@ class Autoroles(commands.GroupCog, group_name="autorole", group_description="Con
 		if not isinstance(channel, discord.TextChannel):
 			raise ValueError("Choose an available text channel in the dashboard first.")
 		message = self.store.get(guild.id, "verification", "message", "Click Verify to access the server.")
+		if len(message or "") > 2000:
+			raise ValueError("Verification messages must be 2,000 characters or fewer.")
 		await channel.send(message or "Click Verify to access the server.", view=VerifyView(self), allowed_mentions=discord.AllowedMentions.none())
 		with connect_sqlite(DB_PATH) as db:
 			db.execute("INSERT INTO guild_verification_config (guild_id, enabled, channel_id) VALUES (?, 1, ?) ON CONFLICT(guild_id) DO UPDATE SET enabled=1, channel_id=excluded.channel_id", (guild.id, channel.id))
