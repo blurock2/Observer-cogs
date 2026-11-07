@@ -281,11 +281,13 @@ async def test_decision_modal_passes_optional_message_to_review():
     cog = SimpleNamespace(review_ban_appeal=AsyncMock())
     modal = BanAppealDecisionModal(cog, "rejected", 900)
     modal.message._value = "Please appeal again with evidence."
+    interaction = SimpleNamespace()
 
-    await modal.on_submit(SimpleNamespace())
+    await modal.on_submit(interaction)
 
-    cog.review_ban_appeal.assert_awaited_once_with(
-        pytest.ANY if hasattr(pytest, "ANY") else None,
+    args = cog.review_ban_appeal.await_args.args
+    assert args[0] is interaction
+    assert args[1:] == (
         "rejected",
         900,
         "Please appeal again with evidence.",
