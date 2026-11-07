@@ -1041,6 +1041,15 @@ class BanAppealStore:
             )
             return cursor.rowcount == 1
 
+    def recover_interrupted_reviews(self) -> int:
+        """Reset in-flight claims left behind by a previous bot process."""
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "UPDATE moderation_ban_appeals SET status = 'pending' "
+                "WHERE status = 'reviewing'"
+            )
+            return cursor.rowcount
+
     def release_review(self, appeal_id: int) -> None:
         """Return an interrupted review to pending when no decision was committed."""
         with self._connect() as connection:
