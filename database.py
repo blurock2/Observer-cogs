@@ -1041,6 +1041,15 @@ class BanAppealStore:
             )
             return cursor.rowcount == 1
 
+    def release_review(self, appeal_id: int) -> None:
+        """Return an interrupted review to pending when no decision was committed."""
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE moderation_ban_appeals SET status = 'pending' "
+                "WHERE id = ? AND status = 'reviewing'",
+                (appeal_id,),
+            )
+
     def set_status(
         self,
         appeal_id: int,
