@@ -1890,6 +1890,7 @@ class AntiScam(ObserverCog):
             message.author,
             "Same or near-identical image reposted across channels within 2 seconds",
             minutes=SCAM_UNCERTAIN_TIMEOUT_MINUTES,
+            guild=message.guild,
         ))
         if deletion_future is not None:
             results = await deletion_future
