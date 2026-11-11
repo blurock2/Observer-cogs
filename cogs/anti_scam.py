@@ -1297,10 +1297,37 @@ class AntiScam(ObserverCog):
             self.trapped.discard(key)
 
     async def restrict(
-        self, member: discord.Member, reason: str, *, ban: bool = False, minutes: int = 10,
-        mute_role: discord.Role | None = None,
+        self, member: discord.Member | discord.User, reason: str, *, ban: bool = False,
+        minutes: int = 10, mute_role: discord.Role | None = None,
+        guild: discord.Guild | None = None,
     ) -> str:
-        return await self._restrict_for_raid(member, reason, ban=ban, minutes=minutes, mute_role=mute_role)
+        # Message authors are typed as discord.User by some event/cache paths.
+        # Resolve them in the message's guild before using member-only moderation APIs.
+        guild = guild or getattr(member, "guild", None)
+        if guild is None:
+            return "not applied: guild context unavailable"
+
+        member_guild = getattr(member, "guild", None)
+        if member_guild is None:
+            resolved = guild.get_member(member.id)
+            if resolved is None:
+                try:
+                    resolved = await guild.fetch_member(member.id)
+                except discord.NotFound:
+                    return "not applied: user is no longer a member of this server"
+                except discord.HTTPException as error:
+                    error_id = log_error(
+                        error, source="anti-raid member resolution",
+                        guild_id=guild.id, user_id=member.id,
+                    )
+                    return f"failed; error {error_id}"
+            member = resolved
+        elif member_guild.id != guild.id:
+            return "not applied: member belongs to a different server"
+
+        return await self._restrict_for_raid(
+            member, reason, ban=ban, minutes=minutes, mute_role=mute_role
+        )
 
     def _bool_setting(self, guild_id: int, key: str, default: bool = False) -> bool:
         value = self._get(guild_id, key, default)
@@ -2159,6 +2186,7 @@ class AntiScam(ObserverCog):
                 message.author,
                 "Uncertain scam image detected; moderator review required",
                 minutes=SCAM_UNCERTAIN_TIMEOUT_MINUTES,
+                guild=message.guild,
             )
         elif enforce_due and (strong_signal or contextual_signal or image_signal):
             scam_ban = self._bool_setting(message.guild.id, "scam_ban", False)
@@ -2175,6 +2203,7 @@ class AntiScam(ObserverCog):
                         "High-confidence scam detection: " + "; ".join(signals),
                         ban=scam_ban,
                         mute_role=mute_role if scam_mute else None,
+                        guild=message.guild,
                     )
         if not alert_due:
             return
