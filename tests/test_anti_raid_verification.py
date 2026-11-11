@@ -31,6 +31,56 @@ def member(uid=5):
 
 
 @pytest.mark.asyncio
+async def test_restrict_resolves_user_to_cached_guild_member(protection):
+    raid, _ = protection
+    target = member()
+    user = NS(id=target.id)
+    guild = NS(id=1, get_member=lambda uid: target)
+    raid._restrict_for_raid = AsyncMock(return_value="timed out")
+
+    result = await raid.restrict(user, "scam image", minutes=60, guild=guild)
+
+    assert result == "timed out"
+    raid._restrict_for_raid.assert_awaited_once_with(
+        target, "scam image", ban=False, minutes=60, mute_role=None
+    )
+
+
+@pytest.mark.asyncio
+async def test_restrict_fetches_uncached_user_before_enforcement(protection):
+    raid, _ = protection
+    target = member()
+    user = NS(id=target.id)
+    guild = NS(id=1, get_member=lambda uid: None, fetch_member=AsyncMock(return_value=target))
+    raid._restrict_for_raid = AsyncMock(return_value="banned")
+
+    result = await raid.restrict(user, "scam link", ban=True, guild=guild)
+
+    assert result == "banned"
+    guild.fetch_member.assert_awaited_once_with(user.id)
+    raid._restrict_for_raid.assert_awaited_once_with(
+        target, "scam link", ban=True, minutes=10, mute_role=None
+    )
+
+
+@pytest.mark.asyncio
+async def test_restrict_does_not_attempt_enforcement_when_user_left_server(protection):
+    raid, _ = protection
+    user = NS(id=5)
+    response = NS(status=404, reason="Not Found")
+    guild = NS(
+        id=1, get_member=lambda uid: None,
+        fetch_member=AsyncMock(side_effect=discord.NotFound(response, "not found")),
+    )
+    raid._restrict_for_raid = AsyncMock()
+
+    result = await raid.restrict(user, "scam image", guild=guild)
+
+    assert result == "not applied: user is no longer a member of this server"
+    raid._restrict_for_raid.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_join_burst_persists_hold_and_times_out(protection):
     raid, _ = protection
     m = member()
