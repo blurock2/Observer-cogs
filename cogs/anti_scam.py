@@ -1578,6 +1578,30 @@ class AntiScam(ObserverCog):
             self.bot.user is not None and message.author.id == self.bot.user.id
         ):
             return
+        member = message.author
+
+        if not isinstance(member, discord.Member):
+            try:
+                member = await message.guild.fetch_member(message.author.id)
+            except discord.NotFound:
+                logger.warning(
+                    "Could not resolve scam message author as guild member: "
+                    "guild=%s user=%s",
+                    message.guild.id,
+                    message.author.id,
+                )
+                member = None
+                
+            except (discord.Forbidden, discord.HTTPException)
+                logger.warning(
+                    "Could not resolve scam message author as guild member: "
+                    "guild=%s user=%s",
+                    message.guild.id,
+                    message.author.id,
+                    exc_info=True,
+                )
+                member = None
+        
         if not self._enabled(message.guild.id):
             return
         if self._has_scam_bypass_role(message):
@@ -1873,6 +1897,7 @@ class AntiScam(ObserverCog):
 
     async def _process_scam_message(
         self,
+        member: discord.Member | None,
         message: discord.Message,
         alert_key: tuple[int, int],
         *,
